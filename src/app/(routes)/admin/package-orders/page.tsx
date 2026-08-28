@@ -196,7 +196,6 @@ export default function PackageOrdersAdminPage() {
             value={assignDraft.userId}
             onChange={(v) => setAssignDraft({ ...assignDraft, userId: v })}
             options={[
-              { value: "", label: members.length ? "Select a member…" : "Loading members…" },
               ...members.map((m) => ({
                 value: m._id,
                 label: `${[m.firstName, m.lastName].filter(Boolean).join(" ") || m.email} — ${m.email}`,
@@ -209,7 +208,6 @@ export default function PackageOrdersAdminPage() {
             value={assignDraft.packageId}
             onChange={(v) => setAssignDraft({ ...assignDraft, packageId: v })}
             options={[
-              { value: "", label: packages.length ? "Select a package…" : "Loading packages…" },
               ...packages.map((p) => ({
                 value: p._id,
                 label: `${p.name} — ${(p.currency || "GBP").toUpperCase()} ${p.price}/${p.period || "month"}`,

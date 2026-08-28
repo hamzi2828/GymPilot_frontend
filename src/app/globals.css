@@ -315,7 +315,6 @@ body {
     );
 }
 
-
 /* Hero Content Container */
 .hero-content {
   position: relative;
@@ -1187,90 +1186,9 @@ body {
   color: var(--accent);
 }
 
-/* Background Logo */
-/* Background Logo */
-.footer-background-logo {
-  width: 100%;
-  /* next/image fill needs a positioned, measurable box to anchor to */
-  position: relative;
-  height: 140px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-top: 32px;
-  transform: translateY(50px);
-  opacity: 1;
-  transition: all 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-}
-
-.footer-bg-logo-image {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  opacity: 1;
-  transform: scale(0.8);
-  transition: all 0.8s ease-in-out;
-}
-
-/* Animation on scroll - when footer comes into view */
-.footer-main.in-view .footer-background-logo {
-  transform: translateY(0);
-  opacity: 1;
-}
-
-.footer-main.in-view .footer-bg-logo-image {
-  transform: scale(1);
-}
-
-/* Optional: Subtle hover effect */
-.footer-background-logo:hover .footer-bg-logo-image {
-  transform: scale(1.02);
-}
-
 /* Mobile Small (up to 575px) */
-@media (max-width: 575px) {
-  .footer-background-logo {
-    margin-top: 0px;
-    padding-bottom: 10px;
-    transform: translateY(25px);
-    transition: all 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-  }
-
-  .footer-bg-logo-image {
-    max-width: 250px;
-    transform: scale(0.75);
-    transition: all 0.6s ease-in-out;
-  }
-
-  .footer-main.in-view .footer-bg-logo-image {
-    transform: scale(0.9);
-  }
-
-  /* Reduced animation for mobile performance */
-  .footer-background-logo:hover .footer-bg-logo-image {
-    transform: scale(0.92);
-  }
-}
 
 /* Reduce motion for users who prefer it */
-@media (prefers-reduced-motion: reduce) {
-  .footer-background-logo,
-  .footer-bg-logo-image {
-    transition: opacity 0.3s ease;
-  }
-
-  .footer-background-logo {
-    transform: translateY(0);
-  }
-
-  .footer-bg-logo-image {
-    transform: scale(1);
-  }
-
-  .footer-main.in-view .footer-bg-logo-image {
-    transform: scale(1);
-  }
-}
 
 /* Responsive Design */
 @media (max-width: 1024px) {

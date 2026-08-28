@@ -124,9 +124,9 @@ const Footer = () => {
           <div className="footer-bottom-content">
             <p className="footer-copyright">
               <span className="footer-copyright-symbol">©</span>
-              <span className="footer-copyright-year">2025</span>
+              <span className="footer-copyright-year">{new Date().getFullYear()}</span>
               <span className="footer-copyright-text">
-                {siteName} — All rights reserved
+                {" "}{siteName} — All rights reserved
               </span>
             </p>
             <nav className="footer-legal-links">
@@ -138,20 +138,6 @@ const Footer = () => {
         </div>
       </section>
 
-      {/* Background Logo */}
-      <div className="footer-background-logo" aria-hidden="true">
-        <Image
-          src={brandLogo}
-          alt=""
-          className="footer-bg-logo-image"
-          fill
-          sizes="(max-width: 768px) 100vw, 50vw"
-          style={{
-            objectFit: 'contain',
-            objectPosition: 'center'
-          }}
-        />
-      </div>
     </div>
   </footer>
   );

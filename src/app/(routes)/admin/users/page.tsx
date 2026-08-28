@@ -13,7 +13,7 @@ import {
   Spinner,
   Table,
 } from "../_shared/ui";
-import { API_BASE, apiGet, apiJson } from "../_shared/api";
+import { API_BASE, GYMFOLIO_API, apiGet, apiJson } from "../_shared/api";
 
 interface User {
   _id: string;
@@ -26,6 +26,14 @@ interface User {
 }
 
 const roles = ["user", "admin", "moderator"];
+
+interface PackageOption {
+  _id: string;
+  name: string;
+  price: number;
+  currency?: string;
+  period?: string;
+}
 
 export default function UsersAdminPage() {
   const [list, setList] = useState<User[]>([]);
@@ -40,6 +48,50 @@ export default function UsersAdminPage() {
   const [notice, setNotice] = useState<{ tone: "ok" | "warn"; text: string } | null>(null);
   const emptyDraft = { firstName: "", lastName: "", email: "", phone: "", role: "user" };
   const [draft, setDraft] = useState(emptyDraft);
+
+  // --- Assign a package to a specific member -----------------------------
+  const [assignFor, setAssignFor] = useState<User | null>(null);
+  const [packages, setPackages] = useState<PackageOption[]>([]);
+  const [assignErr, setAssignErr] = useState<string | null>(null);
+  const [assigning, setAssigning] = useState(false);
+  const emptyAssign = { packageId: "", paymentMethod: "cash", markPaid: "yes", durationMonths: "" };
+  const [assignDraft, setAssignDraft] = useState(emptyAssign);
+
+  const openAssign = async (u: User) => {
+    setAssignFor(u);
+    setAssignDraft(emptyAssign);
+    setAssignErr(null);
+    try {
+      const p = await apiGet<{ data?: PackageOption[] }>(`${GYMFOLIO_API}/packages`);
+      setPackages(p.data || []);
+    } catch (e) {
+      setAssignErr(e instanceof Error ? e.message : "Could not load packages.");
+    }
+  };
+
+  const assignPackage = async () => {
+    if (!assignFor || !assignDraft.packageId) {
+      setAssignErr("Choose a package to assign.");
+      return;
+    }
+    setAssigning(true);
+    setAssignErr(null);
+    try {
+      const res = await apiJson<{ message: string }>(`${GYMFOLIO_API}/package-orders/assign`, "POST", {
+        userId: assignFor._id,
+        packageId: assignDraft.packageId,
+        paymentMethod: assignDraft.paymentMethod,
+        markPaid: assignDraft.markPaid === "yes",
+        durationMonths: assignDraft.durationMonths ? Number(assignDraft.durationMonths) : undefined,
+      });
+      setAssignFor(null);
+      setNotice({ tone: "ok", text: res.message || "Package assigned." });
+    } catch (e) {
+      setAssignErr(e instanceof Error ? e.message : "Could not assign the package.");
+    } finally {
+      setAssigning(false);
+    }
+  };
 
   const openCreate = () => {
     setDraft(emptyDraft);
@@ -155,6 +207,7 @@ export default function UsersAdminPage() {
             <Badge key="s" color={u.status === "active" ? "green" : "neutral"}>{u.status || "active"}</Badge>,
             u.createdAt ? new Date(u.createdAt).toLocaleDateString() : "—",
             <div key="a" className="flex gap-2">
+              <SecondaryButton onClick={() => openAssign(u)}>Package</SecondaryButton>
               <SecondaryButton onClick={() => { setSelected(u); setRole(u.role || "user"); }}>Role</SecondaryButton>
               <DangerButton onClick={() => remove(u._id)}>Delete</DangerButton>
             </div>,
@@ -194,6 +247,83 @@ export default function UsersAdminPage() {
             </PrimaryButton>
           </div>
         </div>
+      </Modal>
+
+      <Modal
+        open={!!assignFor}
+        onClose={() => setAssignFor(null)}
+        title="Assign Package"
+        size="sm"
+      >
+        {assignFor && (
+          <div className="space-y-4">
+            <div className="text-sm">
+              <p className="font-medium text-neutral-900">
+                {[assignFor.firstName, assignFor.lastName].filter(Boolean).join(" ") || assignFor.email}
+              </p>
+              <p className="text-neutral-500">{assignFor.email}</p>
+            </div>
+
+            <p className="text-sm text-neutral-500">
+              Creates an active membership without going through checkout — for payments
+              taken in person or a comped package.
+            </p>
+
+            <SelectField
+              label="Package"
+              value={assignDraft.packageId}
+              onChange={(v) => setAssignDraft({ ...assignDraft, packageId: v })}
+              options={[
+                ...packages.map((p) => ({
+                  value: p._id,
+                  label: `${p.name} — ${(p.currency || "GBP").toUpperCase()} ${p.price}/${p.period || "month"}`,
+                })),
+              ]}
+            />
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <SelectField
+                label="Payment Method"
+                value={assignDraft.paymentMethod}
+                onChange={(v) => setAssignDraft({ ...assignDraft, paymentMethod: v })}
+                options={[
+                  { value: "cash", label: "Cash" },
+                  { value: "bank_transfer", label: "Bank Transfer" },
+                  { value: "card", label: "Card" },
+                  { value: "stripe", label: "Stripe" },
+                ]}
+              />
+              <SelectField
+                label="Mark as Paid"
+                value={assignDraft.markPaid}
+                onChange={(v) => setAssignDraft({ ...assignDraft, markPaid: v })}
+                options={[
+                  { value: "yes", label: "Yes — activate now" },
+                  { value: "no", label: "No — leave pending" },
+                ]}
+              />
+            </div>
+
+            <TextField
+              label="Duration in months (optional)"
+              type="number"
+              value={assignDraft.durationMonths}
+              onChange={(v) => setAssignDraft({ ...assignDraft, durationMonths: v })}
+              placeholder="Defaults to the package period"
+            />
+
+            {assignErr && (
+              <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{assignErr}</p>
+            )}
+
+            <div className="flex justify-end gap-2 pt-2">
+              <SecondaryButton onClick={() => setAssignFor(null)}>Cancel</SecondaryButton>
+              <PrimaryButton onClick={assignPackage} disabled={assigning}>
+                {assigning ? "Assigning..." : "Assign Package"}
+              </PrimaryButton>
+            </div>
+          </div>
+        )}
       </Modal>
 
       <Modal open={!!selected} onClose={() => setSelected(null)} title="Update Role" size="sm">
