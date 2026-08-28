@@ -27,7 +27,7 @@ const BlogsSection: React.FC = () => {
           <div className="section7-content">
             {/* Card 1 */}
             <div className="section7-blog-post-card">
-              <Link href="/blogs-detail" className="flex flex-col h-full">
+              <Link href="/blogs-detail" className="relative flex flex-col h-full">
                 <div className="section7-content2">
                   <div className="section7-heading-and-subheading">
                     <div className="section7-heading-and-text">
@@ -60,7 +60,7 @@ const BlogsSection: React.FC = () => {
 
             {/* Card 2 */}
             <div className="section7-blog-post-card2">
-              <Link href="/blogs-detail" className="flex flex-col h-full">
+              <Link href="/blogs-detail" className="relative flex flex-col h-full">
                 <div className="section7-content2">
                   <div className="section7-heading-and-subheading">
                     <div className="section7-heading-and-text">
@@ -92,7 +92,7 @@ const BlogsSection: React.FC = () => {
 
             {/* Card 3 */}
             <div className="section7-blog-post-card2">
-              <Link href="/blogs-detail" className="flex flex-col h-full">
+              <Link href="/blogs-detail" className="relative flex flex-col h-full">
                 <div className="section7-content2">
                   <div className="section7-heading-and-subheading">
                     <div className="section7-heading-and-text">

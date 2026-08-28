@@ -4,6 +4,57 @@ import Link from "next/link";
 import { heroService, type HeroSlide } from "../services/heroService";
 
 const AUTO_INTERVAL = 4000;
+
+// Shown when the API has no active slides yet, or the request fails, so the
+// banner never renders as an empty block.
+const FALLBACK_SLIDES: HeroSlide[] = [
+  {
+    _id: "fallback-1",
+    title: "Train Hard. Feel Unstoppable.",
+    description:
+      "State-of-the-art equipment, expert coaching and a community that shows up. Your first session is on us.",
+    imageUrl: "/images/hero.svg",
+    buttonText: "View Packages",
+    buttonLink: "/packages",
+    secondButtonText: "Browse Classes",
+    secondButtonLink: "/classes",
+    isActive: true,
+    order: 1,
+    ariaLabel: "Athlete training in the gym",
+    platform: "gymfolio",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+  {
+    _id: "fallback-2",
+    title: "Coaching Built Around You",
+    description:
+      "Work one-to-one with certified trainers who tailor every session to your goals, your pace and your schedule.",
+    imageUrl: "/images/gym-large.svg",
+    buttonText: "Meet the Trainers",
+    buttonLink: "/trainers",
+    secondButtonText: "Get in Touch",
+    secondButtonLink: "/contact-us",
+    isActive: true,
+    order: 2,
+    ariaLabel: "Personal trainer coaching a client",
+    platform: "gymfolio",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+];
+
+// Slides stored by the CMS use backend-relative upload paths; bundled assets in
+// /public must be served by Next, not the API host.
+const resolveSlideImage = (imageUrl: string): string => {
+  if (!imageUrl) return "/images/hero.svg";
+  if (/^https?:\/\//i.test(imageUrl)) return imageUrl;
+  if (imageUrl.startsWith("/uploads")) {
+    return `${process.env.NEXT_PUBLIC_BACKEND_URL ?? ""}${imageUrl}`;
+  }
+  return imageUrl;
+};
+
 const HeroCarousel: React.FC = () => {
   const [active, setActive] = useState(0);
   const [autoPlay, setAutoPlay] = useState(true);
@@ -18,32 +69,17 @@ const HeroCarousel: React.FC = () => {
         setLoading(true);
         setError(null);
         const data = await heroService.getActiveSlides();
-        const sortedSlides = data.sort((a, b) => a.order - b.order);
+        // An empty result is a valid response, not an error — still fall back so
+        // the banner is never blank.
+        const sortedSlides = data.length
+          ? [...data].sort((a, b) => a.order - b.order)
+          : FALLBACK_SLIDES;
         setSlides(sortedSlides);
         setActive(0); // Reset to first slide when data changes
       } catch (err) {
         console.error('Failed to fetch hero slides:', err);
         setError('Failed to load carousel content');
-        // Fallback to static slides if API fails
-        const fallbackSlides: HeroSlide[] = [
-          {
-            _id: 'fallback-1',
-            title: "Discover Premium Fashion",
-            description: "Lorem ipsum dolor sit amet, consectetuer adipiscing elit. Aenean commodo ligula eget dolor. Aenean massa.",
-            imageUrl: "/images/hero.svg",
-            buttonText: "Shop Men",
-            buttonLink: "/mens-wear",
-            secondButtonText: "Shop Women",
-            secondButtonLink: "/women-wear",
-            isActive: true,
-            order: 1,
-            ariaLabel: "Premium fashion background",
-            platform: 'gymfolio',
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          },
-        ];
-        setSlides(fallbackSlides);
+        setSlides(FALLBACK_SLIDES);
       } finally {
         setLoading(false);
       }
@@ -134,7 +170,7 @@ const HeroCarousel: React.FC = () => {
           >
             <div
               className="hero-background-image"
-              style={{ backgroundImage: `url('${slide.imageUrl.startsWith("http") ? slide.imageUrl : `${process.env.NEXT_PUBLIC_BACKEND_URL}${slide.imageUrl}`}')` }}
+              style={{ backgroundImage: `url('${resolveSlideImage(slide.imageUrl)}')` }}
               role="img"
               aria-label={slide.ariaLabel || slide.title}
             >

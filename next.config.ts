@@ -11,6 +11,10 @@ const nextConfig: NextConfig = {
         hostname: 'images.unsplash.com',
       },
       {
+        protocol: 'https',
+        hostname: 'cdn.shopify.com',
+      },
+      {
         protocol: 'http',
         hostname: 'localhost',
       },

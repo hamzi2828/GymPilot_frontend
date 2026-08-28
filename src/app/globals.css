@@ -1164,6 +1164,9 @@ body {
 /* Background Logo */
 .footer-background-logo {
   width: 100%;
+  /* next/image fill needs a positioned, measurable box to anchor to */
+  position: relative;
+  height: 140px;
   display: flex;
   align-items: center;
   justify-content: center;
