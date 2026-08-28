@@ -1,10 +1,17 @@
 "use client";
 
 import React from "react";
+import { useSiteSettings } from "@/components/ThemeProvider";
 import Image from "next/image";
 import Link from "next/link";
 
-const Footer = () => (
+const Footer = () => {
+  // Logo and business name come from admin settings rather than a hardcoded
+  // asset, so rebranding needs no code change.
+  const { logoUrl, footerLogoUrl, siteName } = useSiteSettings();
+  const brandLogo = footerLogoUrl || logoUrl;
+
+  return (
   <footer className="footer-main">
     <div className="footer-container">
       {/* Newsletter Section */}
@@ -49,8 +56,8 @@ const Footer = () => (
                 <Image
                   width={100}
                   height={100}
-                  src="/images/logo.png"
-                  alt="Gymfolio Logo"
+                  src={brandLogo}
+                  alt={`${siteName} logo`}
                   className="footer-logo-image"
                 />
               </Link>
@@ -119,7 +126,7 @@ const Footer = () => (
               <span className="footer-copyright-symbol">©</span>
               <span className="footer-copyright-year">2025</span>
               <span className="footer-copyright-text">
-                Gymfolio Fitness — All rights reserved
+                {siteName} — All rights reserved
               </span>
             </p>
             <nav className="footer-legal-links">
@@ -134,8 +141,8 @@ const Footer = () => (
       {/* Background Logo */}
       <div className="footer-background-logo" aria-hidden="true">
         <Image
-          src="/images/logo.png"
-          alt="Background Logo"
+          src={brandLogo}
+          alt=""
           className="footer-bg-logo-image"
           fill
           sizes="(max-width: 768px) 100vw, 50vw"
@@ -147,6 +154,7 @@ const Footer = () => (
       </div>
     </div>
   </footer>
-);
+  );
+};
 
 export default Footer;

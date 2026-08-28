@@ -7,6 +7,7 @@ import { usePathname, useRouter } from "next/navigation";
 import {  FaArrowRight, FaBars, FaTimes } from "react-icons/fa";
 import "@fortawesome/fontawesome-free/css/all.css";
 import { getCurrentUser, getRole, removeToken } from "@/helper/helper";
+import { useSiteSettings } from "@/components/ThemeProvider";
 
 const Header = () => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -15,6 +16,8 @@ const Header = () => {
   const [mounted, setMounted] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
+  // Logo and business name come from admin settings, not a hardcoded asset.
+  const { logoUrl, logoWidth, logoHeight, siteName } = useSiteSettings();
 
   const toggleMobileMenu = () => setIsMobileMenuOpen((s) => !s);
   const closeMobileMenu = () => setIsMobileMenuOpen(false);
@@ -103,7 +106,17 @@ const Header = () => {
             onClick={closeMobileMenu}
             aria-label="Go to homepage"
           >
-            <Image src="/images/logo.png" alt="Logo" width={100} height={100} style={{ verticalAlign: "middle" }} />
+            <Image
+              src={logoUrl}
+              alt={`${siteName} logo`}
+              width={logoWidth}
+              height={logoHeight}
+              // height:auto keeps the aspect ratio when CSS constrains the width,
+              // which is what next/image warns about otherwise.
+              style={{ verticalAlign: "middle", height: "auto", maxHeight: 44, width: "auto" }}
+              priority
+              unoptimized={/^https?:\/\//i.test(logoUrl)}
+            />
           </Link>
         </div>
 

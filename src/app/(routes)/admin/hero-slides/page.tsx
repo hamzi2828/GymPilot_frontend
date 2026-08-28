@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Image from "next/image";
-import { FiPlus, FiEdit2, FiTrash2 } from "react-icons/fi";
+import { FiPlus, FiEdit2, FiTrash2, FiMenu } from "react-icons/fi";
 import {
   PageHeader,
   PrimaryButton,
@@ -14,7 +14,6 @@ import {
   Toggle,
   Badge,
   Spinner,
-  Table,
 } from "../_shared/ui";
 import { API_BASE, apiGet, apiJson, apiForm, absoluteUrl } from "../_shared/api";
 
@@ -103,6 +102,43 @@ export default function HeroSlidesAdminPage() {
     }
   };
 
+  // --- Drag-and-drop ordering -------------------------------------------
+  // Replaces the manual Order number field: the list order IS the order.
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [overIndex, setOverIndex] = useState<number | null>(null);
+  const [savingOrder, setSavingOrder] = useState(false);
+  const [orderNotice, setOrderNotice] = useState<string | null>(null);
+
+  const persistOrder = async (ordered: HeroSlide[]) => {
+    setSavingOrder(true);
+    setOrderNotice(null);
+    try {
+      await apiJson(`${SLIDES_API}/reorder`, "PUT", {
+        order: ordered.map((s, i) => ({ id: s._id, order: i })),
+      });
+      setOrderNotice("Slide order saved.");
+    } catch (e) {
+      setOrderNotice(e instanceof Error ? e.message : "Could not save the new order.");
+      await load(); // fall back to the server's ordering
+    } finally {
+      setSavingOrder(false);
+    }
+  };
+
+  const handleDrop = (target: number) => {
+    setOverIndex(null);
+    const from = dragIndex;
+    setDragIndex(null);
+    if (from === null || from === target) return;
+
+    const next = [...list];
+    const [moved] = next.splice(from, 1);
+    next.splice(target, 0, moved);
+    // Optimistic: reflect the new order immediately, then persist.
+    setList(next);
+    persistOrder(next);
+  };
+
   const toggleActive = async (s: HeroSlide) => {
     try {
       await apiJson(`${SLIDES_API}/${s._id}/status`, "PATCH");
@@ -127,30 +163,93 @@ export default function HeroSlidesAdminPage() {
       {loading ? (
         <Spinner />
       ) : (
-        <Table
-          columns={["", "Title", "CTA", "Order", "Status", "Actions"]}
-          rows={list.map((s) => [
-            s.image ? (
-              <Image src={absoluteUrl(s.image)} alt={s.title || ""} width={64} height={40} className="rounded object-cover w-16 h-10" unoptimized />
-            ) : (
-              <div className="w-16 h-10 rounded bg-neutral-100" />
-            ),
-            <div key="t">
-              <div className="font-medium text-neutral-900">{s.title}</div>
-              <div className="text-xs text-neutral-500 line-clamp-1">{s.subtitle}</div>
-            </div>,
-            s.ctaText || "—",
-            s.order ?? 0,
-            <button key="st" onClick={() => toggleActive(s)}>
-              <Badge color={s.isActive ? "green" : "neutral"}>{s.isActive ? "Active" : "Inactive"}</Badge>
-            </button>,
-            <div key="a" className="flex gap-2">
-              <SecondaryButton onClick={() => openEdit(s)}><FiEdit2 className="w-3.5 h-3.5" /></SecondaryButton>
-              <DangerButton onClick={() => remove(s._id)}><FiTrash2 className="w-3.5 h-3.5" /></DangerButton>
-            </div>,
-          ])}
-          empty="No hero slides yet."
-        />
+        <div>
+          <div className="mb-4 flex items-center gap-3 text-xs text-neutral-500">
+            <span>Drag a slide to reorder. The order here is the order on the site.</span>
+            {savingOrder && <span className="text-neutral-400">Saving…</span>}
+          </div>
+
+          {orderNotice && (
+            <div className="mb-4 flex items-start justify-between gap-4 rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-2.5 text-sm text-neutral-700">
+              <span>{orderNotice}</span>
+              <button
+                type="button"
+                onClick={() => setOrderNotice(null)}
+                className="shrink-0 text-xs font-semibold uppercase tracking-wide opacity-70 hover:opacity-100"
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
+
+          {list.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-neutral-300 p-10 text-center">
+              <p className="text-sm font-medium text-neutral-900">No hero slides yet</p>
+              <p className="mt-1 text-xs text-neutral-500">Add one to control the homepage banner.</p>
+            </div>
+          ) : (
+            <ul className="space-y-2">
+              {list.map((s, i) => (
+                <li
+                  key={s._id}
+                  draggable
+                  onDragStart={() => setDragIndex(i)}
+                  onDragEnter={() => setOverIndex(i)}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDragEnd={() => { setDragIndex(null); setOverIndex(null); }}
+                  onDrop={() => handleDrop(i)}
+                  className={`flex items-center gap-4 rounded-xl border bg-white p-3 transition-all ${
+                    dragIndex === i
+                      ? "opacity-40"
+                      : overIndex === i
+                      ? "border-[var(--accent)] ring-2 ring-[color-mix(in_srgb,var(--accent)_25%,transparent)]"
+                      : "border-neutral-200"
+                  }`}
+                >
+                  <span
+                    className="cursor-grab select-none text-neutral-300 active:cursor-grabbing"
+                    title="Drag to reorder"
+                    aria-hidden="true"
+                  >
+                    <FiMenu className="h-4 w-4" />
+                  </span>
+
+                  <span className="w-6 shrink-0 text-center text-xs font-semibold text-neutral-400">{i + 1}</span>
+
+                  {s.image ? (
+                    <Image
+                      src={absoluteUrl(s.image)}
+                      alt={s.title || ""}
+                      width={80}
+                      height={48}
+                      className="h-12 w-20 shrink-0 rounded-lg object-cover"
+                      unoptimized
+                    />
+                  ) : (
+                    <div className="h-12 w-20 shrink-0 rounded-lg bg-neutral-100" />
+                  )}
+
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-medium text-neutral-900">{s.title}</div>
+                    <div className="truncate text-xs text-neutral-500">{s.subtitle}</div>
+                    {s.ctaText && (
+                      <div className="mt-0.5 truncate text-[11px] text-neutral-400">CTA: {s.ctaText}</div>
+                    )}
+                  </div>
+
+                  <button type="button" onClick={() => toggleActive(s)} className="shrink-0">
+                    <Badge color={s.isActive ? "green" : "neutral"}>{s.isActive ? "Active" : "Inactive"}</Badge>
+                  </button>
+
+                  <div className="flex shrink-0 gap-2">
+                    <SecondaryButton onClick={() => openEdit(s)}><FiEdit2 className="h-3.5 w-3.5" /></SecondaryButton>
+                    <DangerButton onClick={() => remove(s._id)}><FiTrash2 className="h-3.5 w-3.5" /></DangerButton>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       )}
 
       <Modal open={open} onClose={() => setOpen(false)} title={editing ? "Edit Slide" : "New Slide"} size="lg">
@@ -159,7 +258,6 @@ export default function HeroSlidesAdminPage() {
           <TextField label="Subtitle" value={form.subtitle} onChange={(v) => setForm({ ...form, subtitle: v })} />
           <TextField label="CTA Text" value={form.ctaText} onChange={(v) => setForm({ ...form, ctaText: v })} />
           <TextField label="CTA Link" value={form.ctaLink} onChange={(v) => setForm({ ...form, ctaLink: v })} />
-          <TextField label="Order" type="number" value={form.order} onChange={(v) => setForm({ ...form, order: Number(v) })} />
           <label className="block">
             <span className="text-xs font-medium text-neutral-600">Image</span>
             <input type="file" accept="image/*" onChange={(e) => setImg(e.target.files?.[0] || null)} className="mt-1 w-full text-sm" />

@@ -12,21 +12,23 @@
    CSS CUSTOM VARIABLES
    =================================== */
 :root {
-  /* ---- Brand palette: Molten Orange on Charcoal ----
-     Every brand-coloured surface in the app resolves to these three accents,
-     so the scheme can be retuned from here rather than file by file. */
-  --accent: #ff6b2c;
-  --accent-dark: #c74e1b;
-  --accent-soft: #ffb894;
+  /* ---- Brand palette: Electric Lime (default) ----
+     These are the CSS fallbacks. The live palette is chosen in
+     /admin/settings?tab=theme and applied at runtime by ThemeProvider, which
+     overwrites these same custom properties on :root. Keep these in sync with
+     the DEFAULT_THEME_KEY entry in src/theme/themes.ts. */
+  --accent: #bee304;
+  --accent-dark: #6c8704;
+  --accent-soft: #e8f7a0;
   /* Text/icon colour that sits legibly on top of --accent. */
-  --on-accent: #0e0e10;
+  --on-accent: #0a0a0a;
 
   /* Neutral surfaces */
-  --base: #0e0e10;
-  --surface: #1a1a1e;
-  --surface-tint: #fff4ed; /* light warm panel; keeps dark text readable */
-  --border-subtle: #2c2c32;
-  --text-muted: #a0a0a8;
+  --base: #000000;
+  --surface: #141414;
+  --surface-tint: #feffe5; /* light warm panel; keeps dark text readable */
+  --border-subtle: #262626;
+  --text-muted: #a3a3a3;
 
   --white: #ffffff;
   /* Kept for backwards compatibility — now points at the brand accent. */

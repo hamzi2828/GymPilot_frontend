@@ -1,6 +1,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
+import { useSiteSettings } from "@/components/ThemeProvider";
 import Link from "next/link";
 import {
   FiHome,
@@ -78,6 +79,8 @@ const sections: MenuSection[] = [
 
 export default function AdminSidebar({ isOpen, onClose }: AdminSidebarProps) {
   const pathname = usePathname();
+  // Business name comes from admin settings rather than being hardcoded.
+  const { siteName } = useSiteSettings();
 
   return (
     <>
@@ -103,10 +106,10 @@ export default function AdminSidebar({ isOpen, onClose }: AdminSidebarProps) {
             style={{ background: "var(--accent, #ff6b2c)", color: "var(--on-accent, #0e0e10)" }}
             aria-hidden="true"
           >
-            G
+            {(siteName || "G").trim().charAt(0).toUpperCase()}
           </span>
           <div className="min-w-0 leading-tight">
-            <p className="truncate text-sm font-semibold tracking-tight text-neutral-900">Gymfolio</p>
+            <p className="truncate text-sm font-semibold tracking-tight text-neutral-900">{siteName}</p>
             <p className="truncate text-[11px] text-neutral-400">Admin Panel</p>
           </div>
         </div>
@@ -159,7 +162,7 @@ export default function AdminSidebar({ isOpen, onClose }: AdminSidebarProps) {
         </nav>
 
         <div className="shrink-0 border-t border-neutral-200 px-5 py-4">
-          <p className="text-[10px] text-neutral-400">© {new Date().getFullYear()} Gymfolio</p>
+          <p className="text-[10px] text-neutral-400">© {new Date().getFullYear()} {siteName}</p>
         </div>
       </aside>
     </>

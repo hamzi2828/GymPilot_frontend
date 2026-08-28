@@ -53,6 +53,12 @@ interface Settings {
   youtube?: string;
   linkedin?: string;
   theme?: string;
+  logoUrl?: string;
+  logoWidth?: number;
+  logoHeight?: number;
+  footerLogoUrl?: string;
+  footerLogoWidth?: number;
+  footerLogoHeight?: number;
   stripe?: StripeConfig;
   smtp?: SmtpConfig;
 }
@@ -70,12 +76,22 @@ interface Bank {
 }
 
 const SETTINGS_API = `${API_BASE}/settings`;
+
+/** Uploaded assets are stored as backend-relative /uploads paths (or absolute
+ *  blob URLs); bundled /images assets are served by Next itself. */
+function absoluteAsset(url: string) {
+  if (!url) return "";
+  if (/^https?:\/\//i.test(url)) return url;
+  if (url.startsWith("/uploads")) return `${API_BASE}${url}`;
+  return url;
+}
 const BANKS_API = `${API_BASE}/banks`;
 
-type TabKey = "general" | "stripe" | "smtp" | "banks" | "theme";
+type TabKey = "general" | "logo" | "stripe" | "smtp" | "banks" | "theme";
 
 const TABS: { key: TabKey; label: string; hint: string }[] = [
-  { key: "general", label: "General", hint: "Site name, contact details and social links" },
+  { key: "general", label: "General", hint: "Business name, contact details and social links" },
+  { key: "logo", label: "Logo", hint: "Header and footer branding" },
   { key: "stripe", label: "Stripe", hint: "Payment gateway credentials" },
   { key: "smtp", label: "SMTP", hint: "Outbound email configuration" },
   { key: "banks", label: "Banks", hint: "Bank accounts and payment barcodes" },
@@ -153,6 +169,55 @@ function SettingsAdminPageInner() {
   const [bankDraft, setBankDraft] = useState<typeof emptyBank>(emptyBank);
   const [bankErr, setBankErr] = useState<string | null>(null);
   const [uploadingFor, setUploadingFor] = useState<string | null>(null);
+  const [logoUploading, setLogoUploading] = useState<"logo" | "footerLogo" | null>(null);
+
+  // Logo uploads are multipart, so they bypass the JSON apiJson helper. The
+  // browser must set the boundary itself, hence no Content-Type here.
+  const uploadLogo = async (which: "logo" | "footerLogo", file: File) => {
+    setLogoUploading(which);
+    setNotice(null);
+    try {
+      const form = new FormData();
+      form.append(which, file);
+      const path = which === "logo" ? "logo" : "footer-logo";
+      const res = await fetch(`${SETTINGS_API}/${path}`, {
+        method: "POST",
+        headers: authHeaders(),
+        body: form,
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.message || "Upload failed");
+      await load();
+      setNotice({ tone: "ok", text: "Logo updated. It is live on the site immediately." });
+    } catch (e) {
+      setNotice({ tone: "error", text: e instanceof Error ? e.message : "Logo upload failed" });
+    } finally {
+      setLogoUploading(null);
+    }
+  };
+
+  const removeLogo = async (which: "logo" | "footerLogo") => {
+    try {
+      await apiJson(`${SETTINGS_API}/${which === "logo" ? "logo" : "footer-logo"}`, "DELETE");
+      await load();
+      setNotice({ tone: "ok", text: "Logo removed." });
+    } catch (e) {
+      setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not remove the logo" });
+    }
+  };
+  // A barcode can be chosen in the dialog before the bank exists; it is held
+  // here and uploaded straight after the account is created.
+  const [pendingBarcode, setPendingBarcode] = useState<File | null>(null);
+  const [pendingPreview, setPendingPreview] = useState<string | null>(null);
+  const [savingBank, setSavingBank] = useState(false);
+
+  const choosePendingBarcode = (file: File | null) => {
+    setPendingBarcode(file);
+    setPendingPreview((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return file ? URL.createObjectURL(file) : null;
+    });
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -233,6 +298,7 @@ function SettingsAdminPageInner() {
         : emptyBank
     );
     setBankErr(null);
+    choosePendingBarcode(null);
     setBankModal(true);
   };
 
@@ -241,16 +307,40 @@ function SettingsAdminPageInner() {
       setBankErr("Bank name, account number and account title are required.");
       return;
     }
+    setSavingBank(true);
     try {
+      let bankId = editingBank?._id;
       if (editingBank) {
         await apiJson(`${BANKS_API}/${editingBank._id}`, "PUT", bankDraft);
       } else {
-        await apiJson(BANKS_API, "POST", bankDraft);
+        // The barcode endpoint needs an id, so the account is created first and
+        // the chosen image is attached immediately afterwards.
+        const created = await apiJson<{ data?: Bank }>(BANKS_API, "POST", bankDraft);
+        bankId = created?.data?._id;
       }
+
+      if (pendingBarcode && bankId) {
+        try {
+          await postBarcode(bankId, pendingBarcode);
+        } catch (err) {
+          // The account saved fine; only the image failed, so say so rather
+          // than implying nothing was saved.
+          setNotice({
+            tone: "warn",
+            text: `Bank saved, but the barcode upload failed: ${
+              err instanceof Error ? err.message : "unknown error"
+            }. You can retry it from the list.`,
+          });
+        }
+      }
+
       setBankModal(false);
+      choosePendingBarcode(null);
       await loadBanks();
     } catch (e) {
       setBankErr(e instanceof Error ? e.message : "Could not save the bank.");
+    } finally {
+      setSavingBank(false);
     }
   };
 
@@ -267,19 +357,24 @@ function SettingsAdminPageInner() {
   // Uses fetch directly: the shared apiJson helper sends JSON, and this is
   // multipart. authHeaders() supplies the bearer token without a Content-Type,
   // which the browser must set itself so the multipart boundary is correct.
+  const postBarcode = async (bankId: string, file: File) => {
+    const form = new FormData();
+    form.append("qrCode", file);
+    const res = await fetch(`${BANKS_API}/${bankId}/qr-code`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: form,
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(json?.message || "Upload failed");
+    return json;
+  };
+
   const uploadBarcode = async (bankId: string, file: File) => {
     setUploadingFor(bankId);
     setNotice(null);
     try {
-      const form = new FormData();
-      form.append("qrCode", file);
-      const res = await fetch(`${BANKS_API}/${bankId}/qr-code`, {
-        method: "POST",
-        headers: authHeaders(),
-        body: form,
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.message || "Upload failed");
+      await postBarcode(bankId, file);
       await loadBanks();
       setNotice({ tone: "ok", text: "Barcode uploaded." });
     } catch (e) {
@@ -347,9 +442,9 @@ function SettingsAdminPageInner() {
       {/* ---------------- General ---------------- */}
       {tab === "general" && (
         <Card className="p-6 max-w-3xl">
-          <SectionHeading title="Site Information" hint="Shown across the public site and in emails." />
+          <SectionHeading title="Business Information" hint="Shown across the public site, the admin panel and in emails." />
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <TextField label="Site Name" value={settings.siteName} onChange={(v) => setSettings({ ...settings, siteName: v })} />
+            <TextField label="Business Name" value={settings.siteName} onChange={(v) => setSettings({ ...settings, siteName: v })} />
             <TextField label="Contact Email" type="email" value={settings.contactEmail} onChange={(v) => setSettings({ ...settings, contactEmail: v })} />
             <TextField label="Contact Phone" value={settings.contactPhone} onChange={(v) => setSettings({ ...settings, contactPhone: v })} />
             <TextField label="Address" value={settings.address} onChange={(v) => setSettings({ ...settings, address: v })} />
@@ -371,6 +466,117 @@ function SettingsAdminPageInner() {
 
           <div className="flex justify-end mt-6">
             <PrimaryButton onClick={save} disabled={saving}>{saving ? "Saving..." : "Save Changes"}</PrimaryButton>
+          </div>
+        </Card>
+      )}
+
+      {/* ---------------- Logo ---------------- */}
+      {tab === "logo" && (
+        <Card className="p-6 max-w-3xl">
+          <SectionHeading
+            title="Branding"
+            hint="Uploaded logos appear in the site header and footer straight away — no redeploy needed."
+          />
+
+          {([
+            {
+              key: "logo" as const,
+              title: "Header Logo",
+              hint: "Shown in the top navigation on every page.",
+              url: settings.logoUrl,
+              w: settings.logoWidth,
+              h: settings.logoHeight,
+              wKey: "logoWidth" as const,
+              hKey: "logoHeight" as const,
+            },
+            {
+              key: "footerLogo" as const,
+              title: "Footer Logo",
+              hint: "Optional. Falls back to the header logo when empty.",
+              url: settings.footerLogoUrl,
+              w: settings.footerLogoWidth,
+              h: settings.footerLogoHeight,
+              wKey: "footerLogoWidth" as const,
+              hKey: "footerLogoHeight" as const,
+            },
+          ]).map((slot, idx) => (
+            <div key={slot.key} className={idx > 0 ? "mt-8 border-t border-neutral-200 pt-8" : ""}>
+              <h3 className="text-sm font-semibold text-neutral-900">{slot.title}</h3>
+              <p className="mb-3 mt-0.5 text-xs text-neutral-500">{slot.hint}</p>
+
+              <div className="flex flex-wrap items-center gap-4 rounded-xl border border-neutral-200 p-4">
+                {/* Checkerboard reveals transparent PNG edges. */}
+                <div
+                  className="flex h-20 w-40 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-neutral-200"
+                  style={{
+                    backgroundImage:
+                      "linear-gradient(45deg,#f3f4f6 25%,transparent 25%),linear-gradient(-45deg,#f3f4f6 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#f3f4f6 75%),linear-gradient(-45deg,transparent 75%,#f3f4f6 75%)",
+                    backgroundSize: "12px 12px",
+                    backgroundPosition: "0 0,0 6px,6px -6px,-6px 0px",
+                  }}
+                >
+                  {slot.url ? (
+                    <Image
+                      src={absoluteAsset(slot.url)}
+                      alt={`${slot.title} preview`}
+                      width={160}
+                      height={80}
+                      className="max-h-full max-w-full object-contain"
+                      unoptimized
+                    />
+                  ) : (
+                    <span className="text-[11px] text-neutral-400">No logo set</span>
+                  )}
+                </div>
+
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap gap-2">
+                    <label className="inline-flex h-9 cursor-pointer items-center rounded-lg border border-neutral-200 bg-white px-3 text-sm font-medium text-neutral-700 transition-colors hover:border-neutral-300 hover:bg-neutral-50">
+                      {logoUploading === slot.key ? "Uploading…" : slot.url ? "Replace" : "Upload"}
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                        className="hidden"
+                        disabled={logoUploading === slot.key}
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          if (f) {
+                            if (f.size > 5 * 1024 * 1024) {
+                              setNotice({ tone: "error", text: "Logo must be 5MB or smaller." });
+                            } else {
+                              uploadLogo(slot.key, f);
+                            }
+                          }
+                          e.target.value = "";
+                        }}
+                      />
+                    </label>
+                    {slot.url && <SecondaryButton onClick={() => removeLogo(slot.key)}>Remove</SecondaryButton>}
+                  </div>
+
+                  <div className="mt-3 grid grid-cols-2 gap-3">
+                    <TextField
+                      label="Width (px)"
+                      type="number"
+                      value={slot.w}
+                      onChange={(v) => setSettings({ ...settings, [slot.wKey]: Number(v) })}
+                    />
+                    <TextField
+                      label="Height (px)"
+                      type="number"
+                      value={slot.h}
+                      onChange={(v) => setSettings({ ...settings, [slot.hKey]: Number(v) })}
+                    />
+                  </div>
+
+                  <p className="mt-2 text-xs text-neutral-500">PNG, JPG, WebP or SVG. Up to 5MB.</p>
+                </div>
+              </div>
+            </div>
+          ))}
+
+          <div className="mt-6 flex justify-end">
+            <PrimaryButton onClick={save} disabled={saving}>{saving ? "Saving..." : "Save Logo Sizes"}</PrimaryButton>
           </div>
         </Card>
       )}
@@ -633,15 +839,70 @@ function SettingsAdminPageInner() {
           </div>
           <TextArea label="Notes" value={bankDraft.notes} onChange={(v) => setBankDraft({ ...bankDraft, notes: v })} />
 
-          {bankErr && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{bankErr}</p>}
+          {/* Payment barcode */}
+          <div>
+            <span className="text-xs font-semibold text-neutral-700">Payment Barcode</span>
+            <div className="mt-1 flex items-center gap-3 rounded-lg border border-neutral-200 p-3">
+              <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-neutral-200 bg-neutral-50">
+                {pendingPreview ? (
+                  // Object URL of a local file — next/image cannot optimise it.
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={pendingPreview} alt="Selected barcode preview" className="h-full w-full object-contain" />
+                ) : editingBank?.qrCodeUrl ? (
+                  <Image
+                    src={editingBank.qrCodeUrl}
+                    alt="Current barcode"
+                    width={80}
+                    height={80}
+                    className="h-full w-full object-contain"
+                    unoptimized
+                  />
+                ) : (
+                  <span className="px-2 text-center text-[10px] text-neutral-400">No barcode</span>
+                )}
+              </div>
 
-          <p className="text-xs text-neutral-500">
-            Save the account first, then upload its barcode from the list.
-          </p>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap gap-2">
+                  <label className="inline-flex h-9 cursor-pointer items-center rounded-lg border border-neutral-200 bg-white px-3 text-sm font-medium text-neutral-700 transition-colors hover:border-neutral-300 hover:bg-neutral-50">
+                    {pendingBarcode || editingBank?.qrCodeUrl ? "Choose Different" : "Choose Image"}
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml"
+                      className="hidden"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0] || null;
+                        if (f && f.size > 5 * 1024 * 1024) {
+                          setBankErr("Barcode image must be 5MB or smaller.");
+                          e.target.value = "";
+                          return;
+                        }
+                        setBankErr(null);
+                        choosePendingBarcode(f);
+                        e.target.value = "";
+                      }}
+                    />
+                  </label>
+                  {pendingBarcode && (
+                    <SecondaryButton onClick={() => choosePendingBarcode(null)}>Clear</SecondaryButton>
+                  )}
+                </div>
+                <p className="mt-2 truncate text-xs text-neutral-500">
+                  {pendingBarcode
+                    ? `${pendingBarcode.name} — uploads when you save`
+                    : "PNG, JPG, GIF, WebP or SVG. Up to 5MB."}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {bankErr && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{bankErr}</p>}
 
           <div className="flex justify-end gap-2 pt-2">
             <SecondaryButton onClick={() => setBankModal(false)}>Cancel</SecondaryButton>
-            <PrimaryButton onClick={saveBank}>{editingBank ? "Save Changes" : "Add Bank"}</PrimaryButton>
+            <PrimaryButton onClick={saveBank} disabled={savingBank}>
+              {savingBank ? "Saving..." : editingBank ? "Save Changes" : "Add Bank"}
+            </PrimaryButton>
           </div>
         </div>
       </Modal>

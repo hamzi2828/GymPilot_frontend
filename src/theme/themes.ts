@@ -168,7 +168,9 @@ export const THEMES: Theme[] = [
   },
 ];
 
-export const DEFAULT_THEME_KEY = 'midnight-ember';
+// The palette the site originally shipped with — kept as the default so a
+// fresh install and the globals.css fallback agree.
+export const DEFAULT_THEME_KEY = 'electric-lime';
 
 export function getTheme(key?: string | null): Theme {
   return (
