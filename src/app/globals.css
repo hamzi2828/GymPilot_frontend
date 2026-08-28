@@ -107,17 +107,17 @@ body {
 }
 
 .nav-link {
-  color: var(--gray-300);
+  color: var(--white);
   font-family: var(--b2-m-font-family);
   font-size: var(--b2-m-font-size);
   line-height: var(--b2-m-line-height);
-  font-weight: var(--b2-m-font-weight);
+  font-weight: 600;
   text-decoration: none;
   transition: color 0.3s ease;
 }
 
 .nav-link:hover {
-  color: var(--white);
+  color: var(--accent);
 }
 
 /* Right Section Actions */
@@ -946,7 +946,7 @@ body {
 .footer-main-heading {
   color: var(--white);
   font-family: "Montserrat", sans-serif;
-  font-size: 72px;
+  font-size: clamp(28px, calc((100vw - 620px) / 16.5), 48px);
   font-weight: 700;
   letter-spacing: -0.02em;
   line-height: 1.1;
@@ -1198,7 +1198,7 @@ body {
   }
 
   .footer-main-heading {
-    font-size: 56px;
+    font-size: 40px;
   }
 
   .footer-newsletter-section {
@@ -1219,7 +1219,7 @@ body {
   }
 
   .footer-main-heading {
-    font-size: 42px;
+    font-size: 34px;
   }
 
   .footer-email-form {
@@ -1256,7 +1256,7 @@ body {
 
 @media (max-width: 480px) {
   .footer-main-heading {
-    font-size: 32px;
+    font-size: 26px;
   }
 
   .footer-links-content {
@@ -1264,6 +1264,20 @@ body {
     gap: 20px;
   }
 }
+
+/* The newsletter headline stays on a single line on desktop; the fluid
+   font-size above guarantees it fits beside the form before this applies. */
+@media (min-width: 1200px) {
+  .footer-main-heading {
+    white-space: nowrap;
+  }
+
+  .footer-newsletter-text {
+    max-width: none;
+    flex: 1 1 auto;
+  }
+}
+
 
 .section2-font-montserrat {
   font-family: "Montserrat", sans-serif;
