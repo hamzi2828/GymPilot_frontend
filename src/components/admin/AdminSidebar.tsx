@@ -121,7 +121,7 @@ export default function AdminSidebar({ isOpen, onClose }: AdminSidebarProps) {
                       onClick={onClose}
                       className={`group flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors ${
                         active
-                          ? "bg-[#bee304] text-black font-semibold shadow-[0_2px_8px_-2px_rgba(190,227,4,0.5)]"
+                          ? "bg-[#ff6b2c] text-black font-semibold shadow-[0_2px_8px_-2px_rgba(190,227,4,0.5)]"
                           : "text-neutral-500 hover:text-neutral-900 hover:bg-neutral-50"
                       }`}
                     >

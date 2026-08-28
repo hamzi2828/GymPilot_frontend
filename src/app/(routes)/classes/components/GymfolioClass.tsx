@@ -22,7 +22,7 @@ const CheckIcon = () => (
       fillRule="evenodd"
       clipRule="evenodd"
       d="M17.0965 7.39004L9.9365 14.3L8.0365 12.27C7.6865 11.94 7.1365 11.92 6.7365 12.2C6.3465 12.49 6.2365 13 6.4765 13.41L8.7265 17.07C8.9465 17.41 9.3265 17.62 9.7565 17.62C10.1665 17.62 10.5565 17.41 10.7765 17.07C11.1365 16.6 18.0065 8.41004 18.0065 8.41004C18.9065 7.49004 17.8165 6.68004 17.0965 7.38004V7.39004Z"
-      fill="#bee304"
+      fill="#ff6b2c"
     />
   </svg>
 );
@@ -101,7 +101,7 @@ const GymfolioClass: React.FC<GymfolioClassProps> = ({ gymClass }) => {
       <section className="GymfolioClasses py-16 md:py-20 px-4 md:px-8 lg:px-20 relative overflow-hidden">
         <div className="text-center py-20">
           <div className="inline-flex items-center gap-2 mb-4">
-            <span className="inline-block h-2 w-2 rounded-full bg-[#6c8704]"></span>
+            <span className="inline-block h-2 w-2 rounded-full bg-[#c74e1b]"></span>
             <span className="text-sm font-semibold text-[#85868b]">Our Classes</span>
           </div>
           <h2 className="text-2xl font-bold text-black/90 mb-4">Select a Class</h2>
@@ -152,7 +152,7 @@ const GymfolioClass: React.FC<GymfolioClassProps> = ({ gymClass }) => {
         <div className="GymfolioClasses-context flex flex-col gap-6">
           <header className="GymfolioClasses-header flex flex-col gap-4">
             <div className="GymfolioClasses-badge inline-flex items-center gap-2">
-              <span className="inline-block h-2 w-2 rounded-full bg-[#6c8704]" aria-hidden="true" />
+              <span className="inline-block h-2 w-2 rounded-full bg-[#c74e1b]" aria-hidden="true" />
               <span className="text-sm font-semibold text-[#85868b]">Our Classes</span>
             </div>
             <h2
@@ -182,7 +182,7 @@ const GymfolioClass: React.FC<GymfolioClassProps> = ({ gymClass }) => {
             <div>
               <button
                 onClick={handleVideoClick}
-                className="GymfolioClasses-cta inline-flex items-center gap-2 rounded-lg bg-[#bee304] px-6 py-3 font-semibold text-black shadow-[4px_4px_12px_rgba(0,132,255,0.25)] transition-transform hover:scale-[1.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black"
+                className="GymfolioClasses-cta inline-flex items-center gap-2 rounded-lg bg-[#ff6b2c] px-6 py-3 font-semibold text-black shadow-[4px_4px_12px_rgba(0,132,255,0.25)] transition-transform hover:scale-[1.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black"
                 aria-label="Watch video class"
               >
                 Watch Video Class

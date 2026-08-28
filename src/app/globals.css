@@ -12,8 +12,23 @@
    CSS CUSTOM VARIABLES
    =================================== */
 :root {
+  /* ---- Brand palette: Molten Orange on Charcoal ----
+     Every brand-coloured surface in the app resolves to these three accents,
+     so the scheme can be retuned from here rather than file by file. */
+  --accent: #ff6b2c;
+  --accent-dark: #c74e1b;
+  --accent-soft: #ffb894;
+
+  /* Neutral surfaces */
+  --base: #0e0e10;
+  --surface: #1a1a1e;
+  --surface-tint: #fff4ed; /* light warm panel; keeps dark text readable */
+  --border-subtle: #2c2c32;
+  --text-muted: #a0a0a8;
+
   --white: #ffffff;
-  --green-500-selected: #bee304;
+  /* Kept for backwards compatibility — now points at the brand accent. */
+  --green-500-selected: var(--accent);
   --gray-300: #aeafb2;
   --gray-900: #3b3b3e;
   --gray-500: #6a6b70;
@@ -275,22 +290,27 @@ body {
   transform: scale(1.05);
 }
 
-/* Hero Overlay */
-/* .hero-overlay {
-          position: absolute;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          background: linear-gradient(
-            135deg,
-            rgba(0, 0, 0, 0.8) 0%,
-            rgba(0, 0, 0, 0.6) 30%,
-            rgba(0, 0, 0, 0.4) 60%,
-            rgba(0, 0, 0, 0.7) 100%
-          );
-          backdrop-filter: blur(2px);
-        } */
+/* Hero Overlay
+   Left-weighted scrim: keeps the headline legible over bright photography
+   without flattening the whole image the way a uniform wash would. */
+.hero-overlay {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(
+      90deg,
+      rgba(10, 10, 12, 0.92) 0%,
+      rgba(10, 10, 12, 0.75) 32%,
+      rgba(10, 10, 12, 0.35) 62%,
+      rgba(10, 10, 12, 0.15) 100%
+    ),
+    linear-gradient(
+      to top,
+      rgba(10, 10, 12, 0.55) 0%,
+      rgba(10, 10, 12, 0) 45%
+    );
+}
+
 
 /* Hero Content Container */
 .hero-content {
@@ -878,7 +898,7 @@ body {
 /* Footer Main Container */
 /* Footer Main Container */
 .footer-main {
-  background: var(--black);
+  background: var(--base);
   padding: 48px 60px;
   position: relative;
   overflow: hidden;
@@ -1069,7 +1089,7 @@ body {
 }
 
 .footer-nav-link:hover {
-  color: var(--white);
+  color: var(--accent);
 }
 
 .footer-nav-link.active {
@@ -1093,7 +1113,7 @@ body {
 }
 
 .footer-social-link:hover {
-  color: var(--white);
+  color: var(--accent);
 }
 
 .footer-social-link i {
@@ -1157,7 +1177,7 @@ body {
 }
 
 .footer-legal-link:hover {
-  color: var(--white);
+  color: var(--accent);
 }
 
 /* Background Logo */
@@ -1428,7 +1448,7 @@ body {
 }
 
 .section4-brand-container {
-  background-color: #bee304;
+  background-color: var(--accent);
 }
 
 .section4-brand-tag {
@@ -1510,7 +1530,7 @@ body {
 }
 
 .section3-badge-icon {
-  background: #bee304;
+  background: var(--accent);
   border-radius: 50px;
   width: 8px;
   height: 8px;
@@ -1589,7 +1609,7 @@ body {
 }
 
 .section3-plus-icon:hover {
-  background: #bee304;
+  background: var(--accent);
   color: white;
 }
 
@@ -1658,7 +1678,7 @@ body {
 }
 
 .section5-card-context {
-  background: #bee304;
+  background: var(--accent);
 }
 
 .section5-class-name {
@@ -1685,7 +1705,7 @@ body {
 
 .section5-nav-btn:hover {
   background: rgba(190, 227, 4, 0.2);
-  border-color: #bee304;
+  border-color: var(--accent);
 }
 
 .section5-carousel-container {
@@ -1731,7 +1751,7 @@ body {
 }
 
 .section6-button {
-  background: #bee304;
+  background: var(--accent);
   box-shadow: 4px 4px 12px 0px rgba(0, 132, 255, 0.25);
   transition: all 0.3s ease;
 }
@@ -1818,7 +1838,7 @@ body {
 }
 
 .section7-icon {
-  background: #bee304;
+  background: var(--accent);
   border-radius: 50px;
   flex-shrink: 0;
   width: 8px;
@@ -1967,7 +1987,7 @@ body {
   height: 24px;
   position: relative;
   overflow: visible;
-  color: #bee304;
+  color: var(--accent);
   font-size: 20px;
 }
 
@@ -2122,7 +2142,7 @@ body {
 }
 
 .tab-men-frame {
-  border-bottom: 4px solid #bee304;
+  border-bottom: 4px solid var(--accent);
   display: flex;
   gap: 8px;
   align-items: center;
@@ -2284,7 +2304,7 @@ body {
 
 .add-to-cart-btn {
   font-family: "Manrope", sans-serif;
-  background: #bee304;
+  background: var(--accent);
   box-shadow: 4px 4px 12px 0px rgba(0, 132, 255, 0.25);
   line-height: 20px;
 }
@@ -2513,7 +2533,7 @@ body {
 }
 
 .add-to-cart__button {
-  background: #bee304;
+  background: var(--accent);
   border-radius: 8px;
   padding: 12px 24px;
   display: flex;
@@ -2921,7 +2941,7 @@ body {
 }
 
 .gym-cart-progress-indicator {
-  background: #bee304;
+  background: var(--accent);
   border-radius: 9999px;
   height: 100%;
   transition: width 0.3s ease;
@@ -2955,7 +2975,7 @@ body {
 }
 
 .gym-cart-checkout-btn {
-  background: #bee304;
+  background: var(--accent);
   border-radius: 8px;
   padding: 12px 24px;
   width: 100%;
@@ -3005,7 +3025,7 @@ body {
   font-weight: 600;
   font-size: 14px;
   line-height: 20px;
-  color: #bee304;
+  color: var(--accent);
 }
 
 .gym-cart-payment-icons {
@@ -3170,7 +3190,7 @@ body {
 }
 
 .checkout-green-bg {
-  background: #bee304 !important;
+  background: var(--accent) !important;
 }
 
 .checkout-green-shadow {
@@ -3190,8 +3210,8 @@ body {
 }
 
 .checkout-radio:checked {
-  background: #bee304;
-  border-color: #bee304;
+  background: var(--accent);
+  border-color: var(--accent);
 }
 
 .checkout-radio:checked::after {
@@ -3219,8 +3239,8 @@ body {
 }
 
 .checkout-checkbox:checked {
-  background: #bee304;
-  border-color: #bee304;
+  background: var(--accent);
+  border-color: var(--accent);
 }
 
 .checkout-checkbox:checked::after {
@@ -3303,7 +3323,7 @@ body {
 }
 
 .privacy-faq-submit-btn {
-  background: #bee304;
+  background: var(--accent);
   transition: background-color 0.3s ease;
   color: #000000 !important;
 }
@@ -3504,7 +3524,7 @@ body {
 }
 
 .about-us-section1-highlight {
-  background: linear-gradient(135deg, #bee304 0%, #bee304 100%);
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent) 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -3516,7 +3536,7 @@ body {
 }
 
 .about-us-carousel-badge-icon {
-  background-color: #bee304;
+  background-color: var(--accent);
   width: 8px;
   height: 8px;
   border-radius: 50%;
@@ -3702,7 +3722,7 @@ body {
 .about-us-context-value-icon {
   width: 60px;
   height: 60px;
-  background: linear-gradient(135deg, #bee304, #bee304);
+  background: linear-gradient(135deg, var(--accent), var(--accent));
   border-radius: 20px;
   display: flex;
   align-items: center;
@@ -3778,7 +3798,7 @@ body {
 
 .about-us-context-value-card:hover .about-us-context-value-number {
   opacity: 0.6;
-  color: #bee304;
+  color: var(--accent);
   transform: scale(1.1);
 }
 
@@ -4054,16 +4074,16 @@ body {
   background-color: #050505;
 }
 .gym-blog-custom-text-green {
-  color: #bee304;
+  color: var(--accent);
 }
 .gym-blog-custom-border-green {
-  border-color: #bee304;
+  border-color: var(--accent);
 }
 .gym-blog-custom-bg-green {
-  background-color: #bee304;
+  background-color: var(--accent);
 }
 .gym-blog-custom-gradient-green {
-  background: linear-gradient(135deg, #bee304 0%, #a8d004 100%);
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-dark) 100%);
 }
 
 .gym-blog-hero-overlay {
@@ -4104,16 +4124,16 @@ body {
   background-color: #050505;
 }
 .gym-blog-detail-custom-text-green {
-  color: #bee304;
+  color: var(--accent);
 }
 .gym-blog-detail-custom-border-green {
-  border-color: #bee304;
+  border-color: var(--accent);
 }
 .gym-blog-detail-custom-bg-green {
-  background-color: #bee304;
+  background-color: var(--accent);
 }
 .gym-blog-detail-custom-gradient-green {
-  background: linear-gradient(135deg, #bee304 0%, #a8d004 100%);
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-dark) 100%);
 }
 
 .gym-blog-detail-hero-overlay {
@@ -4145,7 +4165,7 @@ body {
 }
 
 .gym-blog-detail-progress-bar {
-  background: linear-gradient(90deg, #bee304 0%, #a8d004 100%);
+  background: linear-gradient(90deg, var(--accent) 0%, var(--accent-dark) 100%);
 }
 
 .gym-blog-detail-exercise-card:hover {
@@ -4154,7 +4174,7 @@ body {
 }
 
 .gym-blog-detail-content-section h2 {
-  color: #bee304;
+  color: var(--accent);
   font-family: "Montserrat", sans-serif;
   font-weight: 700;
   margin-top: 2rem;
@@ -4188,7 +4208,7 @@ body {
 
 .gym-blog-detail-content-section li::before {
   content: "→";
-  color: #bee304;
+  color: var(--accent);
   font-weight: bold;
   position: absolute;
   left: -1.5rem;
@@ -4384,7 +4404,7 @@ html {
 .gymfolio3-badge-dot {
   width: 8px;
   height: 8px;
-  background: #6c8704;
+  background: var(--accent-dark);
   border-radius: 50%;
 }
 
@@ -4446,11 +4466,11 @@ html {
 
 /* Custom colors and components */
 .gymfolio3-green-accent {
-  background-color: #bee304;
+  background-color: var(--accent);
 }
 
 .gymfolio3-green-dot {
-  background-color: #6c8704;
+  background-color: var(--accent-dark);
 }
 
 .gymfolio3-shadow-custom {
@@ -4494,13 +4514,13 @@ html {
 
 /* Button styling */
 .gymfolio3-start-btn {
-  background-color: #bee304;
+  background-color: var(--accent);
   box-shadow: 4px 4px 12px 0px rgba(0, 132, 255, 0.25);
 }
 
 /* Check icon styling */
 .gymfolio3-check-icon {
-  color: #bee304;
+  color: var(--accent);
 }
 
 /* Responsive text adjustments */
@@ -4594,7 +4614,7 @@ html {
   bottom: 0;
   left: 0;
   right: 0;
-  background: #bee304;
+  background: var(--accent);
   padding: 12px 16px;
   display: flex;
   align-items: center;
@@ -4655,23 +4675,14 @@ html {
   padding: 2rem 0;
 }
 
+/* Cards sit on a single baseline — the previous nth-child stagger offset every
+   even card by 30px, which read as broken alignment rather than rhythm. */
 .gymfolio4-staggered-layout .gymfolio4-carousel-card:nth-child(even) {
-  transform: translateY(30px);
+  transform: translateY(0);
 }
 
 .gymfolio4-staggered-layout .gymfolio4-carousel-card:nth-child(even):hover {
-  transform: translateY(22px);
-}
-
-/* Mobile responsive styles */
-@media (max-width: 768px) {
-  .gymfolio4-staggered-layout .gymfolio4-carousel-card:nth-child(even) {
-    transform: translateY(0);
-  }
-
-  .gymfolio4-staggered-layout .gymfolio4-carousel-card:nth-child(even):hover {
-    transform: translateY(-8px);
-  }
+  transform: translateY(-8px);
 }
 
 /* Font Classes */
@@ -4689,11 +4700,11 @@ html {
 }
 
 .gymfolio6-green-dot {
-  background-color: #6c8704;
+  background-color: var(--accent-dark);
 }
 
 .gymfolio6-green-text {
-  color: #6c8704;
+  color: var(--accent-dark);
 }
 
 .gymfolio6-gray-text {
@@ -4868,10 +4879,10 @@ html {
 }
 
 .gymfolio7-green-dot {
-  background-color: #6c8704;
+  background-color: var(--accent-dark);
 }
 .gymfolio7-green-text {
-  color: #6c8704;
+  color: var(--accent-dark);
 }
 .gymfolio7-gray-text {
   color: #85868b;
@@ -4890,7 +4901,7 @@ html {
   transform: translateY(-8px);
   box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1),
     0 10px 10px -5px rgba(0, 0, 0, 0.04);
-  border-color: #6c8704;
+  border-color: var(--accent-dark);
 }
 
 .gymfolio7-trainer-card img {
@@ -4908,7 +4919,7 @@ html {
 
 .gymfolio7-social-icon:hover {
   transform: translateY(-2px);
-  color: #6c8704;
+  color: var(--accent-dark);
 }
 
 .gymfolio7-trainer-card-overlay {
@@ -4938,15 +4949,15 @@ html {
 }
 
 .gymfolio8-contact-bg {
-  background-color: #feffe5;
+  background-color: var(--surface-tint);
 }
 
 .gymfolio8-green-dot {
-  background-color: #6c8704;
+  background-color: var(--accent-dark);
 }
 
 .gymfolio8-green-text {
-  color: #6c8704;
+  color: var(--accent-dark);
 }
 
 .gymfolio8-gray-text {
@@ -4976,12 +4987,12 @@ html {
 
 .gymfolio8-form-input:focus {
   outline: none;
-  border-color: #6c8704;
+  border-color: var(--accent-dark);
   box-shadow: 0 0 0 3px rgba(108, 135, 4, 0.1);
 }
 
 .gymfolio8-contact-button {
-  background: #bee304;
+  background: var(--accent);
   box-shadow: 4px 4px 12px 0px rgba(0, 132, 255, 0.25);
   transition: all 0.3s ease;
 }
@@ -4999,7 +5010,7 @@ html {
 
 .gymfolio8-contact-button:disabled:hover {
   transform: none;
-  background: #bee304;
+  background: var(--accent);
 }
 
 .gymfolio8-arrow-icon {
@@ -5016,8 +5027,6 @@ html {
   background-position: center;
   background-repeat: no-repeat;
 }
-
-
 
 @media (max-width: 1024px) {
   .gymfolio8-bg-image {

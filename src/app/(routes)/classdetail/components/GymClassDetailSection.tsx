@@ -60,7 +60,7 @@ const GymClassDetailSection: React.FC<GymClassDetailSectionProps> = ({ gymClass 
           background: #3b3b3e;
         }
         .gym-green {
-          color: #bee304;
+          color: #ff6b2c;
         }
         .gym-gray {
           color: #4d4d51;

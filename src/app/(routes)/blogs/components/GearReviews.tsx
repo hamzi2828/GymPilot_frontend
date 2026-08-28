@@ -78,7 +78,7 @@ const GearReviews: React.FC = () => {
                   </div>
                 </div>
                 <div className="absolute top-4 left-4">
-                  <span className="bg-green-500 text-white px-3 py-1 rounded-full text-xs font-bold uppercase">
+                  <span className="bg-brand-500 text-white px-3 py-1 rounded-full text-xs font-bold uppercase">
                     Tech
                   </span>
                 </div>
@@ -114,7 +114,7 @@ const GearReviews: React.FC = () => {
                   </div>
                 </div>
                 <div className="absolute top-4 left-4">
-                  <span className="bg-green-500 text-white px-3 py-1 rounded-full text-xs font-bold uppercase">
+                  <span className="bg-brand-500 text-white px-3 py-1 rounded-full text-xs font-bold uppercase">
                     Tech
                   </span>
                 </div>

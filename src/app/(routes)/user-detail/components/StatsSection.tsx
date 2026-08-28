@@ -43,7 +43,7 @@ export const StatsSection: React.FC<StatsSectionProps> = ({
         </div>
 
         <div className="text-center">
-          <div className="w-16 h-16 mx-auto mb-3 bg-yellow-100 rounded-full flex items-center justify-center">
+          <div className="w-16 h-16 mx-auto mb-3 bg-brand-100 rounded-full flex items-center justify-center">
             <i className="fas fa-star text-yellow-500 text-2xl" />
           </div>
           <h3 className="text-lg font-bold text-black">{loyaltyPoints} Points</h3>

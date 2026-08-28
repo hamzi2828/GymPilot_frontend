@@ -34,7 +34,7 @@ const AboutAuthor: React.FC<AboutAuthorProps> = ({ author }) => {
               src={author.avatarUrl || author.avatar || '/images/gym-1.svg'}
               alt={author.name}
               fill
-              className="object-cover rounded-full border-3 border-green-500"
+              className="object-cover rounded-full border-3 border-brand-500"
             />
           </div>
         </div>

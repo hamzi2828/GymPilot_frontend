@@ -68,7 +68,7 @@ export const LeftSide: React.FC<LeftSideProps> = ({
       <div
         className="h-full w-full"
         style={{
-          backgroundImage: `url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="10" cy="10" r="1" fill="%23bee304"/><circle cx="90" cy="90" r="1" fill="%23bee304"/><circle cx="10" cy="90" r="1" fill="%23bee304"/><circle cx="90" cy="10" r="1" fill="%23bee304"/></svg>')`,
+          backgroundImage: `url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="10" cy="10" r="1" fill="%23ff6b2c"/><circle cx="90" cy="90" r="1" fill="%23ff6b2c"/><circle cx="10" cy="90" r="1" fill="%23ff6b2c"/><circle cx="90" cy="10" r="1" fill="%23ff6b2c"/></svg>')`,
           backgroundSize: "50px 50px",
         }}
       ></div>

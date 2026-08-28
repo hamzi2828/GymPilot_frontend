@@ -69,7 +69,7 @@ const Newsletter: React.FC<NewsletterProps> = ({
     return (
       <div className={`gym-blog-custom-bg-darker rounded-2xl p-8 lg:p-12 text-center ${className}`}>
         <div className="mb-6">
-          <div className="w-16 h-16 bg-green-500 rounded-full flex items-center justify-center mx-auto mb-4">
+          <div className="w-16 h-16 bg-brand-500 rounded-full flex items-center justify-center mx-auto mb-4">
             <i className="fas fa-check text-white text-2xl"></i>
           </div>
           <h3 className="font-montserrat font-bold text-2xl lg:text-3xl text-white mb-4">
@@ -105,7 +105,7 @@ const Newsletter: React.FC<NewsletterProps> = ({
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="Enter your email address"
-            className="flex-1 px-4 py-3 gym-blog-custom-bg-dark text-white rounded-lg border border-gray-600 focus:border-green-500 focus:outline-none transition-colors"
+            className="flex-1 px-4 py-3 gym-blog-custom-bg-dark text-white rounded-lg border border-gray-600 focus:border-brand-500 focus:outline-none transition-colors"
             disabled={isLoading}
             required
           />
@@ -129,7 +129,7 @@ const Newsletter: React.FC<NewsletterProps> = ({
         {message && (
           <div className={`text-sm mb-4 p-3 rounded-lg ${
             isSuccess
-              ? 'bg-green-500/20 text-green-400 border border-green-500/30'
+              ? 'bg-brand-500/20 text-green-400 border border-brand-500/30'
               : 'bg-red-500/20 text-red-400 border border-red-500/30'
           }`}>
             {message}

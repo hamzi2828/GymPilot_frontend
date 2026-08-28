@@ -45,10 +45,10 @@ export default function AdminHeader({
             <span className="text-xs font-medium text-neutral-900">Admin</span>
             <span className="text-[11px] text-neutral-500">Administrator</span>
           </div>
-          <div className="w-8 h-8 overflow-hidden bg-[#bee304] rounded-full ring-2 ring-[#bee304]/30 flex items-center justify-center text-black text-xs font-bold">
+          <div className="w-8 h-8 overflow-hidden bg-[#ff6b2c] rounded-full ring-2 ring-[#ff6b2c]/30 flex items-center justify-center text-black text-xs font-bold">
             <Image
               className="object-cover w-full h-full"
-              src="https://ui-avatars.com/api/?name=Admin&background=bee304&color=000000&bold=true"
+              src="https://ui-avatars.com/api/?name=Admin&background=ff6b2c&color=000000&bold=true"
               alt="Admin"
               width={32}
               height={32}

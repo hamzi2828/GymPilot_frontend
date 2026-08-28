@@ -181,7 +181,7 @@ const FeaturedStories: React.FC = () => {
                             <span className={`${
                               categoryIndex === 0 ? 'bg-red-500' :
                               categoryIndex === 1 ? 'bg-blue-500' :
-                              'bg-green-500'
+                              'bg-brand-500'
                             } text-white px-3 py-1 rounded-full text-xs font-bold uppercase`}>
                               {category.name.split(' ')[0]}
                             </span>
@@ -291,7 +291,7 @@ const FeaturedStories: React.FC = () => {
                     className="object-cover group-hover:scale-110 transition-transform duration-500"
                   />
                   <div className="absolute top-4 left-4">
-                    <span className="bg-green-500 text-white px-3 py-1 rounded-full text-xs font-bold uppercase">
+                    <span className="bg-brand-500 text-white px-3 py-1 rounded-full text-xs font-bold uppercase">
                       Endurance
                     </span>
                   </div>

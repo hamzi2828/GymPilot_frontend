@@ -202,7 +202,7 @@ const UserProfilePageContent: React.FC = () => {
     <main className="pt-20 bg-white">
       <style jsx global>{`
         :root {
-          --color-primary: #bee304;
+          --color-primary: #ff6b2c;
         }
         .text-primary {
           color: var(--color-primary);

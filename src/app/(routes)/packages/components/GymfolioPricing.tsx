@@ -97,7 +97,7 @@ const GymfolioPricing: React.FC = () => {
       {loading && (
         <div className="flex items-center justify-center py-20">
           <div className="flex flex-col items-center gap-4">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#bee304]"></div>
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#ff6b2c]"></div>
             <p className="text-gray-600">Loading packages...</p>
           </div>
         </div>
@@ -146,7 +146,7 @@ const GymfolioPricing: React.FC = () => {
                       id={titleId}
                       className={[
                         "GymfolioPricing-cardTitle text-2xl font-semibold",
-                        isDark ? "text-[#bee304]" : "text-[#6c8704]",
+                        isDark ? "text-[#ff6b2c]" : "text-[#c74e1b]",
                       ].join(" ")}
                     >
                       {plan.name}
@@ -233,7 +233,7 @@ const GymfolioPricing: React.FC = () => {
               >
                 <Link
                   href={`/checkout?packageId=${plan._id}`}
-                  className="GymfolioPricing-cta inline-flex w-full items-center justify-center gap-2 rounded-full bg-[#bee304] px-6 py-3 font-semibold text-black shadow-[4px_4px_12px_rgba(0,132,255,0.25)] transition-transform hover:scale-[1.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black"
+                  className="GymfolioPricing-cta inline-flex w-full items-center justify-center gap-2 rounded-full bg-[#ff6b2c] px-6 py-3 font-semibold text-black shadow-[4px_4px_12px_rgba(0,132,255,0.25)] transition-transform hover:scale-[1.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black"
                   aria-label={`Get started with ${plan.name} plan`}
                 >
                   Get Started

@@ -110,7 +110,7 @@ const GymfolioAllClasses: React.FC<GymfolioAllClassesProps> = ({ onClassClick })
               <article
                 key={item._id}
                 role="listitem"
-                className="GymfolioAllClasses-card group relative h-[426px] overflow-hidden rounded-lg bg-transparent transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-2xl hover:shadow-black/15 ring-1 ring-transparent hover:ring-[#bee304] hover:ring-offset-2 hover:ring-offset-white cursor-pointer"
+                className="GymfolioAllClasses-card group relative h-[426px] overflow-hidden rounded-lg bg-transparent transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-2xl hover:shadow-black/15 ring-1 ring-transparent hover:ring-[#ff6b2c] hover:ring-offset-2 hover:ring-offset-white cursor-pointer"
                 onClick={(e) => handleClassClick(item, e)}
               >
                 <figure className="h-full w-full">
@@ -129,7 +129,7 @@ const GymfolioAllClasses: React.FC<GymfolioAllClassesProps> = ({ onClassClick })
 
                   {/* Caption bar */}
                   <figcaption className="absolute bottom-0 left-0 right-0">
-                    <div className="GymfolioAllClasses-caption flex items-center justify-between gap-4 bg-[#bee304] px-4 py-3">
+                    <div className="GymfolioAllClasses-caption flex items-center justify-between gap-4 bg-[#ff6b2c] px-4 py-3">
                       <span className="GymfolioAllClasses-title text-base font-bold leading-6 text-black">
                         {item.name}
                       </span>

@@ -52,7 +52,7 @@ export function PrimaryButton({
       type={type}
       onClick={onClick}
       disabled={disabled}
-      className="inline-flex items-center h-9 px-4 text-sm font-semibold text-black bg-[#bee304] rounded-md hover:bg-[#a8cc03] shadow-[0_2px_8px_-2px_rgba(190,227,4,0.5)] transition-colors disabled:opacity-50"
+      className="inline-flex items-center h-9 px-4 text-sm font-semibold text-black bg-[#ff6b2c] rounded-md hover:bg-[#a8cc03] shadow-[0_2px_8px_-2px_rgba(190,227,4,0.5)] transition-colors disabled:opacity-50"
     >
       {children}
     </button>
@@ -203,7 +203,7 @@ export function Toggle({
         type="checkbox"
         checked={checked}
         onChange={(e) => onChange(e.target.checked)}
-        className="h-4 w-4 accent-[#bee304]"
+        className="h-4 w-4 accent-[#ff6b2c]"
       />
       <span className="text-neutral-700">{label}</span>
     </label>
@@ -243,7 +243,7 @@ export function EmptyState({ title, hint }: { title: string; hint?: string }) {
 export function Spinner() {
   return (
     <div className="flex items-center justify-center h-64">
-      <div className="animate-spin rounded-full h-8 w-8 border-2 border-neutral-200 border-t-[#bee304]" />
+      <div className="animate-spin rounded-full h-8 w-8 border-2 border-neutral-200 border-t-[#ff6b2c]" />
     </div>
   );
 }

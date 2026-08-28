@@ -48,7 +48,7 @@ const LatestArticles: React.FC = () => {
         {/* Loading State */}
         {isLoading && (
           <div className="flex justify-center py-8">
-            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-green-500"></div>
+            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-brand-500"></div>
           </div>
         )}
 
@@ -68,7 +68,7 @@ const LatestArticles: React.FC = () => {
                       />
                       <div className="absolute top-3 left-3">
                         <span className={`${
-                          index === 0 ? 'bg-green-500' :
+                          index === 0 ? 'bg-brand-500' :
                           index === 1 ? 'bg-orange-500' :
                           index === 2 ? 'bg-purple-500' :
                           'bg-red-500'

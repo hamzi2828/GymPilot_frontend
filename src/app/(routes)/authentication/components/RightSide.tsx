@@ -11,7 +11,7 @@ export const RightSide: React.FC = () => {
       <div
         className="h-full w-full"
         style={{
-          backgroundImage: `url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200"><defs><pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M 40 0 L 0 0 0 40" fill="none" stroke="%23bee304" stroke-width="1"/></pattern></defs><rect width="200" height="200" fill="url(%23grid)"/></svg>')`,
+          backgroundImage: `url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200"><defs><pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M 40 0 L 0 0 0 40" fill="none" stroke="%23ff6b2c" stroke-width="1"/></pattern></defs><rect width="200" height="200" fill="url(%23grid)"/></svg>')`,
         }}
       ></div>
     </div>
@@ -19,9 +19,9 @@ export const RightSide: React.FC = () => {
     {/* Floating geometric shapes */}
     <div className="absolute inset-0">
       <div className="absolute top-20 left-20 w-32 h-32 bg-lime-400 rounded-full opacity-20 animate-bounce" style={{ animationDelay: "0s", animationDuration: "3s" }}></div>
-      <div className="absolute top-40 right-32 w-24 h-24 bg-yellow-400 rounded-lg opacity-15 animate-pulse" style={{ animationDelay: "1s", animationDuration: "4s" }}></div>
+      <div className="absolute top-40 right-32 w-24 h-24 bg-brand-400 rounded-lg opacity-15 animate-pulse" style={{ animationDelay: "1s", animationDuration: "4s" }}></div>
       <div className="absolute bottom-32 left-32 w-40 h-40 bg-lime-300 rounded-full opacity-10 animate-ping" style={{ animationDelay: "2s", animationDuration: "5s" }}></div>
-      <div className="absolute bottom-20 right-20 w-28 h-28 bg-green-400 transform rotate-45 opacity-20 animate-spin" style={{ animationDuration: "20s" }}></div>
+      <div className="absolute bottom-20 right-20 w-28 h-28 bg-brand-300 transform rotate-45 opacity-20 animate-spin" style={{ animationDuration: "20s" }}></div>
     </div>
 
     {/* Main content */}

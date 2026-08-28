@@ -162,7 +162,7 @@ const WhyChooseUs: React.FC = () => {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {/* Athletes Card */}
              {/* Athletes Card */}
-<article className="group bg-yellow-50 rounded-lg overflow-hidden shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-lg hover:bg-yellow-100">
+<article className="group bg-brand-50 rounded-lg overflow-hidden shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-lg hover:bg-brand-100">
   <div
     className="h-48 bg-cover bg-center transform-gpu motion-safe:transition-transform motion-safe:duration-500 ease-out group-hover:scale-105"
     style={{
@@ -197,7 +197,7 @@ const WhyChooseUs: React.FC = () => {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
              
 {/* High Performers Card */}
-<article className="group bg-yellow-50 rounded-lg overflow-hidden shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-lg hover:bg-yellow-100">
+<article className="group bg-brand-50 rounded-lg overflow-hidden shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-lg hover:bg-brand-100">
   <div className="p-6">
     <h3 className="gymfolio3-card-title font-semibold text-xl lg:text-2xl text-black mb-3">
       High Performers
@@ -215,7 +215,7 @@ const WhyChooseUs: React.FC = () => {
 </article>
 
 {/* Award Winning Card */}
-<article className="group bg-yellow-50 rounded-lg overflow-hidden shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-lg hover:bg-yellow-100">
+<article className="group bg-brand-50 rounded-lg overflow-hidden shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-lg hover:bg-brand-100">
   <div
     className="h-48 bg-cover bg-center transform-gpu motion-safe:transition-transform motion-safe:duration-500 ease-out group-hover:scale-105"
     style={{

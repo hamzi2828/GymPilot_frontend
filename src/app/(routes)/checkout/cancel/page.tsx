@@ -13,8 +13,8 @@ export default function CheckoutCancelPage() {
       <div className="max-w-md w-full">
         <div className="bg-white shadow-lg rounded-lg overflow-hidden">
           {/* Cancel Header */}
-          <div className="bg-yellow-50 px-6 py-8 text-center">
-            <div className="mx-auto flex items-center justify-center h-20 w-20 rounded-full bg-yellow-100">
+          <div className="bg-brand-50 px-6 py-8 text-center">
+            <div className="mx-auto flex items-center justify-center h-20 w-20 rounded-full bg-brand-100">
               <i className="fas fa-exclamation-triangle text-3xl text-yellow-600"></i>
             </div>
             <h1 className="mt-4 text-3xl font-bold text-gray-900">Payment Cancelled</h1>
