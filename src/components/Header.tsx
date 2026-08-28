@@ -6,11 +6,12 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {  FaArrowRight, FaBars, FaTimes } from "react-icons/fa";
 import "@fortawesome/fontawesome-free/css/all.css";
-import { getCurrentUser, removeToken } from "@/helper/helper";
+import { getCurrentUser, getRole, removeToken } from "@/helper/helper";
 
 const Header = () => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
+  const [isAdmin, setIsAdmin] = useState<boolean>(false);
   const [mounted, setMounted] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
@@ -24,6 +25,7 @@ const Header = () => {
     try {
       removeToken();
       setIsLoggedIn(false);
+      setIsAdmin(false);
     } finally {
       closeMobileMenu();
       router.replace("/");
@@ -36,6 +38,7 @@ const Header = () => {
   useEffect(() => {
     setMounted(true);
     setIsLoggedIn(!!getCurrentUser());
+    setIsAdmin(getRole() === "admin");
   }, []);
 
 
@@ -45,7 +48,10 @@ const Header = () => {
   useEffect(() => {
     if (!mounted) return;
     
-    const update = () => setIsLoggedIn(!!getCurrentUser());
+    const update = () => {
+      setIsLoggedIn(!!getCurrentUser());
+      setIsAdmin(getRole() === "admin");
+    };
     window.addEventListener("focus", update);
     window.addEventListener("storage", update);
     return () => {
@@ -66,8 +72,13 @@ const Header = () => {
     contact: "/contact-us",
     blogs: "/blogs",
     userDetails: "/user-detail",
+    admin: "/admin",
     auth: "/authentication",
   };
+
+  // Admins land on the dashboard rather than the member profile page.
+  const accountHref = isAdmin ? routes.admin : routes.userDetails;
+  const accountLabel = isAdmin ? "Admin Panel" : "My Account";
 
   // Create navigation items from featured categories and static pages
   const navItems = [
@@ -131,12 +142,12 @@ const Header = () => {
           ) : isLoggedIn ? (
             <>
               <Link
-                href={routes.userDetails}
+                href={accountHref}
                 className="cta-button for-mobile hidden md:flex"
-                aria-label="View your account"
+                aria-label={isAdmin ? "Open admin panel" : "View your account"}
                 onClick={closeMobileMenu}
               >
-                <span className="cta-text">My Account</span>
+                <span className="cta-text">{accountLabel}</span>
                 <FaArrowRight size={15} aria-hidden="true" className="text-black" />
               </Link>
               <button
@@ -205,12 +216,12 @@ const Header = () => {
             ) : isLoggedIn ? (
               <>
                 <Link
-                  href={routes.userDetails}
+                  href={accountHref}
                   className="cta-button w-full justify-center mb-3"
-                  aria-label="View your account"
+                  aria-label={isAdmin ? "Open admin panel" : "View your account"}
                   onClick={closeMobileMenu}
                 >
-                  <span className="cta-text">My Account</span>
+                  <span className="cta-text">{accountLabel}</span>
                   <FaArrowRight size={15} aria-hidden="true" className="text-black" />
                 </Link>
                 <button

@@ -10,6 +10,8 @@ import {
   Spinner,
 } from "../_shared/ui";
 import { API_BASE, apiGet, apiJson } from "../_shared/api";
+import { THEMES, DEFAULT_THEME_KEY } from "@/theme/themes";
+import { setActiveTheme } from "@/components/ThemeProvider";
 
 interface Settings {
   _id?: string;
@@ -23,6 +25,7 @@ interface Settings {
   twitter?: string;
   youtube?: string;
   linkedin?: string;
+  theme?: string;
 }
 
 const SETTINGS_API = `${API_BASE}/settings`;
@@ -88,6 +91,76 @@ export default function SettingsAdminPage() {
 
         <div className="flex justify-end mt-6">
           <PrimaryButton onClick={save} disabled={saving}>{saving ? "Saving..." : "Save Changes"}</PrimaryButton>
+        </div>
+      </Card>
+
+      <Card className="p-6 max-w-3xl mt-6">
+        <h2 className="text-sm font-semibold text-neutral-900">Colour Scheme</h2>
+        <p className="text-xs text-neutral-500 mt-1 mb-4">
+          Applies across the whole public site — header, buttons, links and footer.
+          Selecting a scheme previews it instantly; press Save to make it live for everyone.
+        </p>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {THEMES.map((t) => {
+            const active = (settings.theme || DEFAULT_THEME_KEY) === t.key;
+            return (
+              <button
+                key={t.key}
+                type="button"
+                onClick={() => {
+                  setSettings({ ...settings, theme: t.key });
+                  setActiveTheme(t.key); // live preview
+                }}
+                aria-pressed={active}
+                className={`text-left rounded-xl border p-3 transition-all ${
+                  active
+                    ? "border-neutral-900 ring-2 ring-neutral-900/10 bg-neutral-50"
+                    : "border-neutral-200 hover:border-neutral-400"
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <div
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-black/10"
+                    style={{ background: t.tokens.base }}
+                  >
+                    <span
+                      className="h-5 w-5 rounded-full"
+                      style={{ background: t.tokens.accent }}
+                    />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-semibold text-neutral-900 truncate">{t.name}</span>
+                      {active && (
+                        <span className="text-[10px] font-bold uppercase tracking-wide text-white bg-neutral-900 rounded px-1.5 py-0.5">
+                          Active
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-neutral-500 mt-0.5 line-clamp-2">{t.description}</p>
+                  </div>
+                </div>
+
+                <div className="mt-3 flex gap-1.5">
+                  {[t.tokens.accent, t.tokens.accentDark, t.tokens.accentSoft, t.tokens.surface, t.tokens.base].map(
+                    (c) => (
+                      <span
+                        key={c}
+                        title={c}
+                        className="h-5 flex-1 rounded border border-black/10"
+                        style={{ background: c }}
+                      />
+                    )
+                  )}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="flex justify-end mt-6">
+          <PrimaryButton onClick={save} disabled={saving}>{saving ? "Saving..." : "Save Colour Scheme"}</PrimaryButton>
         </div>
       </Card>
     </div>

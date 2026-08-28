@@ -905,7 +905,10 @@ body {
 }
 
 .footer-container {
-  max-width: 1340px;
+  /* Full-bleed like every other section — .footer-main already supplies the
+     60px side padding, so a fixed cap here left dead margins on wide screens. */
+  width: 100%;
+  max-width: 100%;
   margin: 0 auto;
   position: relative;
   z-index: 10;

@@ -2,6 +2,7 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google"; // Using Inter instead of Geist
 import ClientLayout from "@/components/ClientLayout";
+import ThemeProvider from "@/components/ThemeProvider";
 import "./globals.css";
 import '@fortawesome/fontawesome-free/css/all.css';
 
@@ -23,9 +24,11 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${inter.variable} antialiased bg-white text-gray-900 min-h-screen`}>
-        <ClientLayout>
-          {children}
-        </ClientLayout>
+        <ThemeProvider>
+          <ClientLayout>
+            {children}
+          </ClientLayout>
+        </ThemeProvider>
       </body>
     </html>
   );
