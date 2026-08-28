@@ -920,19 +920,27 @@ body {
 /* Newsletter Section */
 .footer-newsletter-section {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: space-between;
-  margin-bottom: 64px;
-  gap: 32px;
+  gap: 48px;
+  flex-wrap: wrap;
+  margin-bottom: 56px;
+  padding-bottom: 40px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-.footer-newsletter-content {
-  flex: 1;
-  min-width: 0;
+.footer-newsletter-subtext {
+  margin: 12px 0 0;
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 22px;
+  max-width: 520px;
 }
 
 .footer-newsletter-text {
-  max-width: 735px;
+  flex: 1 1 560px;
+  min-width: 0;
+  max-width: 900px;
 }
 
 .footer-main-heading {
@@ -949,6 +957,8 @@ body {
   display: flex;
   gap: 16px;
   align-items: flex-start;
+  flex: 0 1 440px;
+  min-width: 320px;
 }
 
 .footer-input-wrapper {
@@ -998,17 +1008,6 @@ body {
   font-weight: 700;
 }
 
-.footer-newsletter-image {
-  flex-shrink: 0;
-}
-
-.footer-image {
-  width: 405px;
-  height: 240px;
-  object-fit: cover;
-  border-radius: 8px;
-}
-
 /* Footer Links Section */
 .footer-links-section {
   display: flex;
@@ -1018,12 +1017,13 @@ body {
 
 .footer-links-container {
   display: flex;
-  gap: 24px;
+  gap: 64px;
   align-items: flex-start;
+  justify-content: space-between;
 }
 
 .footer-logo-section {
-  width: 253px;
+  width: 200px;
   flex-shrink: 0;
 }
 
@@ -1051,8 +1051,9 @@ body {
 }
 
 .footer-links-content {
-  display: flex;
-  gap: 64px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 32px;
   flex: 1;
 }
 
@@ -1202,17 +1203,12 @@ body {
 
   .footer-newsletter-section {
     flex-direction: column;
-    text-align: center;
+    align-items: stretch;
     gap: 24px;
   }
 
-  .footer-image {
-    width: 100%;
-    max-width: 405px;
-    height: auto;
-  }
-
   .footer-links-content {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 32px;
   }
 }
@@ -1242,8 +1238,8 @@ body {
   }
 
   .footer-links-content {
-    flex-direction: column;
-    gap: 24px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 28px;
   }
 
   .footer-logo-section {
@@ -1264,6 +1260,7 @@ body {
   }
 
   .footer-links-content {
+    grid-template-columns: minmax(0, 1fr);
     gap: 20px;
   }
 }

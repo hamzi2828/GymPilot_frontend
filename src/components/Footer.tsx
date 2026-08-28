@@ -14,36 +14,29 @@ const Footer = () => {
   return (
   <footer className="footer-main">
     <div className="footer-container">
-      {/* Newsletter Section */}
+      {/* Newsletter: heading on the left, sign-up on the right. */}
       <section className="footer-newsletter-section">
-        <div className="footer-newsletter-content">
-          <div className="footer-newsletter-text">
-            <h2 className="footer-main-heading">JOIN THE FITNESS COMMUNITY</h2>
-            <form className="footer-email-form" onSubmit={(e) => e.preventDefault()}>
-              <div className="footer-input-wrapper">
-                <input
-                  type="email"
-                  className="footer-email-input"
-                  placeholder="Enter your email"
-                  aria-label="Email address"
-                  required
-                />
-              </div>
-              <button type="submit" className="footer-subscribe-button" aria-label="Subscribe to newsletter">
-                <span className="footer-subscribe-text">Subscribe</span>
-              </button>
-            </form>
+        <div className="footer-newsletter-text">
+          <h2 className="footer-main-heading">JOIN THE FITNESS COMMUNITY</h2>
+          <p className="footer-newsletter-subtext">
+            Training tips, timetable changes and member offers. No spam, unsubscribe any time.
+          </p>
+        </div>
+
+        <form className="footer-email-form" onSubmit={(e) => e.preventDefault()}>
+          <div className="footer-input-wrapper">
+            <input
+              type="email"
+              className="footer-email-input"
+              placeholder="Enter your email"
+              aria-label="Email address"
+              required
+            />
           </div>
-        </div>
-        <div className="footer-newsletter-image">
-          <Image
-            width={100}
-            height={100}
-            src="/images/hero.svg"
-            alt="Newsletter Image"
-            className="footer-image"
-          />
-        </div>
+          <button type="submit" className="footer-subscribe-button" aria-label="Subscribe to newsletter">
+            <span className="footer-subscribe-text">Subscribe</span>
+          </button>
+        </form>
       </section>
 
       {/* Main Footer Links */}
