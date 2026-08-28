@@ -18,6 +18,8 @@
   --accent: #ff6b2c;
   --accent-dark: #c74e1b;
   --accent-soft: #ffb894;
+  /* Text/icon colour that sits legibly on top of --accent. */
+  --on-accent: #0e0e10;
 
   /* Neutral surfaces */
   --base: #0e0e10;

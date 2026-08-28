@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import { FiMenu, FiX, FiSearch, FiBell } from "react-icons/fi";
 
 interface AdminHeaderProps {
@@ -27,7 +26,11 @@ export default function AdminHeader({
           )}
         </button>
 
-        <div className="hidden md:flex items-center gap-2 px-3 h-9 w-72 border border-neutral-200 rounded-md text-sm text-neutral-400">
+        <div
+          className="hidden md:flex items-center gap-2 px-3 h-9 w-72 border border-neutral-200 rounded-lg bg-neutral-50 text-sm text-neutral-400 select-none"
+          title="Search is not wired up yet"
+          aria-hidden="true"
+        >
           <FiSearch className="w-4 h-4" />
           <span>Search…</span>
         </div>
@@ -45,14 +48,18 @@ export default function AdminHeader({
             <span className="text-xs font-medium text-neutral-900">Admin</span>
             <span className="text-[11px] text-neutral-500">Administrator</span>
           </div>
-          <div className="w-8 h-8 overflow-hidden bg-[#ff6b2c] rounded-full ring-2 ring-[#ff6b2c]/30 flex items-center justify-center text-black text-xs font-bold">
-            <Image
-              className="object-cover w-full h-full"
-              src="https://ui-avatars.com/api/?name=Admin&background=ff6b2c&color=000000&bold=true"
-              alt="Admin"
-              width={32}
-              height={32}
-            />
+          {/* Rendered from theme tokens rather than a remote avatar service, so
+              it follows the selected colour scheme and needs no network round-trip. */}
+          <div
+            className="flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold"
+            style={{
+              background: "var(--accent, #ff6b2c)",
+              color: "var(--on-accent, #0e0e10)",
+              boxShadow: "0 0 0 3px color-mix(in srgb, var(--accent, #ff6b2c) 22%, transparent)",
+            }}
+            aria-hidden="true"
+          >
+            A
           </div>
         </div>
       </div>

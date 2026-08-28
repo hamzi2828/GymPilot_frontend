@@ -38,9 +38,7 @@ const iconCls = "w-[18px] h-[18px]";
 const sections: MenuSection[] = [
   {
     heading: "Overview",
-    items: [
-      { name: "Dashboard", path: "/admin", icon: <FiHome className={iconCls} /> },
-    ],
+    items: [{ name: "Dashboard", path: "/admin", icon: <FiHome className={iconCls} /> }],
   },
   {
     heading: "Fitness",
@@ -74,9 +72,7 @@ const sections: MenuSection[] = [
   },
   {
     heading: "System",
-    items: [
-      { name: "Settings", path: "/admin/settings", icon: <FiSettings className={iconCls} /> },
-    ],
+    items: [{ name: "Settings", path: "/admin/settings", icon: <FiSettings className={iconCls} /> }],
   },
 ];
 
@@ -85,28 +81,40 @@ export default function AdminSidebar({ isOpen, onClose }: AdminSidebarProps) {
 
   return (
     <>
-      {!isOpen && (
+      {/* Scrim sits behind the drawer while it is OPEN, so tapping outside
+          dismisses it. Rendering it while closed would blanket the page. */}
+      {isOpen && (
         <div
-          className="fixed inset-0 z-20 bg-black/20 lg:hidden"
+          className="fixed inset-0 z-20 bg-neutral-900/40 backdrop-blur-[1px] lg:hidden"
           onClick={onClose}
+          aria-hidden="true"
         />
       )}
 
       <aside
-        className={`admin-scroll fixed inset-y-0 left-0 z-30 w-60 flex flex-col overflow-y-auto transition-transform duration-200 transform ${
+        className={`admin-scroll fixed inset-y-0 left-0 z-30 flex w-64 flex-col overflow-y-auto border-r border-neutral-200 bg-white transition-transform duration-200 ${
           isOpen ? "translate-x-0" : "-translate-x-full"
-        } bg-white border-r border-neutral-200 lg:translate-x-0 lg:static lg:inset-0`}
+        } lg:static lg:inset-0 lg:translate-x-0`}
       >
-        <div className="flex items-center h-16 px-6 border-b border-neutral-200">
-          <h1 className="text-sm font-semibold tracking-tight text-neutral-900">
-            Gymfolio Admin
-          </h1>
+        {/* Brand */}
+        <div className="flex h-16 shrink-0 items-center gap-3 border-b border-neutral-200 px-5">
+          <span
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-[13px] font-bold"
+            style={{ background: "var(--accent, #ff6b2c)", color: "var(--on-accent, #0e0e10)" }}
+            aria-hidden="true"
+          >
+            G
+          </span>
+          <div className="min-w-0 leading-tight">
+            <p className="truncate text-sm font-semibold tracking-tight text-neutral-900">Gymfolio</p>
+            <p className="truncate text-[11px] text-neutral-400">Admin Panel</p>
+          </div>
         </div>
 
-        <nav className="flex-1 px-3 py-4">
+        <nav className="flex-1 px-3 py-5">
           {sections.map((section, idx) => (
-            <div key={section.heading} className={idx > 0 ? "mt-6" : ""}>
-              <p className="px-3 pb-2 text-[10px] font-medium uppercase tracking-wider text-neutral-400">
+            <div key={section.heading} className={idx > 0 ? "mt-7" : ""}>
+              <p className="px-3 pb-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-neutral-400">
                 {section.heading}
               </p>
               <div className="space-y-0.5">
@@ -119,22 +127,29 @@ export default function AdminSidebar({ isOpen, onClose }: AdminSidebarProps) {
                       key={item.path}
                       href={item.path}
                       onClick={onClose}
-                      className={`group flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors ${
+                      aria-current={active ? "page" : undefined}
+                      className={`group relative flex items-center gap-3 rounded-lg py-2 pl-3 pr-3 text-sm transition-colors ${
                         active
-                          ? "bg-[#ff6b2c] text-black font-semibold shadow-[0_2px_8px_-2px_rgba(190,227,4,0.5)]"
-                          : "text-neutral-500 hover:text-neutral-900 hover:bg-neutral-50"
+                          ? "bg-neutral-100 font-semibold text-neutral-900"
+                          : "font-medium text-neutral-500 hover:bg-neutral-50 hover:text-neutral-900"
                       }`}
                     >
+                      {/* Accent rail marks the active row without flooding the
+                          whole item in brand colour. */}
                       <span
-                        className={
-                          active
-                            ? "text-black"
-                            : "text-neutral-400 group-hover:text-neutral-700"
-                        }
+                        aria-hidden="true"
+                        className={`absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full transition-opacity ${
+                          active ? "opacity-100" : "opacity-0"
+                        }`}
+                        style={{ background: "var(--accent, #ff6b2c)" }}
+                      />
+                      <span
+                        className={active ? "" : "text-neutral-400 transition-colors group-hover:text-neutral-600"}
+                        style={active ? { color: "var(--accent, #ff6b2c)" } : undefined}
                       >
                         {item.icon}
                       </span>
-                      {item.name}
+                      <span className="truncate">{item.name}</span>
                     </Link>
                   );
                 })}
@@ -143,10 +158,8 @@ export default function AdminSidebar({ isOpen, onClose }: AdminSidebarProps) {
           ))}
         </nav>
 
-        <div className="px-6 py-4 border-t border-neutral-200">
-          <p className="text-[10px] text-neutral-400">
-            © {new Date().getFullYear()} Gymfolio
-          </p>
+        <div className="shrink-0 border-t border-neutral-200 px-5 py-4">
+          <p className="text-[10px] text-neutral-400">© {new Date().getFullYear()} Gymfolio</p>
         </div>
       </aside>
     </>

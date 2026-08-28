@@ -15,6 +15,11 @@ const nextConfig: NextConfig = {
         hostname: 'cdn.shopify.com',
       },
       {
+        // Vercel Blob storage — where uploaded logos and bank barcodes land.
+        protocol: 'https',
+        hostname: '**.public.blob.vercel-storage.com',
+      },
+      {
         protocol: 'http',
         hostname: 'localhost',
       },

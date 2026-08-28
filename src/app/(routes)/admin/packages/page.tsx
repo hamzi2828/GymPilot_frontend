@@ -125,7 +125,7 @@ export default function PackagesAdminPage() {
         <Table
           columns={["Name", "Price", "Period", "Features", "Status", "Actions"]}
           rows={list.map((p) => [
-            <div key="n" className="font-medium text-neutral-900">{p.name}{p.badge && <span className="ml-2 text-[10px] uppercase tracking-wider text-[#ff6b2c]">{p.badge}</span>}</div>,
+            <div key="n" className="font-medium text-neutral-900">{p.name}{p.badge && <span className="ml-2 text-[10px] uppercase tracking-wider text-[var(--accent)]">{p.badge}</span>}</div>,
             `${p.currency} ${p.price}`,
             p.period,
             <span key="f" className="text-neutral-500 text-xs">{(p.features || []).length} items</span>,

@@ -35,13 +35,19 @@ export default function ThemeProvider({ children }: { children: React.ReactNode 
         if (!res.ok) return;
         const json = await res.json();
         const key: string = json?.data?.theme || DEFAULT_THEME_KEY;
-        if (cancelled || key === cached) return;
-        applyTheme(getTheme(key));
+        if (cancelled) return;
+
+        // Always write the server value back, even when it matches what we
+        // applied from cache. Persisting only on change let the cache drift out
+        // of sync with the server, which showed as a flash of the wrong palette
+        // on the next load.
         try {
           localStorage.setItem(CACHE_KEY, key);
         } catch {
-          /* non-fatal: the theme still applied for this page view */
+          /* non-fatal: the theme still applies for this page view */
         }
+
+        if (key !== cached) applyTheme(getTheme(key));
       } catch {
         /* offline or API down — the CSS defaults in globals.css still apply */
       }

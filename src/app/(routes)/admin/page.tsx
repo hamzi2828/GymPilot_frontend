@@ -85,7 +85,7 @@ export default function AdminHomePage() {
                   <span className="text-[11px] font-medium uppercase tracking-wider text-neutral-500">
                     {s.name}
                   </span>
-                  <s.icon className="w-4 h-4 text-neutral-400 group-hover:text-[#ff6b2c] transition-colors" />
+                  <s.icon className="w-4 h-4 text-neutral-400 group-hover:text-[var(--accent)] transition-colors" />
                 </div>
                 <p className="mt-3 text-2xl font-semibold text-neutral-900">{s.count}</p>
               </Link>

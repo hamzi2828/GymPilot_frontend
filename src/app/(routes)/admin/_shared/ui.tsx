@@ -30,7 +30,7 @@ export function PageHeader({
 
 export function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
-    <div className={`bg-white border border-neutral-200 rounded-lg ${className}`}>
+    <div className={`bg-white border border-neutral-200 rounded-xl shadow-[0_1px_2px_rgba(16,24,40,0.04)] ${className}`}>
       {children}
     </div>
   );
@@ -52,7 +52,7 @@ export function PrimaryButton({
       type={type}
       onClick={onClick}
       disabled={disabled}
-      className="inline-flex items-center h-9 px-4 text-sm font-semibold text-black bg-[#ff6b2c] rounded-md hover:bg-[#a8cc03] shadow-[0_2px_8px_-2px_rgba(190,227,4,0.5)] transition-colors disabled:opacity-50"
+      className="inline-flex items-center h-9 px-4 text-sm font-semibold rounded-lg bg-[var(--accent)] text-[var(--on-accent)] hover:bg-[var(--accent-dark)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2"
     >
       {children}
     </button>
@@ -75,7 +75,7 @@ export function SecondaryButton({
       type={type}
       onClick={onClick}
       disabled={disabled}
-      className="inline-flex items-center h-9 px-3 text-sm text-neutral-700 bg-white border border-neutral-200 rounded-md hover:bg-neutral-50 hover:border-neutral-300 transition-colors disabled:opacity-50"
+      className="inline-flex items-center h-9 px-3 text-sm font-medium text-neutral-700 bg-white border border-neutral-200 rounded-lg hover:bg-neutral-50 hover:border-neutral-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-neutral-300"
     >
       {children}
     </button>
@@ -96,7 +96,7 @@ export function DangerButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="inline-flex items-center h-9 px-3 text-sm text-rose-600 bg-white border border-rose-200 rounded-md hover:bg-rose-50 transition-colors disabled:opacity-50"
+      className="inline-flex items-center h-9 px-3 text-sm font-medium text-rose-600 bg-white border border-rose-200 rounded-lg hover:bg-rose-50 hover:border-rose-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-200"
     >
       {children}
     </button>
@@ -120,14 +120,14 @@ export function TextField({
 }) {
   return (
     <label className="block">
-      <span className="text-xs font-medium text-neutral-600">{label}{required && " *"}</span>
+      <span className="text-xs font-semibold text-neutral-700">{label}{required && " *"}</span>
       <input
         type={type}
         value={value ?? ""}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         required={required}
-        className="mt-1 w-full h-9 px-3 text-sm bg-white border border-neutral-200 rounded-md focus:outline-none focus:border-neutral-400 transition-colors"
+        className="mt-1 w-full h-9 px-3 text-sm bg-white border border-neutral-200 rounded-lg focus:outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[color-mix(in_srgb,var(--accent)_25%,transparent)] transition-colors"
       />
     </label>
   );
@@ -154,7 +154,7 @@ export function TextArea({
         onChange={(e) => onChange(e.target.value)}
         rows={rows}
         placeholder={placeholder}
-        className="mt-1 w-full px-3 py-2 text-sm bg-white border border-neutral-200 rounded-md focus:outline-none focus:border-neutral-400 transition-colors resize-none"
+        className="mt-1 w-full px-3 py-2 text-sm bg-white border border-neutral-200 rounded-lg focus:outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[color-mix(in_srgb,var(--accent)_25%,transparent)] transition-colors resize-none"
       />
     </label>
   );
@@ -177,7 +177,7 @@ export function SelectField({
       <select
         value={value ?? ""}
         onChange={(e) => onChange(e.target.value)}
-        className="mt-1 w-full h-9 px-3 text-sm bg-white border border-neutral-200 rounded-md focus:outline-none focus:border-neutral-400 transition-colors"
+        className="mt-1 w-full h-9 px-3 text-sm bg-white border border-neutral-200 rounded-lg focus:outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[color-mix(in_srgb,var(--accent)_25%,transparent)] transition-colors"
       >
         <option value="">-- select --</option>
         {options.map((o) => (
@@ -203,7 +203,7 @@ export function Toggle({
         type="checkbox"
         checked={checked}
         onChange={(e) => onChange(e.target.checked)}
-        className="h-4 w-4 accent-[#ff6b2c]"
+        className="h-4 w-4 accent-[var(--accent)]"
       />
       <span className="text-neutral-700">{label}</span>
     </label>
@@ -243,7 +243,7 @@ export function EmptyState({ title, hint }: { title: string; hint?: string }) {
 export function Spinner() {
   return (
     <div className="flex items-center justify-center h-64">
-      <div className="animate-spin rounded-full h-8 w-8 border-2 border-neutral-200 border-t-[#ff6b2c]" />
+      <div className="animate-spin rounded-full h-8 w-8 border-2 border-neutral-200 border-t-[var(--accent)]" />
     </div>
   );
 }
@@ -307,9 +307,9 @@ export function Table({
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-neutral-200 bg-neutral-50">
+            <tr className="border-b border-neutral-200 bg-neutral-50/80">
               {columns.map((c) => (
-                <th key={c} className="px-4 py-3 text-left text-[11px] font-medium uppercase tracking-wider text-neutral-500">
+                <th key={c} className="whitespace-nowrap px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-neutral-500">
                   {c}
                 </th>
               ))}
@@ -317,9 +317,9 @@ export function Table({
           </thead>
           <tbody>
             {rows.map((row, i) => (
-              <tr key={i} className="border-b last:border-b-0 border-neutral-100 hover:bg-neutral-50/50">
+              <tr key={i} className="border-b border-neutral-100 last:border-b-0 transition-colors hover:bg-neutral-50">
                 {row.map((cell, j) => (
-                  <td key={j} className="px-4 py-3 align-middle">{cell}</td>
+                  <td key={j} className="px-5 py-3.5 align-middle text-neutral-700">{cell}</td>
                 ))}
               </tr>
             ))}
