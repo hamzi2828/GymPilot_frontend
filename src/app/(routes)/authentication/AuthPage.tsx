@@ -148,10 +148,12 @@ const AuthPage: React.FC = () => {
             setRole(res.data.role);
           }
         } catch {}
-        // Admins go to the dashboard; everyone else resumes whatever they were
-        // doing (checkout, most often) or lands on the homepage.
-        const destination =
-          res?.data?.role === "admin" ? "/admin" : redirectTo || "/";
+        // Anyone who works here lands on the panel -- what they can actually
+        // open there is decided by their role's permissions. Gym members
+        // resume whatever they were doing (checkout, most often) or land on
+        // the homepage.
+        const worksHere = !!res?.data?.role && res.data.role !== "user";
+        const destination = worksHere ? "/admin" : redirectTo || "/";
         router.replace(destination);
       }
     } catch (err: unknown) {

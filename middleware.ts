@@ -27,12 +27,21 @@ export function middleware(req: NextRequest) {
     return NextResponse.redirect(signInUrl());
   }
 
-  // Admin requires authentication + admin role
+  // Admin needs authentication, and a role that is not an ordinary gym member.
+  //
+  // This is deliberately coarse. The edge only has a cookie: it cannot know
+  // that a receptionist holds Attendance but not Settings, and hardcoding
+  // 'admin' here is exactly what would keep every staff role out of the panel
+  // their role was created to let them into. So this turns away the obvious
+  // case (a member who found the URL) and the real decision is made twice
+  // where the answer is actually known -- by the admin layout, which asks the
+  // server what this account may open, and by the API, which re-checks the
+  // permission on every request.
   if (isAdmin) {
     if (!token) {
       return NextResponse.redirect(signInUrl());
     }
-    if (role !== 'admin') {
+    if (!role || role === 'user') {
       const url = req.nextUrl.clone();
       url.pathname = '/';
       return NextResponse.redirect(url);

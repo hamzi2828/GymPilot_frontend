@@ -25,7 +25,16 @@ interface User {
   createdAt?: string;
 }
 
-const roles = ["user", "admin", "moderator"];
+// Roles come from the Roles & Access collection rather than a hardcoded list,
+// so a role invented there is immediately assignable here. Promoting someone
+// to a staff role also gives them payroll and a roster -- edit those on the
+// Staff tab.
+interface RoleOption {
+  slug: string;
+  name: string;
+  is_staff: boolean;
+  is_active: boolean;
+}
 
 interface PackageOption {
   _id: string;
@@ -40,6 +49,7 @@ export default function UsersAdminPage() {
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<User | null>(null);
   const [role, setRole] = useState("");
+  const [roles, setRoles] = useState<RoleOption[]>([]);
 
   // Create-user dialog
   const [createOpen, setCreateOpen] = useState(false);
@@ -147,6 +157,20 @@ export default function UsersAdminPage() {
 
   useEffect(() => { load(); }, []);
 
+  useEffect(() => {
+    apiGet<{ roles: RoleOption[] }>(`${API_BASE}/roles`)
+      .then((r) => setRoles((r.roles || []).filter((entry) => entry.is_active)))
+      // A failure here is not fatal: the list still renders, only the role
+      // picker is empty, and this admin may simply not hold the Roles tab.
+      .catch(() => setRoles([]));
+  }, []);
+
+  const roleOptions = roles.map((entry) => ({
+    value: entry.slug,
+    label: entry.name,
+    hint: entry.is_staff ? `${entry.slug} · staff` : entry.slug,
+  }));
+
   const saveRole = async () => {
     if (!selected || !role) return;
     try {
@@ -233,7 +257,7 @@ export default function UsersAdminPage() {
             label="Role"
             value={draft.role}
             onChange={(v) => setDraft({ ...draft, role: v })}
-            options={roles.map((r) => ({ value: r, label: r }))}
+            options={roleOptions}
           />
 
           {createErr && (
@@ -337,7 +361,7 @@ export default function UsersAdminPage() {
               label="Role"
               value={role}
               onChange={setRole}
-              options={roles.map((s) => ({ value: s, label: s }))}
+              options={roleOptions}
             />
             <div className="flex justify-end gap-2 pt-2">
               <SecondaryButton onClick={() => setSelected(null)}>Cancel</SecondaryButton>

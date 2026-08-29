@@ -103,8 +103,12 @@ export interface JwtBasePayload {
     return fetch(input, { ...init, headers });
   }
 
-  // Role helpers for admin gating in frontend and middleware
-  export type UserRole = 'user' | 'admin' | 'moderator';
+  // Role helpers for admin gating in frontend and middleware.
+  //
+  // A role is the slug of a Role document, so this is a string rather than a
+  // union: a gym can create "night-manager" without a frontend release. The
+  // two reserved slugs are 'user' (every gym member) and 'admin' (all access).
+  export type UserRole = string;
 
   export function getRole(): UserRole | null {
     if (typeof window === 'undefined') return null;
