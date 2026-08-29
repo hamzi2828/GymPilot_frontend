@@ -9,9 +9,6 @@ export interface HeaderProps {
     lastName: string;
     email: string;
     phone: string;
-    totalOrders: number;
-    totalSpent: number;
-    loyaltyPoints: number;
     profileImage: string;
   };
 }
@@ -76,27 +73,6 @@ export const Header: React.FC<HeaderProps> = ({ userProfile }) => {
                 </span>
               </>
             )}
-          </div>
-
-          <div className="flex gap-6 mt-4">
-            <div className="text-center">
-              <div className="text-xl sm:text-2xl font-bold text-black">
-                {userProfile.totalOrders}
-              </div>
-              <div className="text-xs text-gray-500">Orders</div>
-            </div>
-            <div className="text-center">
-              <div className="text-xl sm:text-2xl font-bold text-black">
-                Rs {userProfile.totalSpent.toLocaleString()}
-              </div>
-              <div className="text-xs text-gray-500">Total Spent</div>
-            </div>
-            <div className="text-center">
-              <div className="text-xl sm:text-2xl font-bold text-primary">
-                {userProfile.loyaltyPoints}
-              </div>
-              <div className="text-xs text-gray-500">Points</div>
-            </div>
           </div>
         </div>
       </div>

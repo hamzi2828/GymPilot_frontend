@@ -22,6 +22,7 @@ import {
   FiClock,
   FiBriefcase,
   FiShield,
+  FiDollarSign,
 } from "react-icons/fi";
 
 interface MenuItem {
@@ -70,6 +71,7 @@ const sections: MenuSection[] = [
     heading: "Operations",
     items: [
       { name: "Attendance", path: "/admin/attendance", icon: <FiClock className={iconCls} />, tab: "attendance" },
+      { name: "Accounts", path: "/admin/accounts", icon: <FiDollarSign className={iconCls} />, tab: "accounts" },
       { name: "Staff", path: "/admin/staff", icon: <FiBriefcase className={iconCls} />, tab: "staff" },
       { name: "Roles & Access", path: "/admin/roles", icon: <FiShield className={iconCls} />, tab: "roles" },
     ],

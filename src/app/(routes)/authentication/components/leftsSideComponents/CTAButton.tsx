@@ -13,7 +13,7 @@ export const CTAButton: React.FC<CTAButtonProps> = ({ isLoading, isSignUp, isFor
       type="button"
       onClick={handleSubmit}
       disabled={isLoading}
-      className="w-full bg-gradient-to-r from-lime-400 via-lime-500 to-yellow-400 text-black py-4 px-6 rounded-2xl font-black text-lg shadow-xl hover:shadow-2xl hover:from-lime-300 hover:via-lime-400 hover:to-yellow-300 transform hover:-translate-y-1 hover:scale-105 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3 border-2 border-lime-300"
+      className="auth-cta w-full py-4 px-6 rounded-2xl font-black text-lg transform hover:-translate-y-1 hover:scale-105 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
     >
       {isLoading ? (
         <>

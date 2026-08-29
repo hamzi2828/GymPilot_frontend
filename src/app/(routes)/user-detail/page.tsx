@@ -5,16 +5,19 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Header } from "./components/Header";
 import { Tabs } from "./components/Tabs";
 import { ProfileSection } from "./components/ProfileSection";
-import { OrdersSection } from "./components/OrdersSection";
-import { StatsSection } from "./components/StatsSection";
-import { getUserDetailForProfile,updateUser, getUserOrders } from "./service/userDetailService";
+import { HistorySection } from "./components/HistorySection";
+import {
+  getUserDetailForProfile,
+  updateUser,
+  getMembershipHistory,
+  getMyAttendance,
+} from "./service/userDetailService";
 import { getCurrentUser, UserPayload } from "@/helper/helper";
 
 import {
   UserProfile,
-  OrderStatus,
-  statusStyles,
-  Order
+  MembershipOrder,
+  MyAttendance,
 } from "./service/userDetailService";
 
 // Accept backend-specific fields when hydrating from API
@@ -26,9 +29,8 @@ type BackendUserPayload = Partial<UserProfile> & {
 const UserProfilePageContent: React.FC = () => {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [activeTab, setActiveTab] = useState<"profile" | "orders">("profile");
+  const [activeTab, setActiveTab] = useState<"profile" | "history">("profile");
   const [isEditing, setIsEditing] = useState(false);
-  const [orderFilter, setOrderFilter] = useState("all");
   const [toast, setToast] = useState<{ show: boolean; msg: string; type: "success" | "error" | "info" }>({
     show: false,
     msg: "",
@@ -37,8 +39,11 @@ const UserProfilePageContent: React.FC = () => {
 
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [saving, setSaving] = useState(false);
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [ordersLoading, setOrdersLoading] = useState(false);
+  const [memberships, setMemberships] = useState<MembershipOrder[]>([]);
+  const [attendance, setAttendance] = useState<MyAttendance | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [selectedMonth, setSelectedMonth] = useState<string | null>(null);
+  const [monthLoading, setMonthLoading] = useState(false);
 
   const showToast = (msg: string, type: "success" | "error" | "info" = "success") => {
     setToast({ show: true, msg, type });
@@ -53,19 +58,43 @@ const UserProfilePageContent: React.FC = () => {
     return iso.slice(0, 10);
   };
 
-  // Fetch user orders
-  const fetchOrders = async (): Promise<void> => {
+  // Packages and visits are fetched together -- the History tab is one story
+  // told in two halves, and loading them separately would show it half-drawn.
+  // Settled rather than awaited as a pair, so a member with no attendance yet
+  // still sees their membership.
+  const fetchHistory = async (): Promise<void> => {
     try {
-      setOrdersLoading(true);
-      const response = await getUserOrders({ limit: 50 }); // Get more orders initially
-      if (response.success && response.orders) {
-        setOrders(response.orders);
+      setHistoryLoading(true);
+      const [packages, visits] = await Promise.allSettled([getMembershipHistory(), getMyAttendance()]);
+
+      if (packages.status === "fulfilled") setMemberships(packages.value);
+      else console.error("Error fetching memberships:", packages.reason);
+
+      if (visits.status === "fulfilled") setAttendance(visits.value);
+      else console.error("Error fetching attendance:", visits.reason);
+
+      if (packages.status === "rejected" && visits.status === "rejected") {
+        showToast("Could not load your history", "error");
       }
-    } catch (error) {
-      console.error("Error fetching orders:", error);
-      showToast(error instanceof Error ? error.message : "Failed to fetch orders", "error");
     } finally {
-      setOrdersLoading(false);
+      setHistoryLoading(false);
+    }
+  };
+
+  // Drilling into a month refetches, because the default response carries only
+  // the recent-visits window -- filtering it in the browser would quietly show
+  // part of an older month and call it the whole thing.
+  const selectMonth = async (key: string | null) => {
+    setSelectedMonth(key);
+    try {
+      setMonthLoading(true);
+      const data = await getMyAttendance(key || undefined);
+      setAttendance(data);
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "Could not load that month", "error");
+      setSelectedMonth(null);
+    } finally {
+      setMonthLoading(false);
     }
   };
 
@@ -129,9 +158,11 @@ const UserProfilePageContent: React.FC = () => {
 
   useEffect(() => {
     // Check URL parameters for tab
+    // 'orders' is still honoured: links and emails sent before this tab was
+    // renamed should not land on a tab that no longer exists.
     const tab = searchParams.get('tab');
-    if (tab === 'orders') {
-      setActiveTab('orders');
+    if (tab === 'history' || tab === 'orders') {
+      setActiveTab('history');
     }
   }, [searchParams]);
 
@@ -158,13 +189,10 @@ const UserProfilePageContent: React.FC = () => {
     });
     // Then hydrate from API
     refreshUserData();
-    // Fetch orders
-    fetchOrders();
+    // Fetch membership + attendance history
+    fetchHistory();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
-
-  const filteredOrders =
-    orderFilter === "all" ? orders : orders.filter((o) => o.orderStatus === (orderFilter as OrderStatus));
 
   // Parent-owned save handler
   const handleSave = async (
@@ -253,33 +281,17 @@ const UserProfilePageContent: React.FC = () => {
           />
         )}
 
-        {activeTab === "orders" && (
-          <>
-            {ordersLoading ? (
-              <div className="flex justify-center items-center py-12">
-                <div className="text-center">
-                  <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-                  <p className="mt-2 text-gray-500">Loading orders...</p>
-                </div>
-              </div>
-            ) : (
-              <OrdersSection
-                filteredOrders={filteredOrders}
-                orderFilter={orderFilter}
-                setOrderFilter={setOrderFilter}
-                statusStyles={statusStyles}
-              />
-            )}
-          </>
+        {activeTab === "history" && (
+          <HistorySection
+            memberships={memberships}
+            attendance={attendance}
+            loading={historyLoading}
+            selectedMonth={selectedMonth}
+            onSelectMonth={selectMonth}
+            monthLoading={monthLoading}
+          />
         )}
       </section>
-
-      <StatsSection
-        joinedDate={userProfile.joinedDate}
-        totalOrders={userProfile.totalOrders}
-        totalSpent={userProfile.totalSpent}
-        loyaltyPoints={userProfile.loyaltyPoints}
-      />
     </main>
   );
 };

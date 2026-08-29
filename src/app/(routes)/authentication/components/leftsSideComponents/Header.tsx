@@ -9,7 +9,7 @@ export const Header: React.FC<HeaderProps> = ({ isSignUp, isForgot }) => {
   return (
     <div className="text-center">
       <div className="mb-8">
-        <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-lime-400 via-lime-500 to-yellow-400 flex items-center justify-center mx-auto shadow-2xl transform rotate-3 hover:rotate-0 transition-transform duration-300">
+        <div className="auth-accent-gradient w-20 h-20 rounded-3xl flex items-center justify-center mx-auto shadow-2xl transform rotate-3 hover:rotate-0 transition-transform duration-300">
           <svg className="w-10 h-10 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
           </svg>

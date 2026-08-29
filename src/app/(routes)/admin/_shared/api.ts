@@ -3,6 +3,7 @@ import { getAuthToken } from "@/helper/helper";
 export const API_BASE = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:4000";
 export const GYMFOLIO_API = `${API_BASE}/api/gymfolio`;
 export const ATTENDANCE_API = `${API_BASE}/api/attendance`;
+export const ACCOUNTS_API = `${API_BASE}/api/accounts`;
 
 export function authHeaders(extra: Record<string, string> = {}): Record<string, string> {
   const token = getAuthToken();

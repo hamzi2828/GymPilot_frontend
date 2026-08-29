@@ -29,13 +29,13 @@ export const ConfirmPasswordField: React.FC<ConfirmPasswordFieldProps> = ({
           required
           value={value}
           onChange={handleInputChange}
-          className="w-full pl-4 pr-14 py-4 border-2 border-gray-200 rounded-2xl focus:border-lime-400 focus:ring-4 focus:ring-lime-100 transition-all outline-none text-gray-900 font-medium placeholder-gray-400 bg-white/80 backdrop-blur-sm"
+          className="w-full pl-4 pr-14 py-4 auth-field border-2 border-gray-200 rounded-2xl outline-none text-gray-900 font-medium placeholder-gray-400 bg-white/80 backdrop-blur-sm"
           placeholder={placeholder}
         />
         <button
           type="button"
           onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-          className="absolute inset-y-0 right-0 pr-4 flex items-center text-gray-500 hover:text-lime-600 transition-colors"
+          className="absolute inset-y-0 right-0 pr-4 flex items-center text-gray-500 hover:text-[var(--accent-dark)] transition-colors"
         >
           <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             {showConfirmPassword ? (

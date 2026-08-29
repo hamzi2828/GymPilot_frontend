@@ -18,7 +18,7 @@ export const FooterToggle: React.FC<FooterToggleProps> = ({ isSignUp, isForgot, 
             <button
               type="button"
               onClick={() => updateMode('signin')}
-              className="text-lime-600 hover:text-lime-700 font-black transition-colors underline decoration-lime-300 underline-offset-2"
+              className="auth-accent-text font-black transition-colors underline underline-offset-2"
             >
               Sign In
             </button>
@@ -29,7 +29,7 @@ export const FooterToggle: React.FC<FooterToggleProps> = ({ isSignUp, isForgot, 
             <button
               type="button"
               onClick={toggleAuthMode}
-              className="text-lime-600 hover:text-lime-700 font-black transition-colors underline decoration-lime-300 underline-offset-2"
+              className="auth-accent-text font-black transition-colors underline underline-offset-2"
             >
               Sign In
             </button>
@@ -40,7 +40,7 @@ export const FooterToggle: React.FC<FooterToggleProps> = ({ isSignUp, isForgot, 
             <button
               type="button"
               onClick={toggleAuthMode}
-              className="text-lime-600 hover:text-lime-700 font-black transition-colors underline decoration-lime-300 underline-offset-2"
+              className="auth-accent-text font-black transition-colors underline underline-offset-2"
             >
               Sign Up
             </button>

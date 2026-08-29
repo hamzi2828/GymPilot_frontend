@@ -18,20 +18,20 @@ export const TermsCheckbox: React.FC<TermsCheckboxProps> = ({ isSignUp, acceptTe
           type="checkbox"
           checked={acceptTerms}
           onChange={handleInputChange}
-          className="h-5 w-5 text-lime-400 border-2 border-gray-300 rounded-lg focus:ring-lime-400 mt-0.5 bg-white"
+          className="auth-check h-5 w-5 border-2 border-gray-300 rounded-lg mt-0.5 bg-white"
         />
         <label className="text-sm text-gray-600 font-medium leading-relaxed">
           I agree to the{' '}
           <Link
             href="/privacy-policy"
-            className="text-lime-600 hover:text-lime-700 font-bold underline decoration-lime-300 underline-offset-2"
+            className="auth-accent-text font-bold underline underline-offset-2"
           >
             Terms of Service
           </Link>{' '}
           and{' '}
           <Link
             href="/privacy-policy"
-            className="text-lime-600 hover:text-lime-700 font-bold underline decoration-lime-300 underline-offset-2"
+            className="auth-accent-text font-bold underline underline-offset-2"
           >
             Privacy Policy
           </Link>

@@ -20,7 +20,7 @@ export const NameFields: React.FC<NameFieldsProps> = ({ isSignUp, formData, erro
           required
           value={formData.firstName}
           onChange={handleInputChange}
-          className="w-full px-4 py-4 border-2 border-gray-200 rounded-2xl focus:border-lime-400 focus:ring-4 focus:ring-lime-100 transition-all outline-none text-gray-900 font-medium placeholder-gray-400 bg-white/80 backdrop-blur-sm"
+          className="w-full px-4 py-4 auth-field border-2 border-gray-200 rounded-2xl outline-none text-gray-900 font-medium placeholder-gray-400 bg-white/80 backdrop-blur-sm"
           placeholder="John"
         />
         {errors?.firstName && (
@@ -35,7 +35,7 @@ export const NameFields: React.FC<NameFieldsProps> = ({ isSignUp, formData, erro
           required
           value={formData.lastName}
           onChange={handleInputChange}
-          className="w-full px-4 py-4 border-2 border-gray-200 rounded-2xl focus:border-lime-400 focus:ring-4 focus:ring-lime-100 transition-all outline-none text-gray-900 font-medium placeholder-gray-400 bg-white/80 backdrop-blur-sm"
+          className="w-full px-4 py-4 auth-field border-2 border-gray-200 rounded-2xl outline-none text-gray-900 font-medium placeholder-gray-400 bg-white/80 backdrop-blur-sm"
           placeholder="Doe"
         />
         {errors?.lastName && (

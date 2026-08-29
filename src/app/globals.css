@@ -5564,3 +5564,86 @@ html {
   font-size: 15px;
   color: var(--white);
 }
+
+/* ---------------------------------------------------------------------------
+   Authentication page
+   ---------------------------------------------------------------------------
+   The sign-in screen used to be hardcoded to lime/yellow, so it stayed green
+   whichever palette admin had selected. These classes drive it from the same
+   --accent tokens as the rest of the site.
+
+   Two different tokens on purpose:
+     * --accent      on the dark right-hand panel, where a bright hue reads
+     * --accent-dark for text and links on the white form, where the bright
+                     step of most palettes is unreadable
+   That split is what keeps the page legible when the accent is a pale colour.
+   --------------------------------------------------------------------------- */
+
+/* Links and emphasis on the white form */
+.auth-accent-text {
+  color: var(--accent-dark, #6c8704);
+  text-decoration-color: color-mix(in srgb, var(--accent, #bee304) 60%, transparent);
+}
+.auth-accent-text:hover {
+  color: color-mix(in srgb, var(--accent-dark, #6c8704) 80%, #000000);
+}
+
+/* Emphasis on the dark panel */
+.auth-accent-bright {
+  color: var(--accent, #bee304);
+}
+
+.auth-accent-surface {
+  background: var(--accent, #bee304);
+  color: var(--on-accent, #0a0a0a);
+}
+
+.auth-accent-gradient {
+  background: linear-gradient(135deg, var(--accent, #bee304), var(--accent-dark, #6c8704));
+  color: var(--on-accent, #0a0a0a);
+}
+
+/* Inputs: a neutral resting border, accent only on focus, so the form is not
+   a wall of brand colour. */
+.auth-field {
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.auth-field:focus {
+  outline: none;
+  border-color: var(--accent, #bee304);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent, #bee304) 25%, transparent);
+}
+
+/* Native controls follow the palette without needing a custom control. */
+.auth-check {
+  accent-color: var(--accent, #bee304);
+}
+.auth-check:focus-visible {
+  outline: 2px solid var(--accent, #bee304);
+  outline-offset: 2px;
+}
+
+.auth-cta {
+  background: linear-gradient(90deg, var(--accent, #bee304), var(--accent-dark, #6c8704));
+  color: var(--on-accent, #0a0a0a);
+  border: 2px solid color-mix(in srgb, var(--accent, #bee304) 70%, #ffffff);
+  box-shadow: 0 12px 28px -12px color-mix(in srgb, var(--accent, #bee304) 70%, transparent);
+}
+.auth-cta:hover:not(:disabled) {
+  background: linear-gradient(90deg, var(--accent-dark, #6c8704), var(--accent, #bee304));
+  box-shadow: 0 18px 34px -12px color-mix(in srgb, var(--accent, #bee304) 80%, transparent);
+}
+
+/* Decorative shapes on the dark panel. Opacity is carried here rather than in
+   a utility class so the colour and its transparency stay together. */
+.auth-blob-strong { background: color-mix(in srgb, var(--accent, #bee304) 100%, transparent); }
+.auth-blob-soft { background: color-mix(in srgb, var(--accent-soft, #e8f7a0) 100%, transparent); }
+
+.auth-bottom-bar {
+  background: linear-gradient(
+    90deg,
+    var(--accent, #bee304),
+    var(--accent-soft, #e8f7a0),
+    var(--accent, #bee304)
+  );
+}
