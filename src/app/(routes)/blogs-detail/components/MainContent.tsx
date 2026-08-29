@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { sanitizeHtml } from "@/helper/sanitize";
 
 // interface Exercise {
 //   name: string;
@@ -64,8 +65,8 @@ const MainContent: React.FC<MainContentProps> = ({
   return (
     <div className="max-w-4xl" >
       <div
-        className="prose prose-lg prose-invert mb-12"
-        dangerouslySetInnerHTML={{ __html: content }}
+        className="prose prose-lg max-w-none mb-12"
+        dangerouslySetInnerHTML={{ __html: sanitizeHtml(content) }}
       />
 
 

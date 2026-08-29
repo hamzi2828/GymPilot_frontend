@@ -8,8 +8,27 @@ import Link from "next/link";
 const Footer = () => {
   // Logo and business name come from admin settings rather than a hardcoded
   // asset, so rebranding needs no code change.
-  const { logoUrl, footerLogoUrl, siteName } = useSiteSettings();
+  const {
+    logoUrl,
+    footerLogoUrl,
+    siteName,
+    facebookUrl,
+    instagramUrl,
+    youtubeUrl,
+    twitterUrl,
+    tiktokUrl,
+  } = useSiteSettings();
   const brandLogo = footerLogoUrl || logoUrl;
+
+  // Only profiles the admin has actually filled in get a link — an unset
+  // network is omitted rather than pointing at the platform's homepage.
+  const socials = [
+    { label: "Instagram", href: instagramUrl, icon: "fab fa-instagram" },
+    { label: "Facebook", href: facebookUrl, icon: "fab fa-facebook" },
+    { label: "YouTube", href: youtubeUrl, icon: "fab fa-youtube" },
+    { label: "X", href: twitterUrl, icon: "fab fa-x-twitter" },
+    { label: "TikTok", href: tiktokUrl, icon: "fab fa-tiktok" },
+  ].filter((s): s is { label: string; href: string; icon: string } => !!s.href?.trim());
 
   return (
   <footer className="footer-main">
@@ -65,7 +84,7 @@ const Footer = () => {
               <nav className="footer-nav-links">
                 <Link href="/packages" className="footer-nav-link">Packages</Link>
                 <Link href="/classes" className="footer-nav-link">Our Classes</Link>
-                <Link href="/classdetail" className="footer-nav-link">Class Details</Link>
+                <Link href="/trainers" className="footer-nav-link">Our Trainers</Link>
               </nav>
             </div>
 
@@ -95,18 +114,25 @@ const Footer = () => {
             <div className="footer-links-column footer-social-column">
               <h4 className="footer-column-heading">Follow Us</h4>
               <nav className="footer-nav-links">
-                <a href="https://www.instagram.com/" target="_blank" rel="noopener noreferrer" className="footer-social-link" aria-label="Instagram">
-                  <i className="fab fa-instagram"></i>
-                  <span>Instagram</span>
-                </a>
-                <a href="https://www.facebook.com/" target="_blank" rel="noopener noreferrer" className="footer-social-link" aria-label="Facebook">
-                  <i className="fab fa-facebook"></i>
-                  <span>Facebook</span>
-                </a>
-                <a href="https://www.youtube.com/" target="_blank" rel="noopener noreferrer" className="footer-social-link" aria-label="YouTube">
-                  <i className="fab fa-youtube"></i>
-                  <span>YouTube</span>
-                </a>
+                {socials.length > 0 ? (
+                  socials.map((s) => (
+                    <a
+                      key={s.label}
+                      href={s.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="footer-social-link"
+                      aria-label={s.label}
+                    >
+                      <i className={s.icon} aria-hidden="true"></i>
+                      <span>{s.label}</span>
+                    </a>
+                  ))
+                ) : (
+                  <Link href="/contact-us" className="footer-nav-link">
+                    Get in touch
+                  </Link>
+                )}
               </nav>
             </div>
           </div>

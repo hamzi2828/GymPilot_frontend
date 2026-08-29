@@ -198,7 +198,7 @@ const GymfolioClass: React.FC<GymfolioClassProps> = ({ gymClass }) => {
             // Thumbnail view
             <>
               <Image
-                src={gymClass.videoPoster || gymClass.thumbnail || "/images/hero.svg"}
+                src={gymClass.videoPoster || gymClass.thumbnail || "/images/hero.webp"}
                 alt={`${gymClass.name} preview`}
                 fill
                 className="object-cover"

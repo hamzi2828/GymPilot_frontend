@@ -4,8 +4,12 @@ import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import '@fortawesome/fontawesome-free/css/all.css';
 import { contactService, ContactFormData, ContactValidationErrors } from "./services/contactService";
+import { useSiteSettings } from "@/components/ThemeProvider";
 
 const ContactUsPage = () => {
+  // Phone and address come from admin settings, so they stay correct after a move.
+  const { mobileNumber, address } = useSiteSettings();
+
   const [formData, setFormData] = useState<ContactFormData>({
     fullName: '',
     emailAddress: '',
@@ -185,31 +189,43 @@ const ContactUsPage = () => {
                     </h1>
                     <div className="space-y-4 privacy-faq-subtitle">
                       <p>
-                        <strong>For Exchanges and Returns:</strong> Read our
-                        policy and apply for returns here:
-                        <Link href="#" className="text-blue-600 hover:underline">
-                          GYMWEAR RETURNS
+                        <strong>Memberships &amp; packages:</strong> Compare plans on
+                        the{" "}
+                        <Link href="/packages" className="underline hover:no-underline">
+                          packages page
                         </Link>
+                        , or ask us below and we&apos;ll help you pick one.
                       </p>
                       <p>
-                        <strong>For Wholesale Enquiries:</strong> Please use
-                        this form:
-                        <Link href="#" className="text-blue-600 hover:underline">
-                          GYMWEAR WHOLESALE
+                        <strong>Classes &amp; timetable:</strong> Browse the full
+                        schedule under{" "}
+                        <Link href="/classes" className="underline hover:no-underline">
+                          classes
                         </Link>
+                        .
                       </p>
                       <p>
-                        <strong>For Other Queries:</strong> Email us at
-                        support@gymwear.com
+                        <strong>Personal training:</strong> Tell us your goal and we&apos;ll
+                        match you with a{" "}
+                        <Link href="/trainers" className="underline hover:no-underline">
+                          coach
+                        </Link>
+                        .
                       </p>
-                      <p>
-                        <strong>Live Chat:</strong> Available 9 AM to 6 PM Dubai
-                        Time (GST), Monday to Friday
-                      </p>
-                      <p>
-                        We typically reply within 24-48 hours on email. We
-                        appreciate your patience.
-                      </p>
+                      {mobileNumber && (
+                        <p>
+                          <strong>Call us:</strong>{" "}
+                          <a href={`tel:${mobileNumber.replace(/\s+/g, "")}`} className="underline hover:no-underline">
+                            {mobileNumber}
+                          </a>
+                        </p>
+                      )}
+                      {address && (
+                        <p>
+                          <strong>Visit us:</strong> {address}
+                        </p>
+                      )}
+                      <p>We reply to every message within one working day.</p>
                     </div>
                   </header>
 
@@ -231,7 +247,7 @@ const ContactUsPage = () => {
                             onClick={() => handleCategoryChange(category.value)}
                             className={`px-3 py-2 text-sm rounded-lg border transition-colors ${
                               formData.category === category.value
-                                ? 'bg-blue-100 border-blue-300 text-blue-800'
+                                ? 'bg-accent-soft border-accent text-neutral-900'
                                 : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
                             }`}
                           >

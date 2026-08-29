@@ -1,4 +1,5 @@
 import type { Config } from "tailwindcss";
+import typography from "@tailwindcss/typography";
 
 export default {
   content: [
@@ -44,5 +45,7 @@ export default {
       },
     },
   },
-  plugins: [],
+  // Blog article bodies are raw HTML from the editor, so `prose` is what gives
+  // their headings, lists and paragraphs any styling at all.
+  plugins: [typography],
 } satisfies Config;

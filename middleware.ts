@@ -12,20 +12,25 @@ export function middleware(req: NextRequest) {
   const token = req.cookies.get('auth_token')?.value;
   const role = req.cookies.get('auth_role')?.value;
 
+  // Send the visitor back to where they were headed once they sign in.
+  const signInUrl = () => {
+    const url = req.nextUrl.clone();
+    url.pathname = '/authentication';
+    url.search = '';
+    url.searchParams.set('redirect', pathname + req.nextUrl.search);
+    return url;
+  };
+
   // User-detail requires authentication only
   if (isUserDetail) {
     if (token) return NextResponse.next();
-    const url = req.nextUrl.clone();
-    url.pathname = '/authentication';
-    return NextResponse.redirect(url);
+    return NextResponse.redirect(signInUrl());
   }
 
   // Admin requires authentication + admin role
   if (isAdmin) {
     if (!token) {
-      const url = req.nextUrl.clone();
-      url.pathname = '/authentication';
-      return NextResponse.redirect(url);
+      return NextResponse.redirect(signInUrl());
     }
     if (role !== 'admin') {
       const url = req.nextUrl.clone();

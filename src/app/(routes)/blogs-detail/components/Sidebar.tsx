@@ -96,7 +96,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       id: "2",
       title: "Nutrition for Strength Training",
       slug: "nutrition-strength-training",
-      thumbnail: "/images/gym-blog-2.svg",
+      thumbnail: "/images/gym-blog-2.webp",
       readingTime: "8 min read",
       views: 1456
     },

@@ -49,12 +49,7 @@ const GymTrainersSection = () => {
 
           <div className="lg:w-[747px] lg:flex-shrink-0">
             <p className="gymfolio7-dark-gray-text gymfolio7-font-inter gymfolio3-description-text text-base leading-6">
-              Lorem ipsum dolor sit amet, consectetuer adipiscing elit. Aenean
-              commodo ligula eget dolor. Aenean massa. Cum sociis natoque
-              penatibus et magnis dis parturient montes, nascetur ridiculus mus.
-              Donec quam felis, ultricies nec, pellentesque eu, pretium quis,
-              sem. Nulla consequat massa quis enim. Donec pede justo, fringilla
-              vel, aliquet nec, vulputate eget, arcu.
+              Every coach on the floor is certified, insured and has come up through the same programmes they now teach. Book an intro session and you will be paired with the one whose speciality matches what you are training for.
             </p>
           </div>
         </div>

@@ -16,6 +16,16 @@ type SiteSettings = {
   footerLogoUrl: string;
   footerLogoWidth: number;
   footerLogoHeight: number;
+  // Contact details and social profiles, so the footer and contact page show
+  // the real business rather than hardcoded placeholders. Empty string means
+  // "not configured" — callers hide the element rather than linking nowhere.
+  mobileNumber: string;
+  address: string;
+  facebookUrl: string;
+  instagramUrl: string;
+  youtubeUrl: string;
+  twitterUrl: string;
+  tiktokUrl: string;
 };
 
 const DEFAULT_LOGO = "/images/logo.png";
@@ -29,6 +39,13 @@ const DEFAULTS: SiteSettings = {
   footerLogoUrl: "",
   footerLogoWidth: 120,
   footerLogoHeight: 40,
+  mobileNumber: "",
+  address: "",
+  facebookUrl: "",
+  instagramUrl: "",
+  youtubeUrl: "",
+  twitterUrl: "",
+  tiktokUrl: "",
 };
 
 const SiteSettingsContext = createContext<SiteSettings>(DEFAULTS);
@@ -111,6 +128,13 @@ export default function ThemeProvider({ children }: { children: React.ReactNode 
           footerLogoUrl: d.footerLogoUrl || "",
           footerLogoWidth: Number(d.footerLogoWidth) || DEFAULTS.footerLogoWidth,
           footerLogoHeight: Number(d.footerLogoHeight) || DEFAULTS.footerLogoHeight,
+          mobileNumber: d.mobileNumber || "",
+          address: d.address || "",
+          facebookUrl: d.facebookUrl || "",
+          instagramUrl: d.instagramUrl || "",
+          youtubeUrl: d.youtubeUrl || "",
+          twitterUrl: d.twitterUrl || "",
+          tiktokUrl: d.tiktokUrl || "",
         });
       } catch {
         // Offline or API down — CSS defaults in globals.css still apply.

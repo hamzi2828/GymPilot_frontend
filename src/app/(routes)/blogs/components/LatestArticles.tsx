@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { blogService, type BlogData } from "../services/blogService";
+import { excerptOf } from "@/helper/sanitize";
 
 const LatestArticles: React.FC = () => {
   const [blogs, setBlogs] = useState<BlogData[]>([]);
@@ -81,12 +82,9 @@ const LatestArticles: React.FC = () => {
                       <h3 className="font-semibold text-sm mb-2 group-hover:gym-blog-custom-text-green transition-colors line-clamp-2">
                         {blog.title}
                       </h3>
-                      <div
-                        className="text-gray-400 text-sm mb-3 line-clamp-2"
-                        dangerouslySetInnerHTML={{
-                          __html: blog.content?.replace(/<[^>]*>/g, '').substring(0, 100) + '...'
-                        }}
-                      />
+                      <p className="text-gray-400 text-sm mb-3 line-clamp-2">
+                        {excerptOf(blog.content, 100)}
+                      </p>
                       <div className="flex items-center justify-between text-xs text-gray-500">
                         <span>{blogService.estimateReadingTime(blog.content)}</span>
                         <span>{blogService.formatTimeAgo(blog.createdAt)}</span>

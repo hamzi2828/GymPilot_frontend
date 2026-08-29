@@ -23,12 +23,11 @@ const GymAboutSection = () => {
             </header>
 
             <p className="gymfolio3-description-text text-gray-600 text-sm md:text-base leading-relaxed">
-              Lorem ipsum dolor sit amet, consectetuer adipiscing elit. Aenean
-              commodo ligula eget dolor. Aenean massa. Cum sociis natoque
-              penatibus et magnis dis parturient montes, nascetur ridiculus mus.
-              Donec quam felis, ultricies nec, pellentesque eu, pretium quis,
-              sem. Nulla consequat massa quis enim. Donec pede justo, fringilla
-              vel, aliquet nec, vulputate eget, arcu.
+              A full strength and conditioning floor, a dedicated studio for
+              group classes, and coaches who actually watch your form. Whether
+              you are lifting for the first time or chasing a personal best, you
+              get a plan built around your goal, not a generic programme handed
+              to everyone who walks in.
             </p>
 
             <ul className="space-y-2">
@@ -83,12 +82,11 @@ const GymAboutSection = () => {
                 Body&apos;s of & Strength
               </h2>
               <p className="gymfolio3-description-text text-gray-600 text-sm md:text-base leading-relaxed">
-                Lorem ipsum dolor sit amet, consectetuer adipiscing elit. Aenean
-                commodo ligula eget dolor. Aenean massa. Cum sociis natoque
-                penatibus et magnis dis parturient montes, nascetur ridiculus
-                mus. Donec quam felis, ultricies nec, pellentesque eu, pretium
-                quis, sem. Nulla consequat massa quis enim. Donec pede justo,
-                fringilla vel, aliquet nec, vulputate eget, arcu.
+                Strength work is the fastest route to a body that performs as
+                well as it looks. Our coaches build progressive lifting blocks
+                around squat, hinge, push and pull, then track your numbers week
+                to week so the progress is something you can see rather than
+                something you hope for.
               </p>
             </header>
 

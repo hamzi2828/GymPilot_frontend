@@ -200,18 +200,18 @@ const UserProfilePageContent: React.FC = () => {
 
   return (
     <main className="pt-20 bg-white">
+      {/* Maps this page's `primary` utilities onto the site-wide accent token,
+          so the member area follows whichever palette admin has selected
+          instead of pinning itself to orange. */}
       <style jsx global>{`
-        :root {
-          --color-primary: #ff6b2c;
-        }
         .text-primary {
-          color: var(--color-primary);
+          color: var(--accent, #ff6b2c);
         }
         .bg-primary {
-          background-color: var(--color-primary);
+          background-color: var(--accent, #ff6b2c);
         }
         .border-primary {
-          border-color: var(--color-primary);
+          border-color: var(--accent, #ff6b2c);
         }
       `}</style>
 

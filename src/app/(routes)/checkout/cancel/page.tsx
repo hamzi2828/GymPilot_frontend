@@ -23,7 +23,7 @@ export default function CheckoutCancelPage() {
 
           {/* Content */}
           <div className="px-6 py-8">
-            <div className="bg-blue-50 rounded-lg p-4 mb-6">
+            <div className="bg-accent-soft rounded-lg p-4 mb-6">
               <h3 className="font-semibold text-gray-900 mb-2">No worries!</h3>
               <p className="text-sm text-gray-600">
                 You can browse our packages and subscribe anytime you&apos;re ready.
@@ -52,7 +52,7 @@ export default function CheckoutCancelPage() {
             <div className="mt-8 space-y-3">
               <Link
                 href="/packages"
-                className="block w-full bg-blue-600 text-white text-center rounded-lg px-4 py-3 hover:bg-blue-700 transition-colors"
+                className="block w-full btn-accent text-center rounded-lg px-4 py-3"
               >
                 <i className="fas fa-boxes mr-2"></i>
                 View All Packages
@@ -73,15 +73,15 @@ export default function CheckoutCancelPage() {
               </p>
               <div className="space-y-2">
                 <a
-                  href="mailto:support@gymwear.com"
-                  className="flex items-center text-sm text-blue-600 hover:underline"
+                  href="/contact-us"
+                  className="flex items-center text-sm text-accent hover:underline"
                 >
                   <i className="fas fa-envelope mr-2"></i>
-                  support@gymwear.com
+                  Contact support
                 </a>
                 <a
                   href="tel:+1234567890"
-                  className="flex items-center text-sm text-blue-600 hover:underline"
+                  className="flex items-center text-sm text-accent hover:underline"
                 >
                   <i className="fas fa-phone mr-2"></i>
                   +1 (234) 567-890

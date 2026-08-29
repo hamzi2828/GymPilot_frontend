@@ -56,8 +56,7 @@ const GymfolioClass: React.FC = () => {
           </h2>
         </div>
         <p className="GymfolioAllClasses-description text-base leading-6 text-[#4d4d51] max-w-[747px]">
-          Lorem ipsum dolor sit amet, consectetuer adipiscing elit. Aenean commodo ligula eget dolor. Aenean massa.
-          Cum sociis natoque penatibus et magnis dis parturient.
+          Classes run from sunrise to late evening and are capped so nobody trains unwatched. Strength, conditioning, mobility and recovery sessions, each with a scaled option so beginners and regulars can share the same floor.
         </p>
       </header>
 

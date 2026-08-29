@@ -13,7 +13,7 @@ const FALLBACK_SLIDES: HeroSlide[] = [
     title: "Train Hard. Feel Unstoppable.",
     description:
       "State-of-the-art equipment, expert coaching and a community that shows up. Your first session is on us.",
-    imageUrl: "/images/hero.svg",
+    imageUrl: "/images/hero.webp",
     buttonText: "View Packages",
     buttonLink: "/packages",
     secondButtonText: "Browse Classes",
@@ -30,7 +30,7 @@ const FALLBACK_SLIDES: HeroSlide[] = [
     title: "Coaching Built Around You",
     description:
       "Work one-to-one with certified trainers who tailor every session to your goals, your pace and your schedule.",
-    imageUrl: "/images/gym-large.svg",
+    imageUrl: "/images/gym-large.webp",
     buttonText: "Meet the Trainers",
     buttonLink: "/trainers",
     secondButtonText: "Get in Touch",
@@ -47,7 +47,7 @@ const FALLBACK_SLIDES: HeroSlide[] = [
 // Slides stored by the CMS use backend-relative upload paths; bundled assets in
 // /public must be served by Next, not the API host.
 const resolveSlideImage = (imageUrl: string): string => {
-  if (!imageUrl) return "/images/hero.svg";
+  if (!imageUrl) return "/images/hero.webp";
   if (/^https?:\/\//i.test(imageUrl)) return imageUrl;
   if (imageUrl.startsWith("/uploads")) {
     return `${process.env.NEXT_PUBLIC_BACKEND_URL ?? ""}${imageUrl}`;

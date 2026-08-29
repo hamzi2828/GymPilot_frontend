@@ -115,7 +115,7 @@ const BlogDetailContent = () => {
       {/* Hero Section */}
       <HeroSection
         title={blogData.title}
-        backgroundImage={blogData.image || "/images/hero.svg"}
+        backgroundImage={blogData.image || "/images/hero.webp"}
         category={blogData.categoryId || { name: "Article" }}
         author={blogData.author || { name: "Unknown", avatar: "/images/gym-1.svg" }}
         readingTime={blogDetailService.estimateReadingTime(blogData.content)}

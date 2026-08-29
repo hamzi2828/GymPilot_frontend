@@ -161,7 +161,7 @@ const CheckoutForm: React.FC<CheckoutFormProps> = ({ packageData, onSubmitChange
             placeholder="Enter your email"
             value={shippingData.email}
             onChange={(e) => updateShippingData('email', e.target.value)}
-            className={`checkout-input w-full px-4 py-3 bg-white border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 ${
+            className={`checkout-input w-full px-4 py-3 bg-white border rounded-lg shadow-sm input-accent transition-all duration-200 ${
               errors.email ? 'border-red-500' : 'border-gray-300'
             }`}
             required
@@ -180,7 +180,7 @@ const CheckoutForm: React.FC<CheckoutFormProps> = ({ packageData, onSubmitChange
               <select
                 value={shippingData.country}
                 onChange={(e) => updateShippingData('country', e.target.value)}
-                className={`checkout-input w-full px-4 py-3 bg-white border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none transition-all duration-200 ${
+                className={`checkout-input w-full px-4 py-3 bg-white border rounded-lg shadow-sm input-accent appearance-none transition-all duration-200 ${
                   errors.country ? 'border-red-500' : 'border-gray-300'
                 }`}
                 required
@@ -213,7 +213,7 @@ const CheckoutForm: React.FC<CheckoutFormProps> = ({ packageData, onSubmitChange
                 placeholder="First Name"
                 value={shippingData.firstName}
                 onChange={(e) => updateShippingData('firstName', e.target.value)}
-                className={`checkout-input w-full px-4 py-3 bg-white border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 ${
+                className={`checkout-input w-full px-4 py-3 bg-white border rounded-lg shadow-sm input-accent transition-all duration-200 ${
                   errors.firstName ? 'border-red-500' : 'border-gray-300'
                 }`}
                 required
@@ -235,7 +235,7 @@ const CheckoutForm: React.FC<CheckoutFormProps> = ({ packageData, onSubmitChange
                 placeholder="Last Name"
                 value={shippingData.lastName}
                 onChange={(e) => updateShippingData('lastName', e.target.value)}
-                className={`checkout-input w-full px-4 py-3 bg-white border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 ${
+                className={`checkout-input w-full px-4 py-3 bg-white border rounded-lg shadow-sm input-accent transition-all duration-200 ${
                   errors.lastName ? 'border-red-500' : 'border-gray-300'
                 }`}
                 required
@@ -252,7 +252,7 @@ const CheckoutForm: React.FC<CheckoutFormProps> = ({ packageData, onSubmitChange
               placeholder="+92 987382 8967"
               value={shippingData.phoneNumber}
               onChange={(e) => updateShippingData('phoneNumber', e.target.value)}
-              className={`checkout-input w-full px-4 py-3 bg-white border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 ${
+              className={`checkout-input w-full px-4 py-3 bg-white border rounded-lg shadow-sm input-accent transition-all duration-200 ${
                 errors.phoneNumber ? 'border-red-500' : 'border-gray-300'
               }`}
               required

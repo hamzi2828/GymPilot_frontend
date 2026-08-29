@@ -37,7 +37,7 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
             <div className="text-gray-500 mb-4">
               No package selected
             </div>
-            <a href="/packages" className="text-blue-600 hover:text-blue-800">
+            <a href="/packages" className="text-accent">
               Browse packages
             </a>
           </div>
@@ -128,7 +128,7 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
                 <div className="flex items-center justify-between">
                   <div className="flex items-start space-x-3">
                     <div className="flex items-center mt-1">
-                      <div className="w-4 h-4 rounded-full border-2 border-blue-600 bg-blue-600 flex items-center justify-center">
+                      <div className="w-4 h-4 rounded-full border-2 border-accent bg-accent-solid flex items-center justify-center">
                         <div className="w-2 h-2 rounded-full bg-white"></div>
                       </div>
                     </div>
@@ -148,8 +148,8 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
                 </div>
 
                 {/* Stripe Information */}
-                <div className="bg-blue-50 p-4 rounded-lg">
-                  <p className="text-sm text-blue-800">
+                <div className="bg-accent-soft p-4 rounded-lg">
+                  <p className="text-sm text-neutral-700">
                     <i className="fas fa-info-circle mr-2"></i>
                     You will be securely redirected to Stripe to complete your payment.
                     Your card details are never stored on our servers.

@@ -1,131 +1,112 @@
 "use client";
-import React from "react";
+
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import "@fortawesome/fontawesome-free/css/all.css";
 import Image from "next/image";
+import { blogService, type BlogData } from "../../blogs/services/blogService";
+import { excerptOf } from "@/helper/sanitize";
+
+/** Shown while the request is in flight, so the section doesn't pop in. */
+const CARD_SKELETONS = [0, 1, 2];
 
 const BlogsSection: React.FC = () => {
+  const [blogs, setBlogs] = useState<BlogData[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const latest = await blogService.getLatestBlogs(3);
+        if (!cancelled) setBlogs(latest);
+      } catch {
+        // A failed blog fetch shouldn't blank the homepage — the section just
+        // hides itself below.
+        if (!cancelled) setBlogs([]);
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Nothing published yet: drop the section rather than show placeholder posts.
+  if (!isLoading && blogs.length === 0) return null;
+
   return (
-    <>
-      <section
-        id="blogs"
-        className="section7-teampy-16 md:py-20 px-4 md:px-8 lg:px-20 relative overflow-hidden-member "
-      >
-        <div className="section7-context">
-          <div className="section7-header">
-            <div className="section7-badge">
-              <div className="section7-icon"></div>
-              <div className="section7-text">Fitness Tips</div>
-            </div>
-            <p className="section7-read-for-been-update">
-              Stay Fit Stay Strong
-            </p>
+    <section
+      id="blogs"
+      className="section7-teampy-16 md:py-20 px-4 md:px-8 lg:px-20 relative overflow-hidden-member"
+    >
+      <div className="section7-context">
+        <div className="section7-header">
+          <div className="section7-badge">
+            <div className="section7-icon"></div>
+            <div className="section7-text">Fitness Tips</div>
           </div>
+          <p className="section7-read-for-been-update">Stay Fit Stay Strong</p>
         </div>
+      </div>
 
-        <div className="section7-container">
-          <div className="section7-content">
-            {/* Card 1 */}
-            <div className="section7-blog-post-card">
-              <Link href="/blogs-detail" className="relative flex flex-col h-full">
-                <div className="section7-content2">
-                  <div className="section7-heading-and-subheading">
-                    <div className="section7-heading-and-text">
-                      <div className="section7-heading-and-icon">
-                        <div className="section7-heading">
-                          Top 10 Gym Wear Essentials
+      <div className="section7-container">
+        <div className="section7-content">
+          {isLoading
+            ? CARD_SKELETONS.map((i) => (
+                <div
+                  key={i}
+                  className={i === 0 ? "section7-blog-post-card" : "section7-blog-post-card2"}
+                  aria-hidden="true"
+                >
+                  <div className="h-full w-full animate-pulse bg-neutral-200/60" />
+                </div>
+              ))
+            : blogs.map((blog, i) => (
+                <div
+                  key={blog._id}
+                  className={i === 0 ? "section7-blog-post-card" : "section7-blog-post-card2"}
+                >
+                  <Link
+                    href={`/blogs-detail?slug=${encodeURIComponent(blog.slug)}`}
+                    className="relative flex flex-col h-full"
+                  >
+                    <div className="section7-content2">
+                      <div className="section7-heading-and-subheading">
+                        <div className="section7-heading-and-text">
+                          <div className="section7-heading-and-icon">
+                            <div className="section7-heading">{blog.title}</div>
+                            <div className="section7-icon-wrap">
+                              <i
+                                className="fas fa-up-right-from-square section7-arrow-up-right"
+                                aria-hidden="true"
+                              ></i>
+                            </div>
+                          </div>
+                          <div className="section7-supporting-text">
+                            {blog.excerpt || excerptOf(blog.content, 160)}
+                          </div>
                         </div>
-                        <div className="section7-icon-wrap">
-                          <i className="fas fa-up-right-from-square section7-arrow-up-right"></i>
-                        </div>
-                      </div>
-                      <div className="section7-supporting-text">
-                        Discover the must-have workout clothing that combines
-                        style, comfort, and performance for your fitness
-                        journey.
                       </div>
                     </div>
-                  </div>
+                    <Image
+                      className={i === 0 ? "section7-image" : "section7-image2"}
+                      src={blog.thumbnail || blog.image || "/images/gym-blog-1.svg"}
+                      alt={blog.title}
+                      fill
+                      sizes="(max-width: 768px) 100vw, 50vw"
+                      // Only the lead card is above the fold on most viewports.
+                      priority={i === 0}
+                    />
+                  </Link>
                 </div>
-                <Image
-                  className="section7-image"
-                  src="/images/hero.svg"
-                  alt="Gym wear essentials displayed"
-                  fill
-                  sizes="(max-width: 768px) 100vw, 50vw"
-                  priority
-                />
-              </Link>
-            </div>
-
-            {/* Card 2 */}
-            <div className="section7-blog-post-card2">
-              <Link href="/blogs-detail" className="relative flex flex-col h-full">
-                <div className="section7-content2">
-                  <div className="section7-heading-and-subheading">
-                    <div className="section7-heading-and-text">
-                      <div className="section7-heading-and-icon">
-                        <div className="section7-heading">
-                          Perfect Home Workout Setup
-                        </div>
-                        <div className="section7-icon-wrap">
-                          <i className="fas fa-up-right-from-square section7-arrow-up-right"></i>
-                        </div>
-                      </div>
-                      <div className="section7-supporting-text">
-                        Transform your space into a functional fitness zone with
-                        these expert tips and equipment recommendations.
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                <Image
-                  className="section7-image2"
-                  src="/images/gym-large.svg"
-                  alt="Home gym setup with equipment"
-                  fill
-                  sizes="(max-width: 768px) 100vw, 50vw"
-                  priority
-                />
-              </Link>
-            </div>
-
-            {/* Card 3 */}
-            <div className="section7-blog-post-card2">
-              <Link href="/blogs-detail" className="relative flex flex-col h-full">
-                <div className="section7-content2">
-                  <div className="section7-heading-and-subheading">
-                    <div className="section7-heading-and-text">
-                      <div className="section7-heading-and-icon">
-                        <div className="section7-heading">
-                          Pre & Post Workout Nutrition
-                        </div>
-                        <div className="section7-icon-wrap">
-                          <i className="fas fa-up-right-from-square section7-arrow-up-right"></i>
-                        </div>
-                      </div>
-                      <div className="section7-supporting-text">
-                        Maximize your workout results with proper nutrition
-                        timing and meal planning strategies for optimal
-                        performance.
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                <Image
-                  className="section7-image2"
-                  src="/images/hero.svg"
-                  alt="Healthy nutrition foods for fitness"
-                  fill
-                  sizes="(max-width: 768px) 100vw, 50vw"
-                  priority
-                />
-              </Link>
-            </div>
-          </div>
+              ))}
         </div>
-      </section>
-    </>
+      </div>
+    </section>
   );
 };
 

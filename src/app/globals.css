@@ -4991,3 +4991,53 @@ html {
 .admin-scroll *::-webkit-scrollbar-thumb:hover {
   background: #d4d4d4;
 }
+
+/* ---------------------------------------------------------------------------
+   Theme-driven utilities.
+
+   The checkout funnel and account pages previously hardcoded Tailwind blues,
+   so they ignored the palette chosen in admin settings and read as a different
+   site mid-purchase. These resolve through the same custom properties that
+   ThemeProvider sets, so they recolour with everything else.
+   --------------------------------------------------------------------------- */
+
+.btn-accent {
+  background-color: var(--accent, #ff6b2c);
+  color: var(--on-accent, #0e0e10);
+  transition: background-color 0.2s ease, opacity 0.2s ease;
+}
+.btn-accent:hover {
+  background-color: var(--accent-dark, #c74e1b);
+}
+
+.text-accent {
+  color: var(--accent-dark, #c74e1b);
+}
+.text-accent:hover {
+  color: var(--accent, #ff6b2c);
+}
+
+.bg-accent-soft {
+  background-color: var(--surface-tint, #fff4ed);
+}
+
+.border-accent {
+  border-color: var(--accent, #ff6b2c);
+}
+
+.bg-accent-solid {
+  background-color: var(--accent, #ff6b2c);
+}
+
+/* Spinner track stays neutral; only the leading edge takes the accent. */
+.spinner-accent {
+  border-color: rgba(0, 0, 0, 0.1);
+  border-bottom-color: var(--accent, #ff6b2c);
+}
+
+/* Focus ring for themed form inputs. */
+.input-accent:focus {
+  outline: none;
+  border-color: transparent;
+  box-shadow: 0 0 0 2px var(--accent, #ff6b2c);
+}

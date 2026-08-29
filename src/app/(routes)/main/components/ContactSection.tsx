@@ -96,12 +96,7 @@ const ContactSection: React.FC = () => {
               </div>
 
               <p className="gymfolio8-dark-gray-text gymfolio8-font-poppins text-sm leading-6">
-                Lorem ipsum dolor sit amet, consectetuer adipiscing elit. Aenean
-                commodo ligula eget dolor. Aenean massa. Cum sociis natoque
-                penatibus et magnis dis parturient montes, nascetur ridiculus
-                mus. Donec quam felis, ultricies nec, pellentesque eu, pretium
-                quis, sem. Nulla consequat massa quis enim. Donec pede justo,
-                fringilla vel, aliquet nec, vulputate eget, arcu.
+                Tell us what you are training for and we will point you at the right membership, class or coach. No hard sell, and no obligation to sign up on the spot.
               </p>
             </header>
           </div>

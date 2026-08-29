@@ -7,9 +7,25 @@ import { RightSide } from "./components/RightSide";
 import { signUp, login } from "./service/authService";
 import { setToken, setRole } from "@/helper/helper";
 
+/**
+ * Only same-origin paths are honoured. Anything else — a protocol-relative
+ * `//evil.com`, an absolute URL, a non-path value — is discarded so the
+ * `?redirect=` param can't be used to bounce users off the site.
+ */
+const safeRedirect = (value: string | null): string | null => {
+  if (!value) return null;
+  if (!value.startsWith("/") || value.startsWith("//")) return null;
+  return value;
+};
+
 const AuthPage: React.FC = () => {
   const router = useRouter();
   const searchParams = useSearchParams();
+
+  // Where to land after a successful sign-in. Checkout sends buyers here when
+  // they aren't logged in, so dropping this param strands them on the homepage
+  // mid-purchase.
+  const redirectTo = safeRedirect(searchParams.get("redirect"));
 
   const [isSignUp, setIsSignUp] = useState(false);
   const [isForgot, setIsForgot] = useState(false);
@@ -48,7 +64,13 @@ const AuthPage: React.FC = () => {
   const updateMode = (mode: "signin" | "signup" | "forgot") => {
     setIsSignUp(mode === "signup");
     setIsForgot(mode === "forgot");
-    router.replace(`/authentication${mode === "signin" ? "" : `?mode=${mode}`}`);
+    // Carry `redirect` across mode switches, otherwise a buyer who taps
+    // "Create an account" loses the checkout they were sent here from.
+    const params = new URLSearchParams();
+    if (mode !== "signin") params.set("mode", mode);
+    if (redirectTo) params.set("redirect", redirectTo);
+    const qs = params.toString();
+    router.replace(`/authentication${qs ? `?${qs}` : ""}`);
     resetForm(false);
   };
 
@@ -126,8 +148,11 @@ const AuthPage: React.FC = () => {
             setRole(res.data.role);
           }
         } catch {}
-        alert("Signed in successfully");
-        router.replace("/");
+        // Admins go to the dashboard; everyone else resumes whatever they were
+        // doing (checkout, most often) or lands on the homepage.
+        const destination =
+          res?.data?.role === "admin" ? "/admin" : redirectTo || "/";
+        router.replace(destination);
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Request failed";

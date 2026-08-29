@@ -50,7 +50,7 @@ function SuccessContent() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600 mx-auto"></div>
+          <div className="animate-spin rounded-full h-16 w-16 spinner-accent border-b-2 mx-auto"></div>
           <p className="mt-4 text-gray-600">Verifying your payment...</p>
         </div>
       </div>
@@ -72,7 +72,7 @@ function SuccessContent() {
             <div className="mt-6 space-y-3">
               <Link
                 href="/packages"
-                className="block w-full bg-blue-600 text-white rounded-lg px-4 py-3 text-center hover:bg-blue-700 transition-colors"
+                className="block w-full btn-accent rounded-lg px-4 py-3 text-center"
               >
                 View Packages
               </Link>
@@ -131,7 +131,7 @@ function SuccessContent() {
             </div>
 
             {/* What's Next */}
-            <div className="bg-blue-50 rounded-lg p-4 mb-6">
+            <div className="bg-accent-soft rounded-lg p-4 mb-6">
               <h3 className="font-semibold text-gray-900 mb-2">What happens next?</h3>
               <ul className="text-sm text-gray-600 space-y-1">
                 <li>• You will receive a confirmation email shortly</li>
@@ -145,7 +145,7 @@ function SuccessContent() {
             <div className="flex flex-col sm:flex-row gap-3">
               <Link
                 href="/packages"
-                className="flex-1 bg-blue-600 text-white text-center rounded-lg px-4 py-3 hover:bg-blue-700 transition-colors"
+                className="flex-1 btn-accent text-center rounded-lg px-4 py-3"
               >
                 View All Packages
               </Link>
@@ -162,10 +162,10 @@ function SuccessContent() {
         {/* Contact Support */}
         <div className="mt-6 text-center text-gray-600">
           <p>
-            Need help? Contact our support team at{" "}
-            <a href="mailto:support@gymwear.com" className="text-blue-600 hover:underline">
-              support@gymwear.com
-            </a>
+            Need help with your membership?{" "}
+            <Link href="/contact-us" className="text-accent hover:underline">
+              Get in touch
+            </Link>
           </p>
         </div>
       </div>
@@ -178,7 +178,7 @@ export default function CheckoutSuccessPage() {
     <Suspense fallback={
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600 mx-auto"></div>
+          <div className="animate-spin rounded-full h-16 w-16 spinner-accent border-b-2 mx-auto"></div>
           <p className="mt-4 text-gray-600">Loading...</p>
         </div>
       </div>

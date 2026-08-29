@@ -6,7 +6,7 @@ const slide = {
   heading: "Transform Your Body",
   description:
     "Join our state-of-the-art fitness center and experience personalized training programs designed to help you achieve your fitness goals. Our expert trainers and modern equipment will guide you on your journey to a healthier, stronger you.",
-  bgImage: "/images/hero.svg",
+  bgImage: "/images/hero.webp",
   ariaLabel: "Fitness training background",
 };
 

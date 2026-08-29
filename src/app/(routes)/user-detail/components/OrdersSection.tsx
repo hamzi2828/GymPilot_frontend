@@ -122,7 +122,7 @@ export const OrdersSection: React.FC<OrdersSectionProps> = ({
                 Details
               </Link>
               {order.orderStatus === "delivered" && (
-                <Link href="/cart" className="px-3 py-2 bg-primary text-black rounded-lg text-sm hover:opacity-90">
+                <Link href="/packages" className="px-3 py-2 bg-primary text-black rounded-lg text-sm hover:opacity-90">
                   <i className="fas fa-redo mr-2" />
                   Reorder
                 </Link>

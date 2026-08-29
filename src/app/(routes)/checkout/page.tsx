@@ -28,9 +28,10 @@ const CheckoutPageContent = () => {
     const initCheckout = async () => {
       // Check if user is authenticated
       if (!isAuthenticated()) {
-        alert('Please login to continue with checkout');
         const redirectUrl = packageId ? `/checkout?packageId=${packageId}` : '/checkout';
-        router.push(`/authentication?redirect=${redirectUrl}`);
+        // Encoded, so the package id survives as part of the redirect value
+        // instead of being parsed as a second query param.
+        router.push(`/authentication?redirect=${encodeURIComponent(redirectUrl)}`);
         return;
       }
 

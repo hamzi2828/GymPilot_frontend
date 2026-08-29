@@ -161,9 +161,7 @@ const GymFolioClasses = () => {
 
           {/* Description */}
           <p className="text-gray-300   font-inter text-base lg:text-lg leading-relaxed max-w-3xl mx-auto">
-            Lorem ipsum dolor sit amet, consectetuer adipiscing elit. Aenean
-            commodo ligula eget dolor. Aenean massa. Cum sociis natoque
-            penatibus et magnis dis parturient.
+            Classes run from sunrise to late evening and are capped so nobody trains unwatched. Strength, conditioning, mobility and recovery sessions, each with a scaled option so beginners and regulars can share the same floor.
           </p>
         </header>
 

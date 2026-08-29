@@ -53,12 +53,11 @@ const WhyChooseUs: React.FC = () => {
           {/* Description */}
           <div className="flex-1 lg:max-w-2xl">
             <p className="gymfolio3-description-text text-base lg:text-lg leading-relaxed">
-              Lorem ipsum dolor sit amet, consectetuer adipiscing elit. Aenean
-              commodo ligula eget dolor. Aenean massa. Cum sociis natoque
-              penatibus et magnis dis parturient montes, nascetur ridiculus mus.
-              Donec quam felis, ultricies nec, pellentesque eu, pretium quis,
-              sem. Nulla consequat massa quis enim. Donec pede justo, fringilla
-              vel, aliquet nec, vulputate eget, arcu.
+              Everything here is built around one idea: that training should be
+              coached, measured and sustainable. Free weights and rigs that are
+              never queued three deep, classes capped so the coach can see every
+              athlete, and progress tracked so you always know what the next
+              session is for.
             </p>
           </div>
         </header>
@@ -174,7 +173,7 @@ const WhyChooseUs: React.FC = () => {
       Athletes
     </h3>
     <p className="gymfolio3-card-text text-sm lg:text-base leading-relaxed">
-      Lorem ipsum dolor sit amet, consectetuer adipiscing elit. Aenean commodo ligula eget dolor...
+      Sport-specific conditioning built around your season. Speed, power and recovery work programmed so you peak when it matters.
     </p>
   </div>
 </article>
@@ -203,7 +202,7 @@ const WhyChooseUs: React.FC = () => {
       High Performers
     </h3>
     <p className="gymfolio3-card-text text-sm lg:text-base leading-relaxed mb-6">
-      Lorem ipsum dolor sit amet, consectetuer adipiscing elit. Aenean commodo ligula eget dolor...
+      Early starts and late finishes, with programmes that survive a full calendar. Short, dense sessions that still move the numbers.
     </p>
   </div>
   <div
@@ -227,7 +226,7 @@ const WhyChooseUs: React.FC = () => {
       Award Winning
     </h3>
     <p className="gymfolio3-card-text text-sm lg:text-base leading-relaxed">
-      Lorem ipsum dolor sit amet, consectetuer adipiscing elit. Aenean commodo ligula eget dolor...
+      Coaches with national-level certifications and a decade on the floor between them. The credentials are on their profiles, not just the wall.
     </p>
   </div>
 </article>

@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { heroSectionService, FeaturedCategoryWithBlogs } from "../services/heroSectionService";
+import { excerptOf } from "@/helper/sanitize";
 
 const FeaturedStories: React.FC = () => {
   const [featuredCategories, setFeaturedCategories] = useState<FeaturedCategoryWithBlogs[]>([]);
@@ -54,10 +55,17 @@ const FeaturedStories: React.FC = () => {
         )}
 
 
-        {/* Display message if no data */}
         {!isLoading && featuredCategories.length === 0 && (
-          <div className="text-center py-8">
-            <p className="text-gray-300">No featured categories available. Check console for details.</p>
+          <div className="text-center py-12">
+            <p className="text-gray-300 mb-6">
+              No featured stories yet — we&apos;re working on them.
+            </p>
+            <Link
+              href="/classes"
+              className="inline-flex items-center gap-2 gym-blog-custom-bg-green text-black font-bold px-6 py-3 rounded-full hover:scale-105 transition-transform"
+            >
+              Browse our classes <i className="fas fa-arrow-right" aria-hidden="true"></i>
+            </Link>
           </div>
         )}
 
@@ -69,7 +77,7 @@ const FeaturedStories: React.FC = () => {
                 <Image
                   src={featuredCategories[0].bannerUrl ||
                        featuredCategories[0].thumbnailUrl ||
-                       "/images/gym-large.svg"}
+                       "/images/gym-large.webp"}
                   alt={featuredCategories[0].name}
                   fill
                   className="object-cover group-hover:scale-105 transition-transform duration-700"
@@ -191,12 +199,9 @@ const FeaturedStories: React.FC = () => {
                           <h3 className="font-semibold text-xl mb-3 group-hover:gym-blog-custom-text-green transition-colors line-clamp-2">
                             {blog.title}
                           </h3>
-                          <div
-                            className="text-gray-400 text-sm mb-4 line-clamp-3"
-                            dangerouslySetInnerHTML={{
-                              __html: blog.content?.replace(/<[^>]*>/g, '').substring(0, 150) + '...'
-                            }}
-                          />
+                          <p className="text-gray-400 text-sm mb-4 line-clamp-3">
+                            {excerptOf(blog.content, 150)}
+                          </p>
                           <div className="flex items-center justify-between">
                             <span className="text-xs text-gray-500">
                               {blog.views || 0} views
@@ -216,103 +221,6 @@ const FeaturedStories: React.FC = () => {
           </>
         )}
 
-        {/* Static Fallback Grid - Show when no data is available */}
-        {(!isLoading && featuredCategories.length === 0) && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            <Link href="/blogs-detail" className="block">
-              <article className="gym-blog-card-gradient rounded-xl overflow-hidden gym-blog-hover-lift transition-all duration-500 group">
-                <div className="relative h-48 overflow-hidden">
-                  <Image
-                    src="/images/gym-blog-3.svg"
-                    alt="Weight Loss Journey"
-                    fill
-                    className="object-cover group-hover:scale-110 transition-transform duration-500"
-                  />
-                  <div className="absolute top-4 left-4">
-                    <span className="bg-red-500 text-white px-3 py-1 rounded-full text-xs font-bold uppercase">
-                      Weight Loss
-                    </span>
-                  </div>
-                </div>
-                <div className="p-6">
-                  <h3 className="font-semibold text-xl mb-3 group-hover:gym-blog-custom-text-green transition-colors">
-                    Lost 50lbs in 6 Months
-                  </h3>
-                  <p className="text-gray-400 text-sm mb-4">
-                    Mark&apos;s incredible weight loss journey through consistent
-                    training and meal prep dedication.
-                  </p>
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-gray-500">5 min read</span>
-                    <i className="fas fa-arrow-up-right gym-blog-custom-text-green group-hover:transform group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform"></i>
-                  </div>
-                </div>
-              </article>
-            </Link>
-
-            <Link href="/blogs-detail" className="block">
-              <article className="gym-blog-card-gradient rounded-xl overflow-hidden gym-blog-hover-lift transition-all duration-500 group">
-                <div className="relative h-48 overflow-hidden">
-                  <Image
-                    src="/images/gym-blog-2.svg"
-                    alt="Strength Training"
-                    fill
-                    className="object-cover group-hover:scale-110 transition-transform duration-500"
-                  />
-                  <div className="absolute top-4 left-4">
-                    <span className="bg-blue-500 text-white px-3 py-1 rounded-full text-xs font-bold uppercase">
-                      Strength
-                    </span>
-                  </div>
-                </div>
-                <div className="p-6">
-                  <h3 className="font-semibold text-xl mb-3 group-hover:gym-blog-custom-text-green transition-colors">
-                    Deadlifting 400lbs at 55
-                  </h3>
-                  <p className="text-gray-400 text-sm mb-4">
-                    How Jessica proved that age is just a number by achieving her
-                    strength goals later in life.
-                  </p>
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-gray-500">6 min read</span>
-                    <i className="fas fa-arrow-up-right gym-blog-custom-text-green group-hover:transform group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform"></i>
-                  </div>
-                </div>
-              </article>
-            </Link>
-
-            <Link href="/blogs-detail" className="block">
-              <article className="gym-blog-card-gradient rounded-xl overflow-hidden gym-blog-hover-lift transition-all duration-500 group">
-                <div className="relative h-48 overflow-hidden">
-                  <Image
-                    src="/images/gym-blog-1.svg"
-                    alt="Marathon Training"
-                    fill
-                    className="object-cover group-hover:scale-110 transition-transform duration-500"
-                  />
-                  <div className="absolute top-4 left-4">
-                    <span className="bg-brand-500 text-white px-3 py-1 rounded-full text-xs font-bold uppercase">
-                      Endurance
-                    </span>
-                  </div>
-                </div>
-                <div className="p-6">
-                  <h3 className="font-semibold text-xl mb-3 group-hover:gym-blog-custom-text-green transition-colors">
-                    First Marathon at 40
-                  </h3>
-                  <p className="text-gray-400 text-sm mb-4">
-                    David&apos;s journey from casual jogger to marathon finisher in
-                    just 8 months of training.
-                  </p>
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-gray-500">7 min read</span>
-                    <i className="fas fa-arrow-up-right gym-blog-custom-text-green group-hover:transform group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform"></i>
-                  </div>
-                </div>
-              </article>
-            </Link>
-          </div>
-        )}
       </div>
     </section>
   );
