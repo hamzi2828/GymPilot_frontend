@@ -6,11 +6,12 @@ import "@fortawesome/fontawesome-free/css/all.css";
 import Image from "next/image";
 import { blogService, type BlogData } from "../../blogs/services/blogService";
 import { excerptOf } from "@/helper/sanitize";
+import { BlogsContent, DEFAULT_BLOGS } from "../services/homeService";
 
 /** Shown while the request is in flight, so the section doesn't pop in. */
 const CARD_SKELETONS = [0, 1, 2];
 
-const BlogsSection: React.FC = () => {
+const BlogsSection = ({ content = DEFAULT_BLOGS }: { content?: BlogsContent }) => {
   const [blogs, setBlogs] = useState<BlogData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -47,9 +48,9 @@ const BlogsSection: React.FC = () => {
         <div className="section7-header">
           <div className="section7-badge">
             <div className="section7-icon"></div>
-            <div className="section7-text">Fitness Tips</div>
+            <div className="section7-text">{content.badge}</div>
           </div>
-          <p className="section7-read-for-been-update">Stay Fit Stay Strong</p>
+          <p className="section7-read-for-been-update">{content.heading}</p>
         </div>
       </div>
 

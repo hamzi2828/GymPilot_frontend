@@ -1,6 +1,8 @@
 "use client";
 import React, { useState, FormEvent } from 'react';
 import { registrationService } from '../../packages/services/registrationService';
+import { ContactContent, DEFAULT_CONTACT } from '../services/homeService';
+import { AccentText, Reveal } from './SectionHeading';
 
 interface FormData {
   username: string;
@@ -8,7 +10,7 @@ interface FormData {
   email: string;
 }
 
-const ContactSection: React.FC = () => {
+const ContactSection = ({ content = DEFAULT_CONTACT }: { content?: ContactContent }) => {
   const [formData, setFormData] = useState<FormData>({
     username: '',
     phone: '',
@@ -77,37 +79,32 @@ const ContactSection: React.FC = () => {
       <div className=" mx-auto relative">
         <div className="grid lg:grid-cols-2 gap-8 lg:gap-32 items-center">
           {/* Left Side - Content */}
-          <div className="space-y-8 lg:space-y-16 lg:pr-8">
-            <header className="space-y-8">
-              <div className="space-y-4">
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full gymfolio8-green-dot"></div>
-                  <span className="gymfolio8-font-sora font-semibold text-sm gymfolio8-gray-text">
-                    Contact Form
-                  </span>
+          <Reveal className="lg:pr-8">
+            <div className="space-y-8 lg:space-y-16">
+              <header className="space-y-8">
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2">
+                    <span className="home-eyebrow-dot" aria-hidden="true"></span>
+                    <span className="home-eyebrow-label">{content.badge}</span>
+                  </div>
+
+                  <h2 className="home-section-title text-2xl sm:text-3xl lg:text-4xl text-black">
+                    <AccentText text={content.heading} />
+                  </h2>
                 </div>
 
-                <h1 className="gymfolio8-font-montserrat font-bold text-2xl sm:text-3xl lg:text-4xl leading-tight tracking-tight uppercase opacity-92">
-                  <span className="text-black">Believe in yourself be </span>
-                  <span className="gymfolio8-green-text">fit</span>
-                  <span className="text-black"> & </span>
-                  <span className="gymfolio8-green-text">healthier</span>
-                </h1>
-              </div>
-
-              <p className="gymfolio8-dark-gray-text gymfolio8-font-poppins text-sm leading-6">
-                Tell us what you are training for and we will point you at the right membership, class or coach. No hard sell, and no obligation to sign up on the spot.
-              </p>
-            </header>
-          </div>
+                <p className="home-section-description text-sm leading-6">{content.description}</p>
+              </header>
+            </div>
+          </Reveal>
 
           {/* Right Side - Form */}
-          <div className="lg:min-w-[520px] lg:ml-auto">
+          <Reveal delay={120} className="lg:min-w-[520px] lg:ml-auto">
             <div className="gymfolio8-form-container rounded-3xl p-8 lg:p-12">
               <form className="space-y-6" onSubmit={handleSubmit}>
                 <header className="mb-6">
                   <h2 className="gymfolio8-form-text gymfolio8-font-montserrat font-bold text-2xl lg:text-3xl leading-tight tracking-tight">
-                    Registration Form
+                    {content.formTitle}
                   </h2>
                 </header>
 
@@ -199,7 +196,7 @@ const ContactSection: React.FC = () => {
                   disabled={isSubmitting}
                   className="gymfolio8-contact-button w-full px-6 py-3 rounded-lg flex items-center justify-center gap-2 gymfolio8-font-manrope font-semibold text-sm leading-5 text-black"
                 >
-                  <span>{isSubmitting ? 'Submitting...' : 'Contact Us'}</span>
+                  <span>{isSubmitting ? 'Submitting...' : content.buttonText}</span>
                   {!isSubmitting && (
                     <svg
                       className="gymfolio8-arrow-icon w-6 h-6"
@@ -228,7 +225,7 @@ const ContactSection: React.FC = () => {
                 </button>
               </form>
             </div>
-          </div>
+          </Reveal>
         </div>
       </div>
     </section>

@@ -16,6 +16,8 @@ import {
   FiActivity,
   FiShoppingBag,
   FiClipboard,
+  FiLayout,
+  FiStar,
 } from "react-icons/fi";
 
 interface MenuItem {
@@ -66,7 +68,9 @@ const sections: MenuSection[] = [
   {
     heading: "Content",
     items: [
+      { name: "Homepage", path: "/admin/homepage", icon: <FiLayout className={iconCls} /> },
       { name: "Hero Slides", path: "/admin/hero-slides", icon: <FiImage className={iconCls} /> },
+      { name: "Testimonials", path: "/admin/testimonials", icon: <FiStar className={iconCls} /> },
       { name: "Blogs", path: "/admin/blogs", icon: <FiBookOpen className={iconCls} /> },
       { name: "Blog Settings", path: "/admin/blog-settings", icon: <FiEdit3 className={iconCls} /> },
     ],

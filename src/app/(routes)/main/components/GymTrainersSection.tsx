@@ -1,23 +1,22 @@
 "use client";
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { trainerService, Trainer } from "../services/trainerService";
+import { DEFAULT_TRAINERS, TrainersContent } from "../services/homeService";
+import { AccentText, Reveal } from "./SectionHeading";
 
-const GymTrainersSection = () => {
+const GymTrainersSection = ({ content = DEFAULT_TRAINERS }: { content?: TrainersContent }) => {
   const [trainers, setTrainers] = useState<Trainer[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const limit = Number(content.limit) > 0 ? Number(content.limit) : DEFAULT_TRAINERS.limit;
 
-  useEffect(() => {
-    fetchTrainers();
-  }, []);
-
-  const fetchTrainers = async () => {
+  const fetchTrainers = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
-      const data = await trainerService.getActiveTrainers(4);
+      const data = await trainerService.getActiveTrainers(limit);
       setTrainers(data);
     } catch (err) {
       console.error("Error fetching trainers:", err);
@@ -27,37 +26,39 @@ const GymTrainersSection = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [limit]);
+
+  useEffect(() => {
+    fetchTrainers();
+  }, [fetchTrainers]);
 
   return (
     <section className="py-16 lg:py-20 px-4 sm:px-8 lg:px-20">
       <div className="mx-auto">
         {/* Header Section */}
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between mb-12 lg:mb-16 gap-6">
-          <header className="flex-1">
-            <div className="flex items-center gap-2 mb-4">
-              <div className="w-2 h-2 rounded-full gymfolio7-green-dot"></div>
-              <span className="gymfolio7-font-sora font-semibold text-sm gymfolio7-gray-text">
-                Our Trainers
-              </span>
+        <Reveal>
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between mb-12 lg:mb-16 gap-6">
+            <header className="flex-1">
+              <div className="flex items-center gap-2 mb-4">
+                <span className="home-eyebrow-dot" aria-hidden="true"></span>
+                <span className="home-eyebrow-label">{content.badge}</span>
+              </div>
+
+              <h2 className="home-section-title text-2xl md:text-3xl lg:text-4xl text-black mb-0">
+                <AccentText text={content.heading} />
+              </h2>
+            </header>
+
+            <div className="lg:max-w-2xl lg:flex-shrink-0">
+              <p className="home-section-description text-base leading-6">{content.description}</p>
             </div>
-
-            <h2 className="gymfolio7-font-montserrat font-bold text-2xl md:text-3xl lg:text-4xl leading-tight tracking-tight uppercase opacity-92 text-black mb-0">
-              The best fitness gym in town
-            </h2>
-          </header>
-
-          <div className="lg:w-[747px] lg:flex-shrink-0">
-            <p className="gymfolio7-dark-gray-text gymfolio7-font-inter gymfolio3-description-text text-base leading-6">
-              Every coach on the floor is certified, insured and has come up through the same programmes they now teach. Book an intro session and you will be paired with the one whose speciality matches what you are training for.
-            </p>
           </div>
-        </div>
+        </Reveal>
 
         {/* Loading State */}
         {loading && (
           <div className="flex justify-center items-center py-20">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600"></div>
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[var(--accent)]"></div>
           </div>
         )}
 
@@ -71,8 +72,8 @@ const GymTrainersSection = () => {
         {/* Trainers Cards Grid */}
         {!loading && !error && trainers.length > 0 && (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-10">
-            {trainers.map((trainer) => (
-              <div key={trainer._id} className="block group">
+            {trainers.map((trainer, idx) => (
+              <Reveal key={trainer._id} delay={idx * 80} className="block group">
               <article className="gymfolio7-trainer-card rounded-lg overflow-hidden transition-transform duration-300 group-hover:-translate-y-1 group-hover:shadow-lg">
                 <div className="relative overflow-hidden h-64">
                   <Image
@@ -144,7 +145,7 @@ const GymTrainersSection = () => {
                   </div>
                 </div>
               </article>
-            </div>
+            </Reveal>
           ))}
         </div>
         )}

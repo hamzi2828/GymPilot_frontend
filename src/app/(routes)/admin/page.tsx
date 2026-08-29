@@ -12,6 +12,8 @@ import {
   FiMessageSquare,
   FiImage,
   FiBookOpen,
+  FiLayout,
+  FiStar,
 } from "react-icons/fi";
 import { PageHeader, Card, Spinner } from "./_shared/ui";
 import { GYMFOLIO_API, apiGet } from "./_shared/api";
@@ -54,10 +56,12 @@ export default function AdminHomePage() {
   }, []);
 
   const quickLinks: { name: string; href: string; icon: React.ComponentType<{ className?: string }> }[] = [
+    { name: "Homepage", href: "/admin/homepage", icon: FiLayout },
+    { name: "Hero Slides", href: "/admin/hero-slides", icon: FiImage },
+    { name: "Testimonials", href: "/admin/testimonials", icon: FiStar },
+    { name: "Blogs", href: "/admin/blogs", icon: FiBookOpen },
     { name: "Users", href: "/admin/users", icon: FiUsers },
     { name: "Contact Queries", href: "/admin/contact-queries", icon: FiMessageSquare },
-    { name: "Hero Slides", href: "/admin/hero-slides", icon: FiImage },
-    { name: "Blogs", href: "/admin/blogs", icon: FiBookOpen },
   ];
 
   return (
@@ -94,7 +98,7 @@ export default function AdminHomePage() {
 
           <h2 className="text-sm font-semibold text-neutral-900 mb-3">Quick Links</h2>
           <Card>
-            <div className="grid grid-cols-2 lg:grid-cols-4 divide-x divide-y lg:divide-y-0 divide-neutral-100">
+            <div className="grid grid-cols-2 lg:grid-cols-3 divide-x divide-y divide-neutral-100">
               {quickLinks.map((q) => (
                 <Link
                   key={q.name}

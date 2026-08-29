@@ -2,13 +2,15 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
 import { gymClassService, GymClass } from "../services/gymClassService";
+import { DEFAULT_CLASSES, SectionHeaderContent } from "../services/homeService";
+import { SectionHeading, Reveal } from "./SectionHeading";
 
 interface CarouselTrackElement extends HTMLDivElement {
   touchStartX?: number | null;
   touchCurrentX?: number | null;
 }
 
-const GymFolioClasses = () => {
+const GymFolioClasses = ({ content = DEFAULT_CLASSES }: { content?: SectionHeaderContent }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [cardsToShow, setCardsToShow] = useState(3);
   const [classesData, setClassesData] = useState<GymClass[]>([]);
@@ -142,33 +144,23 @@ const GymFolioClasses = () => {
   const translateX = -currentIndex * (cardWidth + gap);
 
   return (
-    <section className="bg-black py-8 md:py-20 px-4 md:px-8 lg:px-20 relative overflow-hidden">
+    <section className="home-dark-section py-8 md:py-20 px-4 md:px-8 lg:px-20 relative overflow-hidden">
       <div className="mx-auto">
         {/* Header Section */}
-        <header className="text-center mb-16">
-          {/* Badge */}
-          <div className="inline-flex items-center gap-2 mb-4">
-            <div className="gymfolio4-badge-dot"></div>
-            <span className="text-gray-300 font-inter font-semibold text-sm">
-              Classes
-            </span>
-          </div>
-
-          {/* Main Heading */}
-          <h1 className="font-montserrat font-bold text-2xl md:text-3xl lg:text-4xl leading-tight text-white uppercase tracking-tight mb-6 opacity-90">
-            What we do in our classes
-          </h1>
-
-          {/* Description */}
-          <p className="text-gray-300   font-inter text-base lg:text-lg leading-relaxed max-w-3xl mx-auto">
-            Classes run from sunrise to late evening and are capped so nobody trains unwatched. Strength, conditioning, mobility and recovery sessions, each with a scaled option so beginners and regulars can share the same floor.
-          </p>
-        </header>
+        <Reveal>
+          <SectionHeading
+            dark
+            badge={content.badge}
+            heading={content.heading}
+            description={content.description}
+            className="mb-16"
+          />
+        </Reveal>
 
         {/* Loading State */}
         {loading && (
           <div className="flex justify-center items-center py-20">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-500"></div>
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[var(--accent)]"></div>
           </div>
         )}
 

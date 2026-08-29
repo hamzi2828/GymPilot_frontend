@@ -124,7 +124,7 @@ const HeroCarousel: React.FC = () => {
       >
         <div className="hero-carousel relative flex items-center justify-center min-h-[500px] bg-gray-100">
           <div className="flex items-center space-x-3">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[var(--accent)]"></div>
             <span className="text-gray-600">Loading carousel...</span>
           </div>
         </div>
