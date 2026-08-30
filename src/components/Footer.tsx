@@ -150,7 +150,7 @@ const Footer = () => {
             </p>
             <nav className="footer-legal-links">
               <Link href="/privacy-policy" className="footer-legal-link">Privacy Policy</Link>
-              
+              <Link href="/terms" className="footer-legal-link">Terms</Link>
               <Link href="/contact-us" className="footer-legal-link">Contact Us</Link>
             </nav>
           </div>

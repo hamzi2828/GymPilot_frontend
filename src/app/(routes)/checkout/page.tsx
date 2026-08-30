@@ -91,8 +91,11 @@ const CheckoutPageContent = () => {
         <div className="mx-auto">
           {/* Breadcrumb */}
           <nav aria-label="Breadcrumb" className="mb-6 text-sm text-gray-500">
-            <Link href={packageId ? "/packages" : "/cart"} className="hover:text-black">
-              {packageId ? "Packages" : "Cart"}
+            {/* Checkout only ever sells a membership now, so the way back is
+                always the packages page. It used to fall back to /cart, which
+                belonged to the product shop this project was converted from. */}
+            <Link href="/packages" className="hover:text-black">
+              Packages
             </Link>
             <span className="mx-2 text-gray-400">/</span>
             <span className="text-black">Checkout</span>

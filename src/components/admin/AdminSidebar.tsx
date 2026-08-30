@@ -24,6 +24,7 @@ import {
   FiShield,
   FiDollarSign,
   FiCalendar,
+  FiFileText,
 } from "react-icons/fi";
 
 interface MenuItem {
@@ -93,6 +94,7 @@ const sections: MenuSection[] = [
       { name: "Testimonials", path: "/admin/testimonials", icon: <FiStar className={iconCls} />, tab: "testimonials" },
       { name: "Blogs", path: "/admin/blogs", icon: <FiBookOpen className={iconCls} />, tab: "blogs" },
       { name: "Blog Settings", path: "/admin/blog-settings", icon: <FiEdit3 className={iconCls} />, tab: "blog-settings" },
+      { name: "Pages", path: "/admin/pages", icon: <FiFileText className={iconCls} />, tab: "pages" },
     ],
   },
   {

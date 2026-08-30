@@ -657,7 +657,7 @@ function SettingsAdminPageInner() {
                 <p className="text-xs text-neutral-500 mt-1">A password is saved. Type a new one to replace it.</p>
               )}
             </div>
-            <TextField label="From Name" value={smtp.fromName} onChange={(v) => setSmtp({ fromName: v })} placeholder="The Jymor" />
+            <TextField label="From Name" value={smtp.fromName} onChange={(v) => setSmtp({ fromName: v })} placeholder="Your gym name" />
             <TextField label="From Email" type="email" value={smtp.fromEmail} onChange={(v) => setSmtp({ fromEmail: v })} placeholder="no-reply@yourgym.com" />
           </div>
 

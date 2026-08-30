@@ -1,34 +1,43 @@
 "use client";
-import React from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
+import { trainerService, type Trainer } from "../../main/services/trainerService";
 
+/**
+ * The coaches shown on a class page.
+ *
+ * This used to be a hardcoded pair — "Alex Johnson" and "Sarah Mitchell", with
+ * invented social links pointing at accounts that do not exist. Every other
+ * trainer surface on the site already read from the API; this one did not, so
+ * a gym could add or remove a coach everywhere except here.
+ */
 const GymTrainersSection = () => {
-  const trainers = [
-    {
-      id: 1,
-      name: "Alex Johnson",
-      role: "Head Trainer & Fitness Coach",
-      image: "/images/trainer-1.svg",
-      social: {
-        twitter: "https://twitter.com/alexjohnson",
-        instagram: "https://instagram.com/alexjohnson",
-        facebook: "https://facebook.com/alexjohnson",
-        youtube: "https://youtube.com/@alexjohnson",
-      },
-    },
-    {
-      id: 2,
-      name: "Sarah Mitchell",
-      role: "Yoga Instructor & Wellness Coach",
-      image: "/images/trainer2.svg",
-      social: {
-        twitter: "https://twitter.com/sarahmitchell",
-        instagram: "https://instagram.com/sarahmitchell",
-        facebook: "https://facebook.com/sarahmitchell",
-        youtube: "https://youtube.com/@sarahmitchell",
-      },
-    }
-  ];
+  const [trainers, setTrainers] = useState<Trainer[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    trainerService
+      .getActiveTrainers(4)
+      .then((list) => {
+        if (!cancelled) setTrainers(list);
+      })
+      // A class page is still worth showing without its coach list, so a
+      // failure here hides the section rather than breaking the page.
+      .catch(() => {
+        if (!cancelled) setTrainers([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Nothing to say when there are no coaches on file, and an empty grid with a
+  // heading reads as a broken page.
+  if (!loading && trainers.length === 0) return null;
 
   return (
     <section className="py-16 lg:py-20 px-4 sm:px-8 lg:px-20">
@@ -58,11 +67,12 @@ const GymTrainersSection = () => {
         {/* Trainers Cards Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-10">
           {trainers.map((trainer) => (
-            <Link key={trainer.id} href="/trainers" className="block group">
+            <Link key={trainer._id} href="/trainers" className="block group">
               <article className="gymfolio7-trainer-card rounded-lg overflow-hidden cursor-pointer transition-transform duration-300 group-hover:-translate-y-1 group-hover:shadow-lg">
                 <div className="relative overflow-hidden">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
-                    src={trainer.image}
+                    src={trainer.image || "/images/trainer-1.svg"}
                     alt={`${trainer.name} - ${trainer.role}`}
                     className="w-full h-64 object-cover transition-transform duration-500 group-hover:scale-105"
                   />
@@ -79,47 +89,32 @@ const GymTrainersSection = () => {
                     </p>
                   </div>
 
+                  {/* Only the accounts a trainer actually has. The old
+                      hardcoded version linked to invented handles for
+                      everybody, so every icon led to a 404. */}
                   <div className="flex justify-center gap-3">
-                    <Link
-                      href={trainer.social.twitter}
-                      className="gymfolio7-social-icon hover:scale-110 focus:scale-110 focus:outline-none"
-                      aria-label={`Follow ${trainer.name} on Twitter`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <i className="fab fa-x-twitter text-lg"></i>
-                    </Link>
-                    <Link
-                      href={trainer.social.instagram}
-                      className="gymfolio7-social-icon hover:scale-110 focus:scale-110 focus:outline-none"
-                      aria-label={`Follow ${trainer.name} on Instagram`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <i className="fab fa-instagram text-lg"></i>
-                    </Link>
-                    <Link
-                      href={trainer.social.facebook}
-                      className="gymfolio7-social-icon hover:scale-110 focus:scale-110 focus:outline-none"
-                      aria-label={`Follow ${trainer.name} on Facebook`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <i className="fab fa-facebook text-lg"></i>
-                    </Link>
-                    <Link
-                      href={trainer.social.youtube}
-                      className="gymfolio7-social-icon hover:scale-110 focus:scale-110 focus:outline-none"
-                      aria-label={`Follow ${trainer.name} on YouTube`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <i className="fab fa-youtube text-lg"></i>
-                    </Link>
+                    {(
+                      [
+                        ["twitter", trainer.social?.twitter, "fab fa-twitter", "Twitter"],
+                        ["instagram", trainer.social?.instagram, "fab fa-instagram", "Instagram"],
+                        ["facebook", trainer.social?.facebook, "fab fa-facebook", "Facebook"],
+                        ["youtube", trainer.social?.youtube, "fab fa-youtube", "YouTube"],
+                      ] as const
+                    )
+                      .filter(([, href]) => !!href)
+                      .map(([key, href, icon, label]) => (
+                        <a
+                          key={key}
+                          href={href as string}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="gymfolio7-social-icon hover:scale-110 focus:scale-110 focus:outline-none"
+                          aria-label={`Follow ${trainer.name} on ${label}`}
+                        >
+                          <i className={`${icon} text-lg`} aria-hidden="true"></i>
+                        </a>
+                      ))}
                   </div>
                 </div>
               </article>
