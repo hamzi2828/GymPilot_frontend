@@ -58,11 +58,17 @@ function CountUp({ value }: { value: string }) {
   return <span ref={ref}>{display}</span>;
 }
 
+/**
+ * The numbers band. Rendered on the palette's dark base with accent numerals
+ * and hairline separators — a full-bleed block of saturated brand colour was
+ * the loudest thing on the page and read as a template banner.
+ */
 const StatsSection = ({ content = DEFAULT_STATS }: { content?: StatsContent }) => {
   const items = content.items?.length ? content.items : DEFAULT_STATS.items;
 
   return (
     <section className="home-stats-band" aria-label="Gym statistics">
+      <div className="home-stats-glow" aria-hidden="true" />
       <div className="mx-auto px-4 md:px-8 lg:px-20">
         <dl className="home-stats-grid">
           {items.map((item, idx) => (

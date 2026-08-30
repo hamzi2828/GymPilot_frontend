@@ -17,7 +17,7 @@ const Trainers = () => {
   }, []);
 
   return (
-    <main className="pt-20">
+    <main>
 
         <HeroAbout />
         <TrainerDetail trainer={selectedTrainer} />

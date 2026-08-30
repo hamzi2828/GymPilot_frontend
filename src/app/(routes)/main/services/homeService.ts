@@ -131,7 +131,7 @@ export const DEFAULT_ABOUT: AboutContent = {
   ],
   ctaText: "Let's Start",
   ctaLink: "/packages",
-  image: "/images/gym-couple.png",
+  image: "/images/gym-large.webp",
   secondHeading: "Strength that shows",
   secondDescription:
     "Strength work is the fastest route to a body that performs as well as it looks. Our coaches build progressive lifting blocks around squat, hinge, push and pull, then track your numbers week to week so the progress is something you can see rather than something you hope for.",

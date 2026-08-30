@@ -3,9 +3,11 @@
 import React, { useEffect, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Header } from "./components/Header";
-import { Tabs } from "./components/Tabs";
+import { Tabs, parseUserTab, UserTab } from "./components/Tabs";
+import { BookingsSection } from "./components/BookingsSection";
 import { ProfileSection } from "./components/ProfileSection";
 import { HistorySection } from "./components/HistorySection";
+import { VisitsSection } from "./components/VisitsSection";
 import {
   getUserDetailForProfile,
   updateUser,
@@ -29,7 +31,7 @@ type BackendUserPayload = Partial<UserProfile> & {
 const UserProfilePageContent: React.FC = () => {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [activeTab, setActiveTab] = useState<"profile" | "history">("profile");
+  const [activeTab, setActiveTab] = useState<UserTab>("profile");
   const [isEditing, setIsEditing] = useState(false);
   const [toast, setToast] = useState<{ show: boolean; msg: string; type: "success" | "error" | "info" }>({
     show: false,
@@ -156,15 +158,19 @@ const UserProfilePageContent: React.FC = () => {
     }
   };
 
+  // The URL is the source of truth for which tab is open, so a member can
+  // bookmark, refresh or share "my visits" and land back on it. `parseUserTab`
+  // still honours the legacy `?tab=orders` alias.
   useEffect(() => {
-    // Check URL parameters for tab
-    // 'orders' is still honoured: links and emails sent before this tab was
-    // renamed should not land on a tab that no longer exists.
-    const tab = searchParams.get('tab');
-    if (tab === 'history' || tab === 'orders') {
-      setActiveTab('history');
-    }
+    setActiveTab(parseUserTab(searchParams.get("tab")) ?? "profile");
   }, [searchParams]);
+
+  // `replace`, not `push`: flipping between tabs should not stack up history
+  // entries the back button then has to walk through.
+  const handleTabChange = (tab: UserTab) => {
+    setActiveTab(tab);
+    router.replace(`/user-detail?tab=${tab}`, { scroll: false });
+  };
 
   useEffect(() => {
     const u = getCurrentUser() as UserPayload | null;
@@ -267,7 +273,7 @@ const UserProfilePageContent: React.FC = () => {
 
       <section className="px-4 sm:px-6 lg:px-8 xl:px-20 py-8 sm:py-12">
         <Header userProfile={userProfile} />
-        <Tabs activeTab={activeTab} onChange={setActiveTab} />
+        <Tabs activeTab={activeTab} onChange={handleTabChange} />
 
         {activeTab === "profile" && (
           <ProfileSection<UserProfile>
@@ -281,9 +287,26 @@ const UserProfilePageContent: React.FC = () => {
           />
         )}
 
+        {activeTab === "bookings" && <BookingsSection />}
+
         {activeTab === "history" && (
           <HistorySection
             memberships={memberships}
+            months={attendance?.months || []}
+            loading={historyLoading}
+            selectedMonth={selectedMonth}
+            // Picking a month loads it and moves to the tab that shows the
+            // visits, so the click has somewhere to land.
+            onSelectMonth={(key) => {
+              selectMonth(key);
+              handleTabChange("visits");
+            }}
+            onViewVisits={() => handleTabChange("visits")}
+          />
+        )}
+
+        {activeTab === "visits" && (
+          <VisitsSection
             attendance={attendance}
             loading={historyLoading}
             selectedMonth={selectedMonth}

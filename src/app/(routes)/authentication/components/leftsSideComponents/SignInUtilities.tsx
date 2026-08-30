@@ -4,6 +4,7 @@ import type { Mode } from './types';
 interface SignInUtilitiesProps {
   isSignUp: boolean;
   isForgot: boolean;
+  isReset?: boolean;
   rememberMe: boolean;
   handleInputChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   updateMode: (mode: Mode) => void;
@@ -12,11 +13,12 @@ interface SignInUtilitiesProps {
 export const SignInUtilities: React.FC<SignInUtilitiesProps> = ({
   isSignUp,
   isForgot,
+  isReset = false,
   rememberMe,
   handleInputChange,
   updateMode,
 }) => {
-  if (isSignUp || isForgot) return null;
+  if (isSignUp || isForgot || isReset) return null;
   return (
     <div className="flex items-center justify-between">
       <label className="flex items-center space-x-3">

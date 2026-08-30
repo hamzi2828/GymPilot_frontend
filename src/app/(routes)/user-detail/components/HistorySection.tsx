@@ -1,18 +1,17 @@
 import React from "react";
 import Link from "next/link";
-import {
-  MembershipOrder,
-  MyAttendance,
-  AttendanceMonth,
-  AttendanceVisit,
-} from "../service/userDetailService";
+import { AttendanceMonth, MembershipOrder } from "../service/userDetailService";
+import { MonthByMonth } from "./MonthByMonth";
 
 // ---------------------------------------------------------------------------
-// A member's own history, in the order they care about it:
+// A member's history, in the order they care about it:
 //
 //   1. What is running RIGHT NOW  -- the only thing most visits here are for
 //   2. What they have bought before
-//   3. How much they have actually used it
+//   3. Every month they have trained, and the package they were on then
+//
+// The visit-by-visit table lives in its own tab (VisitsSection); picking a
+// month below opens it there.
 //
 // Deliberately no "order" language. A gym membership is not a parcel: it has no
 // size, no colour and nothing to track in the post, which is what the previous
@@ -76,124 +75,25 @@ function Fact({ label, value, accent = false }: { label: string; value: React.Re
   );
 }
 
-function Tile({
-  label,
-  value,
-  hint,
-  accent = false,
-}: {
-  label: string;
-  value: string | number;
-  hint?: string;
-  accent?: boolean;
-}) {
-  return (
-    <div className="rounded-xl border-2 border-gray-200 bg-white px-4 py-4">
-      <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">{label}</p>
-      <p className={`mt-1.5 text-2xl font-bold ${accent ? "text-primary" : "text-black"}`}>{value}</p>
-      {hint && <p className="mt-0.5 text-xs text-gray-500">{hint}</p>}
-    </div>
-  );
-}
-
-// The horizontal bar beside each month. One hue, sized against the busiest
-// month, so a glance says "I trained more in June than July" without reading.
-//
-// The whole row is the click target rather than the label alone: the row is
-// what reads as one thing, and a small text link inside a chart row is a miss
-// waiting to happen.
-function MonthRow({
-  month,
-  busiest,
-  selected,
-  onSelect,
-}: {
-  month: AttendanceMonth;
-  busiest: number;
-  selected: boolean;
-  onSelect: (key: string) => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={() => onSelect(month.key)}
-      aria-pressed={selected}
-      className={`flex w-full items-center gap-4 border-b border-gray-100 px-2 py-3 text-left transition-colors last:border-b-0 hover:bg-gray-50 ${
-        selected ? "bg-gray-50" : ""
-      }`}
-    >
-      <div className="w-28 shrink-0">
-        <p className={`text-sm font-semibold ${selected ? "text-primary" : "text-gray-900"}`}>{month.label}</p>
-        <p className="text-xs text-gray-500">
-          {month.visits} visit{month.visits === 1 ? "" : "s"}
-        </p>
-      </div>
-
-      <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-gray-100">
-        <div
-          className="h-full rounded-full bg-primary"
-          style={{ width: `${Math.max(3, (month.visits / Math.max(1, busiest)) * 100)}%` }}
-        />
-      </div>
-
-      <div className="w-32 shrink-0 text-right">
-        <p className="text-sm font-semibold text-gray-900">{month.total_label}</p>
-        {month.average_label && <p className="text-xs text-gray-500">avg {month.average_label}</p>}
-      </div>
-
-      <i
-        className={`fas fa-chevron-right w-3 shrink-0 text-xs transition-transform ${
-          selected ? "rotate-90 text-primary" : "text-gray-300"
-        }`}
-        aria-hidden="true"
-      />
-    </button>
-  );
-}
-
-function VisitRow({ visit }: { visit: AttendanceVisit }) {
-  return (
-    <tr className="border-b border-gray-100 last:border-b-0">
-      <td className="px-4 py-3">
-        <p className="text-sm font-semibold text-gray-900">{visit.date_label}</p>
-        <p className="text-xs text-gray-500">{visit.day_name}</p>
-      </td>
-      <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-700">{visit.check_in_time || "—"}</td>
-      <td className="whitespace-nowrap px-4 py-3 text-sm">
-        {visit.still_in ? (
-          <span className="inline-flex items-center gap-1.5 font-semibold text-green-600">
-            <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
-            In the gym
-          </span>
-        ) : (
-          <span className="text-gray-700">{visit.check_out_time || "—"}</span>
-        )}
-      </td>
-      <td className="whitespace-nowrap px-4 py-3 text-sm font-semibold text-black">
-        {visit.duration_label || <span className="font-normal text-gray-400">—</span>}
-      </td>
-      <td className="hidden px-4 py-3 text-sm text-gray-500 sm:table-cell">{visit.package_name || "—"}</td>
-    </tr>
-  );
-}
-
 export interface HistorySectionProps {
   memberships: MembershipOrder[];
-  attendance: MyAttendance | null;
+  /** Every month with recorded visits, newest first. */
+  months: AttendanceMonth[];
   loading: boolean;
-  /** Which month is drilled into, or null for the recent-visits view. */
   selectedMonth: string | null;
-  onSelectMonth: (key: string | null) => void;
-  monthLoading: boolean;
+  /** Opens a month's visits — the caller switches to the visits tab. */
+  onSelectMonth: (key: string) => void;
+  /** Sends the member to the visits tab, which lives next door. */
+  onViewVisits?: () => void;
 }
 
 export const HistorySection: React.FC<HistorySectionProps> = ({
   memberships,
-  attendance,
+  months,
   loading,
   selectedMonth,
   onSelectMonth,
-  monthLoading,
+  onViewVisits,
 }) => {
   if (loading) {
     return (
@@ -209,9 +109,6 @@ export const HistorySection: React.FC<HistorySectionProps> = ({
   const current = memberships.find((entry) => entry.isActive) || null;
   const progress = current ? termProgress(current.startDate, current.endDate) : null;
   const past = memberships.filter((entry) => entry !== current);
-  const summary = attendance?.summary;
-  const busiest = Math.max(1, ...(attendance?.months || []).map((month) => month.visits));
-  const selected = attendance?.selected_month || null;
 
   return (
     <div className="space-y-10">
@@ -267,6 +164,17 @@ export const HistorySection: React.FC<HistorySectionProps> = ({
               />
               <Fact label="Billing" value={billingLabel(current.period)} />
             </dl>
+
+            {onViewVisits && (
+              <button
+                type="button"
+                onClick={onViewVisits}
+                className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-primary underline underline-offset-2"
+              >
+                See how much you have used it
+                <i className="fas fa-arrow-right text-xs" aria-hidden="true" />
+              </button>
+            )}
 
             {/* A week or less is the moment renewing is easy -- worth saying
                 plainly rather than leaving them to do the date arithmetic. */}
@@ -359,136 +267,13 @@ export const HistorySection: React.FC<HistorySectionProps> = ({
         </section>
       )}
 
-      {/* ---- How much they have used it ---- */}
-      <section>
-        <div className="mb-4 flex flex-wrap items-end justify-between gap-2">
-          <h2 className="text-xl font-bold text-black sm:text-2xl">Your visits</h2>
-          {summary?.checked_in_now && (
-            <span className="inline-flex items-center gap-2 rounded-full bg-green-50 px-3 py-1.5 text-sm font-semibold text-green-700">
-              <span className="relative flex h-2 w-2">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
-                <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500" />
-              </span>
-              You are checked in right now
-            </span>
-          )}
-        </div>
-
-        {!summary || summary.visits === 0 ? (
-          <div className="rounded-2xl border-2 border-dashed border-gray-300 bg-white p-8 text-center">
-            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-gray-100">
-              <i className="fas fa-clock text-2xl text-gray-300" />
-            </div>
-            <h3 className="text-lg font-bold text-gray-900">No visits recorded yet</h3>
-            <p className="mt-1 text-sm text-gray-500">
-              {attendance?.note || "Your visits appear here once the front desk records them."}
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-6">
-            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-              <Tile
-                label="Total visits"
-                value={summary.visits}
-                hint={summary.first_visit_label ? `since ${summary.first_visit_label}` : undefined}
-              />
-              <Tile label="Time in the gym" value={summary.total_label} hint={summary.average_label ? `avg ${summary.average_label} a visit` : undefined} />
-              <Tile
-                label={summary.this_month.label}
-                value={summary.this_month.visits}
-                hint={`${summary.this_month.total_label} this month`}
-              />
-              <Tile
-                label="Current streak"
-                value={summary.streak_days ? `${summary.streak_days} day${summary.streak_days === 1 ? "" : "s"}` : "—"}
-                hint={summary.last_visit_label ? `last in ${summary.last_visit_label}` : undefined}
-                accent={summary.streak_days > 1}
-              />
-            </div>
-
-            {attendance!.months.length > 1 && (
-              <div className="rounded-2xl border-2 border-gray-200 bg-white p-5">
-                <h3 className="mb-2 text-sm font-bold uppercase tracking-wider text-gray-500">Month by month</h3>
-                <p className="mb-2 text-xs text-gray-400">Tap a month to see every visit in it.</p>
-                <div>
-                  {attendance!.months.map((month) => (
-                    <MonthRow
-                      key={month.key}
-                      month={month}
-                      busiest={busiest}
-                      selected={selectedMonth === month.key}
-                      onSelect={(key) => onSelectMonth(selectedMonth === key ? null : key)}
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <div className="overflow-hidden rounded-2xl border-2 border-gray-200 bg-white">
-              {/* Says which set of visits is on screen. Without it, drilling
-                  into a month silently swaps the table underneath you. */}
-              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-200 bg-gray-50 px-4 py-3">
-                <div>
-                  <p className="text-sm font-bold text-gray-900">
-                    {selected ? selected.label : "Recent visits"}
-                  </p>
-                  <p className="text-xs text-gray-500">
-                    {selected
-                      ? `${selected.visits} visit${selected.visits === 1 ? "" : "s"} over ${selected.days} day${
-                          selected.days === 1 ? "" : "s"
-                        } | ${selected.total_label}${selected.average_label ? ` | avg ${selected.average_label}` : ""}`
-                      : `Your last ${attendance!.visits.length} visit${attendance!.visits.length === 1 ? "" : "s"}`}
-                  </p>
-                </div>
-                {selected && (
-                  <button
-                    type="button"
-                    onClick={() => onSelectMonth(null)}
-                    className="text-xs font-semibold text-gray-500 underline underline-offset-2 hover:text-gray-900"
-                  >
-                    Back to recent visits
-                  </button>
-                )}
-              </div>
-
-              <div className={`overflow-x-auto transition-opacity ${monthLoading ? "opacity-50" : ""}`}>
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-gray-200 bg-gray-50">
-                      {["Day", "Checked in", "Checked out", "Time spent", "On package"].map((column, index) => (
-                        <th
-                          key={column}
-                          className={`whitespace-nowrap px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500 ${
-                            index === 4 ? "hidden sm:table-cell" : ""
-                          }`}
-                        >
-                          {column}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {attendance!.visits.map((visit) => (
-                      <VisitRow key={visit.id} visit={visit} />
-                    ))}
-                    {!attendance!.visits.length && (
-                      <tr>
-                        <td colSpan={5} className="px-4 py-10 text-center text-sm text-gray-500">
-                          No visits recorded in {selected ? selected.label : "this period"}.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            <p className="text-center text-xs text-gray-400">
-              Times are the gym&apos;s local clock, exactly as the front desk recorded them.
-            </p>
-          </div>
-        )}
-      </section>
+      {/* ---- Every month they have trained ---- */}
+      <MonthByMonth
+        months={months}
+        memberships={memberships}
+        selectedMonth={selectedMonth}
+        onSelectMonth={onSelectMonth}
+      />
     </div>
   );
 };

@@ -46,7 +46,9 @@ export default function PackageRegistrationsAdminPage() {
   const load = async () => {
     setLoading(true);
     try {
-      const r = await apiGet<{ data: Registration[] }>(`${GYMFOLIO_API}/package-registrations`);
+      // Explicit limit: the endpoint defaults to 20, so without this the
+      // screen quietly showed only the newest twenty registrations.
+      const r = await apiGet<{ data: Registration[] }>(`${GYMFOLIO_API}/package-registrations?limit=200`);
       setList(r.data || []);
     } catch {
       setList([]);

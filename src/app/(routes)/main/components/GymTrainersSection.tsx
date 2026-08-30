@@ -6,6 +6,15 @@ import { trainerService, Trainer } from "../services/trainerService";
 import { DEFAULT_TRAINERS, TrainersContent } from "../services/homeService";
 import { AccentText, Reveal } from "./SectionHeading";
 
+type SocialKey = "twitter" | "instagram" | "facebook" | "youtube";
+
+const SOCIALS: { key: SocialKey; icon: string; label: string }[] = [
+  { key: "twitter", icon: "fab fa-x-twitter", label: "X" },
+  { key: "instagram", icon: "fab fa-instagram", label: "Instagram" },
+  { key: "facebook", icon: "fab fa-facebook", label: "Facebook" },
+  { key: "youtube", icon: "fab fa-youtube", label: "YouTube" },
+];
+
 const GymTrainersSection = ({ content = DEFAULT_TRAINERS }: { content?: TrainersContent }) => {
   const [trainers, setTrainers] = useState<Trainer[]>([]);
   const [loading, setLoading] = useState(true);
@@ -33,130 +42,103 @@ const GymTrainersSection = ({ content = DEFAULT_TRAINERS }: { content?: Trainers
   }, [fetchTrainers]);
 
   return (
-    <section className="py-16 lg:py-20 px-4 sm:px-8 lg:px-20">
-      <div className="mx-auto">
-        {/* Header Section */}
-        <Reveal>
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between mb-12 lg:mb-16 gap-6">
-            <header className="flex-1">
-              <div className="flex items-center gap-2 mb-4">
-                <span className="home-eyebrow-dot" aria-hidden="true"></span>
-                <span className="home-eyebrow-label">{content.badge}</span>
-              </div>
-
-              <h2 className="home-section-title text-2xl md:text-3xl lg:text-4xl text-black mb-0">
-                <AccentText text={content.heading} />
-              </h2>
-            </header>
-
-            <div className="lg:max-w-2xl lg:flex-shrink-0">
-              <p className="home-section-description text-base leading-6">{content.description}</p>
+    <section className="section surface-paper">
+      <Reveal>
+        <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between mb-12 lg:mb-16 gap-8">
+          <header className="flex-1">
+            <div className="flex items-center gap-2 mb-4">
+              <span className="home-eyebrow-dot" aria-hidden="true"></span>
+              <span className="home-eyebrow-label">{content.badge}</span>
             </div>
+
+            <h2 className="home-section-title text-2xl md:text-3xl lg:text-[42px] text-black mb-0">
+              <AccentText text={content.heading} />
+            </h2>
+          </header>
+
+          <div className="lg:max-w-xl lg:flex-shrink-0">
+            <p className="home-section-description">{content.description}</p>
+            <Link href="/trainers" className="btn btn--outline mt-6">
+              <span>Meet every coach</span>
+              <i className="fas fa-arrow-right text-xs" aria-hidden="true"></i>
+            </Link>
           </div>
-        </Reveal>
+        </div>
+      </Reveal>
 
-        {/* Loading State */}
-        {loading && (
-          <div className="flex justify-center items-center py-20">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[var(--accent)]"></div>
-          </div>
-        )}
+      {/* Loading State */}
+      {loading && (
+        <div className="home-coach-grid" aria-hidden="true">
+          {[0, 1, 2, 3].map((i) => (
+            <div key={i} className="home-coach home-post--skeleton" />
+          ))}
+        </div>
+      )}
 
-        {/* Error State */}
-        {error && !loading && (
-          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded text-center">
-            {error}
-          </div>
-        )}
+      {/* Error State */}
+      {error && !loading && (
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-center">
+          {error}
+        </div>
+      )}
 
-        {/* Trainers Cards Grid */}
-        {!loading && !error && trainers.length > 0 && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-10">
-            {trainers.map((trainer, idx) => (
-              <Reveal key={trainer._id} delay={idx * 80} className="block group">
-              <article className="gymfolio7-trainer-card rounded-lg overflow-hidden transition-transform duration-300 group-hover:-translate-y-1 group-hover:shadow-lg">
-                <div className="relative overflow-hidden h-64">
-                  <Image
-                    src={trainer.image || '/images/trainer-1.svg'}
-                    alt={`${trainer.name} - ${trainer.role}`}
-                    width={400}
-                    height={256}
-                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                    priority={false}
-                  />
-                  <div className="gymfolio7-trainer-card-overlay absolute inset-0"></div>
-                </div>
+      {/* Coach cards — image-forward, with the name set on the photograph and
+          the social links revealed on hover so the card stays uncluttered.
+          The column count follows the roster (capped at four) so three coaches
+          fill the row instead of leaving an empty fourth slot. */}
+      {!loading && !error && trainers.length > 0 && (
+        <div
+          className="home-coach-grid"
+          style={{ "--cols": Math.min(trainers.length, 4) } as React.CSSProperties}
+        >
+          {trainers.map((trainer, idx) => (
+            <Reveal key={trainer._id} delay={idx * 90} className="h-full">
+              <article className="home-coach">
+                <Image
+                  src={trainer.image || "/images/trainer-1.svg"}
+                  alt={`${trainer.name} — ${trainer.role}`}
+                  width={400}
+                  height={533}
+                  className="w-full h-full object-cover"
+                  priority={false}
+                />
+                <span className="home-coach__scrim" aria-hidden="true" />
 
-                <div className="p-4 text-center">
-                  <div className="mb-4">
-                    <h3 className="gymfolio7-green-text gymfolio7-font-montserrat font-bold text-base leading-6 mb-1">
-                      {trainer.name}
-                    </h3>
-                    <p className="gymfolio7-dark-gray-text gymfolio7-font-inter text-sm leading-5">
-                      {trainer.role}
-                    </p>
-                  </div>
+                <div className="home-coach__body">
+                  <p className="home-coach__role">{trainer.role}</p>
+                  <h3 className="home-coach__name">{trainer.name}</h3>
 
-                  <div className="flex justify-center gap-3">
-                    {trainer.social?.twitter && (
-                      <Link
-                        href={trainerService.formatSocialUrl(trainer.social.twitter, 'twitter')}
-                        className="gymfolio7-social-icon hover:scale-110 focus:scale-110 focus:outline-none"
-                        aria-label={`Follow ${trainer.name} on Twitter`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
-                        <i className="fab fa-x-twitter text-lg"></i>
-                      </Link>
-                    )}
-                    {trainer.social?.instagram && (
-                      <Link
-                        href={trainerService.formatSocialUrl(trainer.social.instagram, 'instagram')}
-                        className="gymfolio7-social-icon hover:scale-110 focus:scale-110 focus:outline-none"
-                        aria-label={`Follow ${trainer.name} on Instagram`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
-                        <i className="fab fa-instagram text-lg"></i>
-                      </Link>
-                    )}
-                    {trainer.social?.facebook && (
-                      <Link
-                        href={trainerService.formatSocialUrl(trainer.social.facebook, 'facebook')}
-                        className="gymfolio7-social-icon hover:scale-110 focus:scale-110 focus:outline-none"
-                        aria-label={`Follow ${trainer.name} on Facebook`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
-                        <i className="fab fa-facebook text-lg"></i>
-                      </Link>
-                    )}
-                    {trainer.social?.youtube && (
-                      <Link
-                        href={trainerService.formatSocialUrl(trainer.social.youtube, 'youtube')}
-                        className="gymfolio7-social-icon hover:scale-110 focus:scale-110 focus:outline-none"
-                        aria-label={`Follow ${trainer.name} on YouTube`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
-                        <i className="fab fa-youtube text-lg"></i>
-                      </Link>
-                    )}
+                  <div className="home-coach__socials">
+                    {SOCIALS.map(({ key, icon, label }) => {
+                      const handle = trainer.social?.[key];
+                      if (!handle) return null;
+                      return (
+                        <Link
+                          key={key}
+                          href={trainerService.formatSocialUrl(handle, key)}
+                          className="home-coach__social"
+                          aria-label={`${trainer.name} on ${label}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          <i className={icon} aria-hidden="true"></i>
+                        </Link>
+                      );
+                    })}
                   </div>
                 </div>
               </article>
             </Reveal>
           ))}
         </div>
-        )}
+      )}
 
-        {/* Empty State */}
-        {!loading && !error && trainers.length === 0 && (
-          <div className="text-center py-20">
-            <p className="gymfolio7-dark-gray-text text-lg">No trainers available at the moment.</p>
-          </div>
-        )}
-      </div>
+      {/* Empty State */}
+      {!loading && !error && trainers.length === 0 && (
+        <div className="text-center py-20">
+          <p className="home-section-description">No trainers available at the moment.</p>
+        </div>
+      )}
     </section>
   );
 };

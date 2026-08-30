@@ -12,11 +12,17 @@ import {
   TextField,
   TextArea,
   Toggle,
+  SelectField,
   Badge,
   Spinner,
   Table,
 } from "../_shared/ui";
-import { GYMFOLIO_API, apiGet, apiJson, apiForm, absoluteUrl } from "../_shared/api";
+import { API_BASE, GYMFOLIO_API, apiGet, apiJson, apiForm, absoluteUrl } from "../_shared/api";
+import {
+  WeekScheduleEditor,
+  validateSchedule,
+  type ScheduleRow,
+} from "../_shared/WeekScheduleEditor";
 
 interface Trainer {
   _id: string;
@@ -30,6 +36,27 @@ interface Trainer {
   experience?: number;
   isActive: boolean;
   isFeatured?: boolean;
+  /**
+   * The staff account this profile belongs to, when the trainer is also
+   * employed here. Attendance files a trainer's punches against the trainer
+   * record, so without this link their hours never reach the payroll figure
+   * on the Accounts screen.
+   */
+  userId?: string | null;
+  /**
+   * The shifts this trainer is rostered for. The front-desk attendance app
+   * judges their check-in against this — early, on time, late — so a trainer
+   * with nothing here always comes out as "no schedule".
+   */
+  availability?: ScheduleRow[];
+}
+
+interface StaffOption {
+  _id: string;
+  firstName?: string;
+  lastName?: string;
+  email: string;
+  employment?: { isStaff?: boolean; jobTitle?: string };
 }
 
 export default function TrainersAdminPage() {
@@ -40,6 +67,8 @@ export default function TrainersAdminPage() {
   const [form, setForm] = useState<Partial<Trainer>>({});
   const [img, setImg] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
+  const [staff, setStaff] = useState<StaffOption[]>([]);
+  const [availability, setAvailability] = useState<ScheduleRow[]>([]);
 
   const load = async () => {
     setLoading(true);
@@ -51,11 +80,23 @@ export default function TrainersAdminPage() {
     }
   };
 
-  useEffect(() => { load(); }, []);
+  // Staff accounts available to link a trainer to. Fetched once alongside the
+  // list; a failure here only costs the dropdown, so it must not break the page.
+  const loadStaff = async () => {
+    try {
+      const r = await apiGet<{ data: StaffOption[] }>(`${API_BASE}/get/allUsers`);
+      setStaff((r.data || []).filter((u) => u.employment?.isStaff));
+    } catch {
+      setStaff([]);
+    }
+  };
+
+  useEffect(() => { load(); loadStaff(); }, []);
 
   const openCreate = () => {
     setEditing(null);
     setForm({ isActive: true });
+    setAvailability([]);
     setImg(null);
     setOpen(true);
   };
@@ -63,19 +104,53 @@ export default function TrainersAdminPage() {
   const openEdit = (t: Trainer) => {
     setEditing(t);
     setForm(t);
+    setAvailability(
+      (t.availability || []).map((row) => ({
+        day: row.day,
+        startTime: row.startTime,
+        endTime: row.endTime,
+      }))
+    );
     setImg(null);
     setOpen(true);
   };
 
   const save = async () => {
+    const problems = validateSchedule(availability);
+    if (problems.length) {
+      alert(["Fix the roster first:", ...problems].join("\n"));
+      return;
+    }
+
     setSaving(true);
     try {
       const fd = new FormData();
       Object.entries(form).forEach(([k, v]) => {
+        // userId is handled below: it is the one field whose null is
+        // meaningful, and skipping it here would make "unlink" impossible.
+        if (k === "userId") return;
+        // Sent as JSON below.
+        if (k === "availability") return;
         if (v === undefined || v === null) return;
         if (typeof v === "object") return;
         fd.append(k, String(v));
       });
+      // Always sent, empty when unlinked. The general rule above drops nulls,
+      // so without this an admin could link a trainer to a staff account but
+      // never undo it -- the field simply would not be in the request, and the
+      // server would keep whatever it had.
+      fd.append("userId", form.userId || "");
+      // Always sent, so clearing every shift really clears the roster.
+      fd.append(
+        "availability",
+        JSON.stringify(
+          availability.map((row) => ({
+            day: row.day,
+            startTime: row.startTime,
+            endTime: row.endTime,
+          }))
+        )
+      );
       if (img) fd.append("image", img);
       if (editing) {
         await apiForm(`${GYMFOLIO_API}/trainers/${editing._id}`, "PUT", fd);
@@ -170,6 +245,25 @@ export default function TrainersAdminPage() {
           <TextField label="Email" type="email" value={form.email} onChange={(v) => setForm({ ...form, email: v })} />
           <TextField label="Phone" value={form.phone} onChange={(v) => setForm({ ...form, phone: v })} />
           <TextField label="Experience (years)" type="number" value={form.experience} onChange={(v) => setForm({ ...form, experience: Number(v) })} />
+          <div className="md:col-span-2">
+            <SelectField
+              label="Staff account (for payroll)"
+              value={form.userId || ""}
+              onChange={(v) => setForm({ ...form, userId: v || null })}
+              placeholder="Not on the payroll"
+              options={staff.map((u) => ({
+                value: u._id,
+                label: `${[u.firstName, u.lastName].filter(Boolean).join(" ") || u.email}${
+                  u.employment?.jobTitle ? ` — ${u.employment.jobTitle}` : ""
+                }`,
+              }))}
+            />
+            <p className="mt-1 text-[12px] text-neutral-500">
+              Link a trainer to their staff account and the hours they clock at the
+              front desk count towards the wage bill on Accounts. Leave empty for a
+              visiting or self-employed coach.
+            </p>
+          </div>
           <label className="block md:col-span-2">
             <span className="text-xs font-medium text-neutral-600">Image</span>
             <input
@@ -182,6 +276,21 @@ export default function TrainersAdminPage() {
           <div className="md:col-span-2">
             <TextArea label="Bio" value={form.bio} rows={5} onChange={(v) => setForm({ ...form, bio: v })} />
           </div>
+          <div className="md:col-span-2 border-t border-neutral-200 pt-4">
+            <h3 className="text-sm font-semibold text-neutral-900">Weekly roster</h3>
+            <p className="mb-3 mt-1 text-[12px] text-neutral-500">
+              The shifts this trainer is expected for. The front-desk app judges their
+              check-in against these times — without a roster every punch reads as
+              &ldquo;no schedule&rdquo;.
+            </p>
+            <WeekScheduleEditor
+              rows={availability}
+              onChange={setAvailability}
+              addLabel="Add a shift"
+              emptyHint="No shifts set — attendance will not report early, on time or late."
+            />
+          </div>
+
           <Toggle label="Active" checked={!!form.isActive} onChange={(v) => setForm({ ...form, isActive: v })} />
           <Toggle label="Featured" checked={!!form.isFeatured} onChange={(v) => setForm({ ...form, isFeatured: v })} />
         </div>

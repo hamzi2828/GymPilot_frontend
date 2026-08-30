@@ -365,6 +365,12 @@ export interface AttendanceMonth {
   minutes: number;
   total_label: string;
   average_label: string | null;
+  /**
+   * Package name(s) the month's visits were taken on, from the snapshot the
+   * reader writes at check-in. Absent on older API builds, and empty for
+   * visits recorded before package snapshotting.
+   */
+  packages?: string[];
 }
 
 export interface MyAttendance {

@@ -1,14 +1,17 @@
 "use client";
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { gymClassService, GymClass } from "../services/gymClassService";
 import { DEFAULT_CLASSES, SectionHeaderContent } from "../services/homeService";
 import { SectionHeading, Reveal } from "./SectionHeading";
 
-interface CarouselTrackElement extends HTMLDivElement {
-  touchStartX?: number | null;
-  touchCurrentX?: number | null;
-}
+/** Gap between cards, in px. Mirrors `--card-gap` in the stylesheet. */
+const CARD_GAP = 24;
+/** Ideal card width — the number of visible cards is derived from it. */
+const IDEAL_CARD = 320;
+const AUTO_INTERVAL = 5000;
+const SWIPE_THRESHOLD = 50;
 
 const GymFolioClasses = ({ content = DEFAULT_CLASSES }: { content?: SectionHeaderContent }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -16,135 +19,108 @@ const GymFolioClasses = ({ content = DEFAULT_CLASSES }: { content?: SectionHeade
   const [classesData, setClassesData] = useState<GymClass[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const carouselTrackRef = useRef<CarouselTrackElement | null>(null);
-  const autoPlayRef = useRef<NodeJS.Timeout | null>(null);
+  const [paused, setPaused] = useState(false);
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const touchStartX = useRef<number | null>(null);
+  const touchLastX = useRef<number | null>(null);
 
   const totalCards = classesData.length;
+  const maxIndex = Math.max(0, totalCards - cardsToShow);
+  const canSlide = totalCards > cardsToShow;
 
   // Fetch classes on component mount
   useEffect(() => {
-    fetchClasses();
+    let cancelled = false;
+    (async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const data = await gymClassService.getActiveClasses();
+        if (!cancelled) setClassesData(data);
+      } catch (err) {
+        console.error("Error fetching gym classes:", err);
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "Failed to load classes");
+          setClassesData([]);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  const fetchClasses = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const data = await gymClassService.getActiveClasses();
-      setClassesData(data);
-    } catch (err) {
-      console.error("Error fetching gym classes:", err);
-      setError(err instanceof Error ? err.message : "Failed to load classes");
-      setClassesData([]);
-    } finally {
-      setLoading(false);
+  /* How many cards fit is measured from the track itself rather than read off a
+     breakpoint table. The old fixed 302px card left a band of dead space on
+     wide screens once the carousel reached its last index. */
+  useEffect(() => {
+    const el = viewportRef.current;
+    if (!el) return;
+
+    const measure = () => {
+      const width = el.clientWidth;
+      if (!width) return;
+      const fit = Math.floor((width + CARD_GAP) / (IDEAL_CARD + CARD_GAP));
+      setCardsToShow(Math.max(1, Math.min(4, fit)));
+    };
+
+    measure();
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", measure);
+      return () => window.removeEventListener("resize", measure);
     }
-  };
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+    // The track only exists once the fetch resolves, so the observer has to be
+    // attached again when it mounts — an empty dep list measured a null ref.
+  }, [loading, classesData.length]);
 
-  // Get cards to show based on screen size
-  const getCardsToShow = () => {
-    if (typeof window !== 'undefined') {
-      if (window.innerWidth >= 1280) return 3;
-      if (window.innerWidth >= 1024) return 2;
-      if (window.innerWidth >= 640) return 1;
-      return 1;
-    }
-    return 3;
-  };
+  // Never leave the track scrolled past its last full page.
+  useEffect(() => {
+    setCurrentIndex((i) => Math.min(i, maxIndex));
+  }, [maxIndex]);
 
-  // Update cards to show on resize
-  const updateCardsToShow = useCallback(() => {
-    const newCardsToShow = getCardsToShow();
-    setCardsToShow(newCardsToShow);
-    const newMaxIndex = totalCards - newCardsToShow;
-    if (currentIndex > newMaxIndex) {
-      setCurrentIndex(newMaxIndex);
-    }
-  }, [totalCards, currentIndex]);
+  const next = useCallback(() => {
+    setCurrentIndex((i) => (i >= maxIndex ? 0 : i + 1));
+  }, [maxIndex]);
 
-  // Initialize autoplay
-  const startAutoPlay = useCallback(() => {
-    if (autoPlayRef.current) {
-      clearInterval(autoPlayRef.current);
-    }
-    autoPlayRef.current = setInterval(() => {
-      setCurrentIndex(prevIndex => {
-        const maxIdx = totalCards - cardsToShow;
-        return prevIndex >= maxIdx ? 0 : prevIndex + 1;
-      });
-    }, 4000);
-  }, [totalCards, cardsToShow]);
+  const prev = useCallback(() => {
+    setCurrentIndex((i) => (i <= 0 ? maxIndex : i - 1));
+  }, [maxIndex]);
 
-  // Navigation handlers
-  const nextSlide = () => {
-    const maxIdx = totalCards - cardsToShow;
-    setCurrentIndex(prevIndex => prevIndex >= maxIdx ? 0 : prevIndex + 1);
-  };
-
-  const prevSlide = () => {
-    const maxIdx = totalCards - cardsToShow;
-    setCurrentIndex(prevIndex => prevIndex <= 0 ? maxIdx : prevIndex - 1);
-  };
+  useEffect(() => {
+    if (paused || !canSlide) return;
+    const timer = setInterval(next, AUTO_INTERVAL);
+    return () => clearInterval(timer);
+  }, [paused, canSlide, next, currentIndex]);
 
   // Touch handlers
   const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
-    if (!carouselTrackRef.current) return;
-    const touch = e.touches[0];
-    carouselTrackRef.current.touchStartX = touch.clientX;
+    touchStartX.current = e.touches[0].clientX;
+    touchLastX.current = e.touches[0].clientX;
   };
 
   const handleTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
-    if (!carouselTrackRef.current || !carouselTrackRef.current.touchStartX) return;
-    const touch = e.touches[0];
-    carouselTrackRef.current.touchCurrentX = touch.clientX;
+    touchLastX.current = e.touches[0].clientX;
   };
 
   const handleTouchEnd = () => {
-    if (!carouselTrackRef.current ||
-        !carouselTrackRef.current.touchStartX ||
-        !carouselTrackRef.current.touchCurrentX) return;
-
-    const diff = carouselTrackRef.current.touchStartX - carouselTrackRef.current.touchCurrentX;
-    const threshold = 50;
-
-    if (Math.abs(diff) > threshold) {
-      if (diff > 0) {
-        nextSlide();
-      } else {
-        prevSlide();
-      }
+    if (touchStartX.current === null || touchLastX.current === null) return;
+    const diff = touchStartX.current - touchLastX.current;
+    if (Math.abs(diff) > SWIPE_THRESHOLD) {
+      if (diff > 0) next();
+      else prev();
     }
-
-    carouselTrackRef.current.touchStartX = null;
-    carouselTrackRef.current.touchCurrentX = null;
+    touchStartX.current = null;
+    touchLastX.current = null;
   };
 
-  // Effects
-  useEffect(() => {
-    setCardsToShow(getCardsToShow());
-    const handleResize = () => updateCardsToShow();
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, [updateCardsToShow]);
-
-  useEffect(() => {
-    if (classesData.length > 0) {
-      startAutoPlay();
-    }
-    return () => {
-      if (autoPlayRef.current) {
-        clearInterval(autoPlayRef.current);
-      }
-    };
-  }, [cardsToShow, classesData.length, startAutoPlay]);
-
-  // Calculate transform
-  const cardWidth = 302;
-  const gap = 24;
-  const translateX = -currentIndex * (cardWidth + gap);
-
   return (
-    <section className="home-dark-section py-8 md:py-20 px-4 md:px-8 lg:px-20 relative overflow-hidden">
+    <section className="section surface-dark home-dark-section relative overflow-hidden">
+      <span className="section-seam section-seam--top" aria-hidden="true" />
       <div className="mx-auto">
         {/* Header Section */}
         <Reveal>
@@ -166,7 +142,7 @@ const GymFolioClasses = ({ content = DEFAULT_CLASSES }: { content?: SectionHeade
 
         {/* Error State */}
         {error && !loading && (
-          <div className="bg-red-900/20 border border-red-500/50 text-red-300 px-4 py-3 rounded text-center">
+          <div className="bg-red-900/20 border border-red-500/50 text-red-300 px-4 py-3 rounded-xl text-center">
             {error}
           </div>
         )}
@@ -174,114 +150,98 @@ const GymFolioClasses = ({ content = DEFAULT_CLASSES }: { content?: SectionHeade
         {/* Empty State */}
         {!loading && !error && classesData.length === 0 && (
           <div className="text-center py-20">
-            <p className="text-gray-300 text-lg">No classes available at the moment.</p>
+            <p className="home-section-description home-section-description-dark">
+              No classes available at the moment.
+            </p>
           </div>
         )}
 
-        {/* Carousel Container */}
+        {/* Carousel */}
         {!loading && !error && classesData.length > 0 && (
-        <div className="relative">
-          {/* Navigation Buttons */}
-          <button
-            onClick={prevSlide}
-            className="gymfolio4-navigation-btn absolute left-4 top-1/2  z-10"
-            disabled={currentIndex === 0}
-          >
-            <svg
-              width="24"
-              height="24"
-              viewBox="0 0 24 24"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
+          <Reveal>
+            <div
+              className="gymfolio4-carousel"
+              onMouseEnter={() => setPaused(true)}
+              onMouseLeave={() => setPaused(false)}
             >
-              <path
-                d="M15 19.9201L8.47997 13.4001C7.70997 12.6301 7.70997 11.3701 8.47997 10.6001L15 4.08008"
-                stroke="white"
-                strokeWidth="1.5"
-                strokeMiterlimit="10"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          </button>
+              <div
+                ref={viewportRef}
+                className="gymfolio4-carousel-container"
+                style={
+                  {
+                    "--cards": cardsToShow,
+                    "--index": currentIndex,
+                    "--card-gap": `${CARD_GAP}px`,
+                  } as React.CSSProperties
+                }
+              >
+                <div
+                  className="gymfolio4-carousel-track"
+                  onTouchStart={handleTouchStart}
+                  onTouchMove={handleTouchMove}
+                  onTouchEnd={handleTouchEnd}
+                >
+                  {classesData.map((classItem) => (
+                    <Link
+                      key={classItem._id}
+                      href={`/classdetail?id=${classItem._id}`}
+                      className="gymfolio4-carousel-card group"
+                    >
+                      <div
+                        className="gymfolio4-card-image"
+                        style={{
+                          backgroundImage: `url('${
+                            classItem.thumbnail || "/images/class-placeholder.jpg"
+                          }')`,
+                        }}
+                      ></div>
+                      <div className="gymfolio4-card-overlay">
+                        <h3 className="gymfolio4-card-title">{classItem.name}</h3>
+                        <span className="gymfolio4-plus-icon" aria-hidden="true">
+                          <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                            <path
+                              d="M6 12H18"
+                              stroke="currentColor"
+                              strokeWidth="1.8"
+                              strokeLinecap="round"
+                            />
+                            <path
+                              d="M12 18V6"
+                              stroke="currentColor"
+                              strokeWidth="1.8"
+                              strokeLinecap="round"
+                            />
+                          </svg>
+                        </span>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              </div>
 
-          <button
-            onClick={nextSlide}
-            className="gymfolio4-navigation-btn absolute right-4 top-1/2  z-10"
-            disabled={currentIndex >= totalCards - cardsToShow}
-          >
-            <svg
-              width="24"
-              height="24"
-              viewBox="0 0 24 24"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              <path
-                d="M8.9101 20.67C8.7201 20.67 8.5301 20.6 8.3801 20.45C8.0901 20.16 8.0901 19.68 8.3801 19.39L14.9001 12.87C15.3801 12.39 15.3801 11.61 14.9001 11.13L8.3801 4.61002C8.0901 4.32002 8.0901 3.84002 8.3801 3.55002C8.6701 3.26002 9.1501 3.26002 9.4401 3.55002L15.9601 10.07C16.4701 10.58 16.7601 11.27 16.7601 12C16.7601 12.73 16.4801 13.42 15.9601 13.93L9.4401 20.45C9.2901 20.59 9.1001 20.67 8.9101 20.67Z"
-                fill="white"
-              />
-            </svg>
-          </button>
-
-          {/* Carousel Track Container */}
-        
-<div className="gymfolio4-carousel-container mx-4 sm:mx-6 md:mx-10 lg:mx-16">
-  <div 
-    ref={carouselTrackRef}
-    className="gymfolio4-carousel-track gymfolio4-staggered-layout"
-    style={{ transform: `translateX(${translateX}px)` }}
-    onTouchStart={handleTouchStart}
-    onTouchMove={handleTouchMove}
-    onTouchEnd={handleTouchEnd}
-  >
-    {classesData.map((classItem) => (
-      <Link
-        key={classItem._id}
-        href={`/classdetail?id=${classItem._id}`}
-        className="gymfolio4-carousel-card group"
-      >
-        <div
-          className="gymfolio4-card-image"
-          style={{
-            backgroundImage: `url('${classItem.thumbnail || '/images/class-placeholder.jpg'}')`,
-          }}
-        ></div>
-        <div className="gymfolio4-card-overlay">
-          <h3 className="gymfolio4-card-title">
-            {classItem.name}
-          </h3>
-          <div className="gymfolio4-plus-icon">
-            <svg
-              width="24"
-              height="24"
-              viewBox="0 0 24 24"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              <path
-                d="M6 12H18"
-                stroke="#292D32"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-              <path
-                d="M12 18V6"
-                stroke="#292D32"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          </div>
-        </div>
-      </Link>
-    ))}
-  </div>
-</div>
-
-        </div>
+              {/* Arrows only earn their place when there is somewhere to go. */}
+              {canSlide && (
+                <>
+                  <button
+                    type="button"
+                    onClick={prev}
+                    className="gymfolio4-navigation-btn gymfolio4-navigation-btn--prev"
+                    aria-label="Previous classes"
+                  >
+                    <ChevronLeft size={20} strokeWidth={2} aria-hidden="true" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={next}
+                    className="gymfolio4-navigation-btn gymfolio4-navigation-btn--next"
+                    aria-label="Next classes"
+                  >
+                    <ChevronRight size={20} strokeWidth={2} aria-hidden="true" />
+                  </button>
+                </>
+              )}
+            </div>
+          </Reveal>
         )}
       </div>
     </section>

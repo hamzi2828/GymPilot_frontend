@@ -7,8 +7,10 @@ import HeroCarousel from "./components/HeroCarousel";
 import HomeSections from "./components/HomeSections";
 
 export default function MainPage() {
+  // No top padding: the banner is full-bleed and the header floats over it
+  // with no surface of its own, so the artwork starts at the very top edge.
   return (
-    <main className="pt-20">
+    <main>
       <HeroCarousel />
       <HomeSections />
     </main>

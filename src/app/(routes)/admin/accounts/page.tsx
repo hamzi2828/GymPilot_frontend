@@ -63,6 +63,8 @@ interface Overview {
     headcount: number;
     hours: number;
     people: { id: string; name: string; job_title: string; basis: string; currency: string; hours: number | null; cost: number }[];
+    /** Active trainers with no staff account, so no pay rate to cost them at. */
+    unlinked_trainers?: number;
     note: string;
   };
   result: {
@@ -1120,6 +1122,14 @@ function OverviewTab({ data, format }: { data: Overview | null; format: (v: numb
           {data.payroll.mixed && (
             <p className="mt-3 text-[12px] text-amber-700">
               Some staff are paid in another currency; totals above are per person, not summed.
+            </p>
+          )}
+          {!!data.payroll.unlinked_trainers && (
+            <p className="mt-3 text-[12px] text-amber-700">
+              {data.payroll.unlinked_trainers} active{" "}
+              {data.payroll.unlinked_trainers === 1 ? "trainer is" : "trainers are"} not
+              linked to a staff account, so their hours are recorded but their pay is
+              not in this total. Link them on the Trainers screen to include them.
             </p>
           )}
         </Card>

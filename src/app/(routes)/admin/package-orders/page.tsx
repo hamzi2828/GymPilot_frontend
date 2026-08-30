@@ -54,6 +54,10 @@ const orderStatuses = ["pending", "processing", "completed", "cancelled", "refun
 
 export default function PackageOrdersAdminPage() {
   const [list, setList] = useState<PackageOrder[]>([]);
+  // How many orders exist, as opposed to how many are on screen. The two can
+  // differ once a gym has more than the fetch limit, and saying so is better
+  // than a table that looks complete and is not.
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<PackageOrder | null>(null);
   const [newStatus, setNewStatus] = useState("");
@@ -115,10 +119,21 @@ export default function PackageOrdersAdminPage() {
   const load = async () => {
     setLoading(true);
     try {
-      const r = await apiGet<{ data: PackageOrder[]; orders?: PackageOrder[] }>(`${GYMFOLIO_API}/package-orders`);
-      setList(r.data || r.orders || []);
+      // An explicit limit, because the endpoint's own default is 20 and this
+      // page asked for no page at all -- so it had been showing the 20 most
+      // recent orders and silently dropping every one before them, with no
+      // paging control to reveal that anything was missing.
+      const r = await apiGet<{
+        data: PackageOrder[];
+        orders?: PackageOrder[];
+        pagination?: { total: number };
+      }>(`${GYMFOLIO_API}/package-orders?limit=200`);
+      const rows = r.data || r.orders || [];
+      setList(rows);
+      setTotal(r.pagination?.total ?? rows.length);
     } catch {
       setList([]);
+      setTotal(0);
     } finally {
       setLoading(false);
     }
@@ -158,6 +173,12 @@ export default function PackageOrdersAdminPage() {
           >
             Dismiss
           </button>
+        </div>
+      )}
+
+      {!loading && total > list.length && (
+        <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          Showing the {list.length} most recent of {total} orders.
         </div>
       )}
 

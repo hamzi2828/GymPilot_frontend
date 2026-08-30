@@ -6,8 +6,9 @@ import GymFolioClasses from '../main/components/GymFolioClasses';
 import ContactSection from "../main/components/ContactSection";
 
 const AboutUsComponent: React.FC = () => {
+  // No top padding — HeroAbout is full-bleed and the header floats on it.
   return (
-    <main className="pt-20">
+    <main>
       <HeroAbout />
       <GymAboutSection />
       <GymFolioClasses />

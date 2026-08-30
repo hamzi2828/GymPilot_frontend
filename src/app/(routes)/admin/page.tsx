@@ -6,113 +6,398 @@ import {
   FiActivity,
   FiUserCheck,
   FiTag,
-  FiShoppingBag,
-  FiClipboard,
   FiUsers,
   FiMessageSquare,
-  FiImage,
-  FiBookOpen,
-  FiLayout,
-  FiStar,
+  FiClipboard,
+  FiAlertCircle,
+  FiTrendingUp,
+  FiClock,
+  FiCalendar,
 } from "react-icons/fi";
-import { PageHeader, Card, Spinner } from "./_shared/ui";
-import { GYMFOLIO_API, apiGet } from "./_shared/api";
+import { PageHeader, Card, Spinner, Badge } from "./_shared/ui";
+import { API_BASE, apiGet } from "./_shared/api";
 
-interface StatRow {
-  name: string;
-  href: string;
-  icon: React.ComponentType<{ className?: string }>;
-  count: number;
+interface Totals {
+  base_currency: string;
+  base_amount: number;
+  headline_amount: number;
+  headline_currency: string;
+  mixed?: boolean;
+  by_currency: { currency: string; amount: number }[];
+}
+
+interface Dashboard {
+  today: string;
+  base_currency: string;
+  revenue: Totals & { orders: number; period: string; note: string };
+  members: {
+    total: number;
+    active: number;
+    expiring: number;
+    lapsed: number;
+    never_bought: number;
+    expiring_window_days: number;
+  };
+  attendance_today: { member: number; staff: number; still_in: number };
+  classes_today: {
+    count: number;
+    booked: number;
+    sessions: {
+      class_name: string;
+      start_time: string;
+      end_time: string;
+      instructor_name: string;
+      capacity: number;
+      booked: number;
+      waitlist: number;
+      is_closed: boolean;
+    }[];
+  };
+  needs_attention: {
+    expiring_memberships: number;
+    open_contact_queries: number;
+    pending_registrations: number;
+  };
+  catalogue: { classes: number; trainers: number; packages: number };
+  recent_members: { id: string; name: string; email: string; code: string; joined: string }[];
+  expiring_soon: {
+    order_number: string;
+    name: string;
+    email: string;
+    package: string;
+    ends: string;
+    days_left: number | null;
+  }[];
+}
+
+const money = (amount: number, currency: string) =>
+  new Intl.NumberFormat(undefined, {
+    style: "currency",
+    currency: currency || "GBP",
+    maximumFractionDigits: 0,
+  }).format(amount || 0);
+
+const shortDate = (value: string) =>
+  value
+    ? new Date(value).toLocaleDateString(undefined, { day: "numeric", month: "short" })
+    : "—";
+
+function Stat({
+  label,
+  value,
+  hint,
+  href,
+  tone = "neutral",
+}: {
+  label: string;
+  value: string | number;
+  hint?: string;
+  href?: string;
+  tone?: "neutral" | "good" | "warn" | "bad";
+}) {
+  const ring =
+    tone === "warn"
+      ? "border-amber-200 bg-amber-50/40"
+      : tone === "bad"
+      ? "border-rose-200 bg-rose-50/40"
+      : tone === "good"
+      ? "border-emerald-200 bg-emerald-50/40"
+      : "border-neutral-200 bg-white";
+
+  const inner = (
+    <div className={`h-full rounded-lg border p-5 transition-colors ${ring} ${href ? "hover:border-neutral-400" : ""}`}>
+      <p className="text-[11px] font-medium uppercase tracking-wider text-neutral-500">{label}</p>
+      <p className="mt-2 text-2xl font-semibold text-neutral-900">{value}</p>
+      {hint && <p className="mt-1 text-[12px] text-neutral-500">{hint}</p>}
+    </div>
+  );
+
+  return href ? <Link href={href}>{inner}</Link> : inner;
 }
 
 export default function AdminHomePage() {
+  const [data, setData] = useState<Dashboard | null>(null);
   const [loading, setLoading] = useState(true);
-  const [stats, setStats] = useState<StatRow[]>([]);
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
       try {
-        const [classes, trainers, packages, pkgOrders, regs] = await Promise.all([
-          apiGet<{ data: unknown[] }>(`${GYMFOLIO_API}/gym-classes`).catch(() => ({ data: [] })),
-          apiGet<{ data: unknown[] }>(`${GYMFOLIO_API}/trainers`).catch(() => ({ data: [] })),
-          apiGet<{ data: unknown[] }>(`${GYMFOLIO_API}/packages`).catch(() => ({ data: [] })),
-          apiGet<{ data: unknown[] }>(`${GYMFOLIO_API}/package-orders`).catch(() => ({ data: [] })),
-          apiGet<{ data: unknown[] }>(`${GYMFOLIO_API}/package-registrations`).catch(() => ({ data: [] })),
-        ]);
-        setStats([
-          { name: "Classes", href: "/admin/classes", icon: FiActivity, count: classes.data?.length || 0 },
-          { name: "Trainers", href: "/admin/trainers", icon: FiUserCheck, count: trainers.data?.length || 0 },
-          { name: "Packages", href: "/admin/packages", icon: FiTag, count: packages.data?.length || 0 },
-          { name: "Package Orders", href: "/admin/package-orders", icon: FiShoppingBag, count: pkgOrders.data?.length || 0 },
-          { name: "Registrations", href: "/admin/package-registrations", icon: FiClipboard, count: regs.data?.length || 0 },
-        ]);
+        setData(await apiGet<Dashboard>(`${API_BASE}/admin/dashboard`));
       } catch (e) {
-        setErr(e instanceof Error ? e.message : "Failed to load");
+        setErr(e instanceof Error ? e.message : "Could not load the dashboard");
       } finally {
         setLoading(false);
       }
     })();
   }, []);
 
-  const quickLinks: { name: string; href: string; icon: React.ComponentType<{ className?: string }> }[] = [
-    { name: "Homepage", href: "/admin/homepage", icon: FiLayout },
-    { name: "Hero Slides", href: "/admin/hero-slides", icon: FiImage },
-    { name: "Testimonials", href: "/admin/testimonials", icon: FiStar },
-    { name: "Blogs", href: "/admin/blogs", icon: FiBookOpen },
-    { name: "Users", href: "/admin/users", icon: FiUsers },
-    { name: "Contact Queries", href: "/admin/contact-queries", icon: FiMessageSquare },
-  ];
+  if (loading) {
+    return (
+      <div>
+        <PageHeader eyebrow="Overview" title="Dashboard" />
+        <Spinner />
+      </div>
+    );
+  }
+
+  if (err || !data) {
+    return (
+      <div>
+        <PageHeader eyebrow="Overview" title="Dashboard" />
+        <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+          {err || "No data"}
+        </div>
+      </div>
+    );
+  }
+
+  const attention =
+    data.needs_attention.expiring_memberships +
+    data.needs_attention.open_contact_queries +
+    data.needs_attention.pending_registrations;
 
   return (
     <div>
       <PageHeader eyebrow="Overview" title="Dashboard" />
 
-      {loading ? (
-        <Spinner />
-      ) : (
-        <>
-          {err && (
-            <div className="mb-4 bg-white border border-rose-200 text-rose-700 px-4 py-3 rounded-lg text-sm">
-              {err}
-            </div>
-          )}
+      {/* The row an owner reads first: money, members, who is in, what is on. */}
+      <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <Stat
+          label={`Revenue · ${data.revenue.period}`}
+          value={money(data.revenue.headline_amount, data.revenue.headline_currency)}
+          hint={
+            data.revenue.mixed
+              ? `${data.revenue.orders} orders · other currencies not summed`
+              : `${data.revenue.orders} paid orders`
+          }
+          href="/admin/accounts"
+          tone="good"
+        />
+        <Stat
+          label="Active memberships"
+          value={data.members.active}
+          hint={`${data.members.total} members · ${data.members.never_bought} never bought`}
+          href="/admin/package-orders"
+        />
+        <Stat
+          label="In the gym today"
+          value={data.attendance_today.member + data.attendance_today.staff}
+          hint={
+            data.attendance_today.still_in > 0
+              ? `${data.attendance_today.still_in} still checked in`
+              : "members and staff"
+          }
+          href="/admin/attendance"
+        />
+        <Stat
+          label="Classes today"
+          value={data.classes_today.count}
+          hint={`${data.classes_today.booked} places booked`}
+          href="/admin/bookings"
+          tone="neutral"
+        />
+      </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-10">
-            {stats.map((s) => (
+      {/* Things somebody has to do something about — separated from the
+          numbers above, which are only for looking at. */}
+      {attention > 0 && (
+        <Card className="mb-8 p-5">
+          <div className="mb-4 flex items-center gap-2">
+            <FiAlertCircle className="h-4 w-4 text-amber-600" />
+            <h2 className="text-sm font-semibold text-neutral-900">Needs attention</h2>
+          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            {data.needs_attention.expiring_memberships > 0 && (
               <Link
-                key={s.name}
-                href={s.href}
-                className="group bg-white border border-neutral-200 rounded-lg p-5 hover:border-neutral-300 hover:shadow-sm transition-all"
+                href="/admin/package-orders"
+                className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 hover:border-amber-300"
               >
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-medium uppercase tracking-wider text-neutral-500">
-                    {s.name}
-                  </span>
-                  <s.icon className="w-4 h-4 text-neutral-400 group-hover:text-[var(--accent)] transition-colors" />
-                </div>
-                <p className="mt-3 text-2xl font-semibold text-neutral-900">{s.count}</p>
+                <p className="text-lg font-semibold text-amber-900">
+                  {data.needs_attention.expiring_memberships}
+                </p>
+                <p className="text-[12px] text-amber-800">
+                  memberships end within {data.members.expiring_window_days} days
+                </p>
               </Link>
-            ))}
+            )}
+            {data.needs_attention.open_contact_queries > 0 && (
+              <Link
+                href="/admin/contact-queries"
+                className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 hover:border-amber-300"
+              >
+                <p className="text-lg font-semibold text-amber-900">
+                  {data.needs_attention.open_contact_queries}
+                </p>
+                <p className="text-[12px] text-amber-800">unanswered enquiries</p>
+              </Link>
+            )}
+            {data.needs_attention.pending_registrations > 0 && (
+              <Link
+                href="/admin/package-registrations"
+                className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 hover:border-amber-300"
+              >
+                <p className="text-lg font-semibold text-amber-900">
+                  {data.needs_attention.pending_registrations}
+                </p>
+                <p className="text-[12px] text-amber-800">registrations not followed up</p>
+              </Link>
+            )}
+          </div>
+        </Card>
+      )}
+
+      <div className="mb-8 grid grid-cols-1 gap-6 lg:grid-cols-2">
+        {/* Today's timetable */}
+        <Card className="p-5">
+          <div className="mb-4 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <FiCalendar className="h-4 w-4 text-neutral-400" />
+              <h2 className="text-sm font-semibold text-neutral-900">Today&apos;s classes</h2>
+            </div>
+            <Link href="/admin/bookings" className="text-[12px] font-medium text-neutral-500 hover:text-neutral-900">
+              All bookings →
+            </Link>
           </div>
 
-          <h2 className="text-sm font-semibold text-neutral-900 mb-3">Quick Links</h2>
-          <Card>
-            <div className="grid grid-cols-2 lg:grid-cols-3 divide-x divide-y divide-neutral-100">
-              {quickLinks.map((q) => (
-                <Link
-                  key={q.name}
-                  href={q.href}
-                  className="flex items-center gap-3 px-5 py-4 hover:bg-neutral-50 transition-colors"
-                >
-                  <q.icon className="w-5 h-5 text-neutral-400" />
-                  <span className="text-sm font-medium text-neutral-700">{q.name}</span>
-                </Link>
+          {data.classes_today.sessions.length === 0 ? (
+            <p className="py-6 text-center text-sm text-neutral-400">Nothing scheduled today.</p>
+          ) : (
+            <ul className="divide-y divide-neutral-100">
+              {data.classes_today.sessions.map((s, i) => (
+                <li key={i} className="flex items-center gap-3 py-3">
+                  <span className="w-14 shrink-0 text-sm font-semibold text-neutral-900">
+                    {s.start_time}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-neutral-900">{s.class_name}</p>
+                    {s.instructor_name && (
+                      <p className="truncate text-[12px] text-neutral-500">{s.instructor_name}</p>
+                    )}
+                  </div>
+                  <span className="shrink-0 text-[12px] text-neutral-600">
+                    {s.booked}/{s.capacity}
+                    {s.waitlist > 0 && ` · ${s.waitlist} waiting`}
+                  </span>
+                  {s.is_closed && <Badge color="neutral">Closed</Badge>}
+                </li>
               ))}
+            </ul>
+          )}
+        </Card>
+
+        {/* Memberships about to lapse — the most actionable list in the panel */}
+        <Card className="p-5">
+          <div className="mb-4 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <FiClock className="h-4 w-4 text-neutral-400" />
+              <h2 className="text-sm font-semibold text-neutral-900">Expiring soon</h2>
             </div>
-          </Card>
-        </>
-      )}
+            <Link
+              href="/admin/package-orders"
+              className="text-[12px] font-medium text-neutral-500 hover:text-neutral-900"
+            >
+              All orders →
+            </Link>
+          </div>
+
+          {data.expiring_soon.length === 0 ? (
+            <p className="py-6 text-center text-sm text-neutral-400">
+              Nothing lapsing in the next {data.members.expiring_window_days} days.
+            </p>
+          ) : (
+            <ul className="divide-y divide-neutral-100">
+              {data.expiring_soon.map((m) => (
+                <li key={m.order_number} className="flex items-center gap-3 py-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-neutral-900">{m.name || m.email}</p>
+                    <p className="truncate text-[12px] text-neutral-500">{m.package}</p>
+                  </div>
+                  <Badge color={m.days_left !== null && m.days_left <= 3 ? "rose" : "amber"}>
+                    {m.days_left !== null
+                      ? m.days_left <= 0
+                        ? "today"
+                        : `${m.days_left}d`
+                      : shortDate(m.ends)}
+                  </Badge>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+      </div>
+
+      {/* Membership health + newest members */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <Card className="p-5">
+          <div className="mb-4 flex items-center gap-2">
+            <FiTrendingUp className="h-4 w-4 text-neutral-400" />
+            <h2 className="text-sm font-semibold text-neutral-900">Membership health</h2>
+          </div>
+          <dl className="grid grid-cols-2 gap-4">
+            {[
+              { label: "Active", value: data.members.active, tone: "text-emerald-700" },
+              { label: "Expiring", value: data.members.expiring, tone: "text-amber-700" },
+              { label: "Lapsed", value: data.members.lapsed, tone: "text-rose-700" },
+              { label: "Never bought", value: data.members.never_bought, tone: "text-neutral-700" },
+            ].map((row) => (
+              <div key={row.label}>
+                <dt className="text-[12px] text-neutral-500">{row.label}</dt>
+                <dd className={`text-xl font-semibold ${row.tone}`}>{row.value}</dd>
+              </div>
+            ))}
+          </dl>
+          <p className="mt-4 text-[12px] text-neutral-500">{data.revenue.note}.</p>
+        </Card>
+
+        <Card className="p-5">
+          <div className="mb-4 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <FiUsers className="h-4 w-4 text-neutral-400" />
+              <h2 className="text-sm font-semibold text-neutral-900">Newest members</h2>
+            </div>
+            <Link href="/admin/users" className="text-[12px] font-medium text-neutral-500 hover:text-neutral-900">
+              All members →
+            </Link>
+          </div>
+          {data.recent_members.length === 0 ? (
+            <p className="py-6 text-center text-sm text-neutral-400">No members yet.</p>
+          ) : (
+            <ul className="divide-y divide-neutral-100">
+              {data.recent_members.map((m) => (
+                <li key={m.id} className="flex items-center gap-3 py-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-neutral-900">{m.name}</p>
+                    <p className="truncate text-[12px] text-neutral-500">{m.email}</p>
+                  </div>
+                  <span className="shrink-0 text-[12px] text-neutral-500">{shortDate(m.joined)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+      </div>
+
+      {/* Catalogue counts, demoted to the bottom: they are reference, not news. */}
+      <div className="mt-8 grid grid-cols-3 gap-4">
+        {[
+          { name: "Classes", href: "/admin/classes", icon: FiActivity, count: data.catalogue.classes },
+          { name: "Trainers", href: "/admin/trainers", icon: FiUserCheck, count: data.catalogue.trainers },
+          { name: "Packages", href: "/admin/packages", icon: FiTag, count: data.catalogue.packages },
+        ].map((c) => (
+          <Link
+            key={c.name}
+            href={c.href}
+            className="group flex items-center justify-between rounded-lg border border-neutral-200 bg-white px-5 py-4 hover:border-neutral-300"
+          >
+            <span className="text-sm font-medium text-neutral-700">{c.name}</span>
+            <span className="flex items-center gap-2">
+              <span className="text-lg font-semibold text-neutral-900">{c.count}</span>
+              <c.icon className="h-4 w-4 text-neutral-400 group-hover:text-[var(--accent)]" />
+            </span>
+          </Link>
+        ))}
+      </div>
     </div>
   );
 }

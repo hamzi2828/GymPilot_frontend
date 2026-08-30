@@ -3,9 +3,10 @@ import React from 'react';
 interface HeaderProps {
   isSignUp: boolean;
   isForgot: boolean;
+  isReset?: boolean;
 }
 
-export const Header: React.FC<HeaderProps> = ({ isSignUp, isForgot }) => {
+export const Header: React.FC<HeaderProps> = ({ isSignUp, isForgot, isReset = false }) => {
   return (
     <div className="text-center">
       <div className="mb-8">
@@ -16,11 +17,19 @@ export const Header: React.FC<HeaderProps> = ({ isSignUp, isForgot }) => {
         </div>
       </div>
       <h1 className="text-5xl font-black text-gray-900 leading-tight tracking-tight mb-3 font-sans">
-        {isForgot ? 'Reset Password' : isSignUp ? 'Join Us' : 'Welcome'}
+        {isReset
+          ? 'New Password'
+          : isForgot
+          ? 'Forgot Password'
+          : isSignUp
+          ? 'Join Us'
+          : 'Welcome'}
       </h1>
       <p className="text-gray-600 text-base font-medium leading-relaxed">
-        {isForgot
-          ? 'Set a new password for your account'
+        {isReset
+          ? 'Choose the password you will sign in with from now on'
+          : isForgot
+          ? 'Enter your email and we will send you a link to reset it'
           : isSignUp
           ? 'Start your fitness transformation today'
           : 'Continue your fitness journey'}

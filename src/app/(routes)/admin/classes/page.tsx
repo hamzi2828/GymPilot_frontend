@@ -18,6 +18,12 @@ import {
   Table,
 } from "../_shared/ui";
 import { GYMFOLIO_API, apiGet, apiJson, apiForm, absoluteUrl } from "../_shared/api";
+import {
+  WeekScheduleEditor,
+  validateSchedule,
+  type ScheduleRow,
+  type InstructorOption,
+} from "../_shared/WeekScheduleEditor";
 
 interface GymClass {
   _id: string;
@@ -33,6 +39,12 @@ interface GymClass {
   price?: number;
   isActive: boolean;
   isFeatured?: boolean;
+  /**
+   * The weekly template this class runs to. Bookable sessions are expanded
+   * from it on the server, so a class with an empty schedule cannot be booked
+   * at all — which is why this is now editable here.
+   */
+  schedule?: ScheduleRow[];
 }
 
 const difficulties = ["Beginner", "Intermediate", "Advanced", "All Levels"];
@@ -46,6 +58,8 @@ export default function ClassesAdminPage() {
   const [form, setForm] = useState<Partial<GymClass>>({});
   const [thumb, setThumb] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
+  const [schedule, setSchedule] = useState<ScheduleRow[]>([]);
+  const [trainers, setTrainers] = useState<InstructorOption[]>([]);
 
   const load = async () => {
     setLoading(true);
@@ -57,11 +71,20 @@ export default function ClassesAdminPage() {
     }
   };
 
+  // Instructors for the per-session dropdown. A failure here costs the
+  // dropdown, not the page.
+  useEffect(() => {
+    apiGet<{ data: InstructorOption[] }>(`${GYMFOLIO_API}/trainers`)
+      .then((r) => setTrainers(r.data || []))
+      .catch(() => setTrainers([]));
+  }, []);
+
   useEffect(() => { load(); }, []);
 
   const openCreate = () => {
     setEditing(null);
     setForm({ isActive: true, difficulty: "All Levels", category: "Other", capacity: 20 });
+    setSchedule([]);
     setThumb(null);
     setOpen(true);
   };
@@ -69,19 +92,53 @@ export default function ClassesAdminPage() {
   const openEdit = (c: GymClass) => {
     setEditing(c);
     setForm(c);
+    // The API populates `instructor` into an object; the editor works in ids.
+    setSchedule(
+      (c.schedule || []).map((row) => ({
+        day: row.day,
+        startTime: row.startTime,
+        endTime: row.endTime,
+        instructor:
+          typeof row.instructor === "object" && row.instructor
+            ? (row.instructor as { _id: string })._id
+            : row.instructor || null,
+        instructorName: row.instructorName || "",
+      }))
+    );
     setThumb(null);
     setOpen(true);
   };
 
   const save = async () => {
+    const problems = validateSchedule(schedule);
+    if (problems.length) {
+      alert(["Fix the timetable first:", ...problems].join("\n"));
+      return;
+    }
+
     setSaving(true);
     try {
       const fd = new FormData();
       Object.entries(form).forEach(([k, v]) => {
+        // Sent as JSON below; String(array) would post "[object Object]".
+        if (k === "schedule") return;
         if (v === undefined || v === null) return;
         if (typeof v === "boolean") fd.append(k, String(v));
         else fd.append(k, String(v));
       });
+      // Always sent, so clearing every row really does clear the timetable.
+      fd.append(
+        "schedule",
+        JSON.stringify(
+          schedule.map((row) => ({
+            day: row.day,
+            startTime: row.startTime,
+            endTime: row.endTime,
+            instructor: row.instructor || undefined,
+            instructorName: row.instructorName || "",
+          }))
+        )
+      );
       if (thumb) fd.append("thumbnail", thumb);
       if (editing) {
         await apiForm(`${GYMFOLIO_API}/gym-classes/${editing._id}`, "PUT", fd);
@@ -202,6 +259,23 @@ export default function ClassesAdminPage() {
           <div className="md:col-span-2">
             <TextArea label="Description" value={form.description} rows={6} onChange={(v) => setForm({ ...form, description: v })} />
           </div>
+          <div className="md:col-span-2 border-t border-neutral-200 pt-4">
+            <h3 className="text-sm font-semibold text-neutral-900">Weekly timetable</h3>
+            <p className="mb-3 mt-1 text-[12px] text-neutral-500">
+              When this class runs each week. Members book against these times, so a
+              class with nothing here cannot be booked. Capacity is {form.capacity ?? 0}{" "}
+              per session.
+            </p>
+            <WeekScheduleEditor
+              rows={schedule}
+              onChange={setSchedule}
+              withInstructor
+              instructors={trainers}
+              addLabel="Add a session"
+              emptyHint="No sessions yet — add one so members can book this class."
+            />
+          </div>
+
           <Toggle label="Active" checked={!!form.isActive} onChange={(v) => setForm({ ...form, isActive: v })} />
           <Toggle label="Featured" checked={!!form.isFeatured} onChange={(v) => setForm({ ...form, isFeatured: v })} />
         </div>

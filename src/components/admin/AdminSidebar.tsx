@@ -23,6 +23,7 @@ import {
   FiBriefcase,
   FiShield,
   FiDollarSign,
+  FiCalendar,
 } from "react-icons/fi";
 
 interface MenuItem {
@@ -56,6 +57,7 @@ const sections: MenuSection[] = [
     heading: "Fitness",
     items: [
       { name: "Classes", path: "/admin/classes", icon: <FiActivity className={iconCls} />, tab: "classes" },
+      { name: "Bookings", path: "/admin/bookings", icon: <FiCalendar className={iconCls} />, tab: "bookings" },
       { name: "Trainers", path: "/admin/trainers", icon: <FiUserCheck className={iconCls} />, tab: "trainers" },
       { name: "Packages", path: "/admin/packages", icon: <FiTag className={iconCls} />, tab: "packages" },
     ],

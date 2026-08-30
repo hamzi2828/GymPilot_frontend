@@ -24,10 +24,14 @@ type FormData = {
 type LeftSideProps = {
   isSignUp: boolean;
   isForgot: boolean;
+  /** The screen the emailed reset link lands on. */
+  isReset?: boolean;
+  /** Result of the last submit, shown above the form. */
+  notice?: { tone: "ok" | "error"; text: string } | null;
   formData: FormData;
   handleInputChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   handleSubmit: () => void;
-  updateMode: (mode: "signin" | "signup" | "forgot") => void;
+  updateMode: (mode: "signin" | "signup" | "forgot" | "reset") => void;
   toggleAuthMode: () => void;
   isLoading: boolean;
   showPassword: boolean;
@@ -48,6 +52,8 @@ type LeftSideProps = {
 export const LeftSide: React.FC<LeftSideProps> = ({
   isSignUp,
   isForgot,
+  isReset = false,
+  notice = null,
   formData,
   handleInputChange,
   handleSubmit,
@@ -76,7 +82,24 @@ export const LeftSide: React.FC<LeftSideProps> = ({
 
     <div className="w-full max-w-md space-y-8 relative z-10">
       {/* Header */}
-      <Header isSignUp={isSignUp} isForgot={isForgot} />
+      <Header isSignUp={isSignUp} isForgot={isForgot} isReset={isReset} />
+
+      {/* Outcome of the last submit. Replaces the alert() this page used to
+          fire — which is how the old reset screen managed to announce success
+          without ever having contacted the server. */}
+      {notice && (
+        <div
+          role="status"
+          aria-live="polite"
+          className={`rounded-2xl px-5 py-4 text-sm font-medium border ${
+            notice.tone === "ok"
+              ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+              : "bg-rose-50 border-rose-200 text-rose-800"
+          }`}
+        >
+          {notice.text}
+        </div>
+      )}
 
       {/* Form */}
       <div className="space-y-5">
@@ -87,13 +110,28 @@ export const LeftSide: React.FC<LeftSideProps> = ({
           handleInputChange={handleInputChange}
         />
 
-        <EmailField
-          formData={formData}
-          errors={errors}
-          handleInputChange={handleInputChange}
-        />
+        {/* On the reset screen the account is identified by the token in the
+            link, so the address is shown for reassurance but cannot be edited
+            — typing a different one here would not change whose password is
+            about to be set. */}
+        {isReset ? (
+          formData.email ? (
+            <p className="text-sm text-gray-600 font-medium text-center">
+              Setting a new password for{" "}
+              <span className="font-black text-gray-900">{formData.email}</span>
+            </p>
+          ) : null
+        ) : (
+          <EmailField
+            formData={formData}
+            errors={errors}
+            handleInputChange={handleInputChange}
+          />
+        )}
 
-        {!isForgot && (
+        {/* 'forgot' asks for the address and nothing else: there is no password
+            to set until the person has proved they can read that mailbox. */}
+        {!isForgot && !isReset && (
           <PasswordField
             label="Password"
             name="password"
@@ -106,11 +144,12 @@ export const LeftSide: React.FC<LeftSideProps> = ({
           />
         )}
 
-        {isForgot && (
+        {isReset && (
           <>
             <PasswordField
               label="New Password"
-              placeholder="Enter new password"
+              name="password"
+              placeholder="At least 8 characters"
               value={formData.password}
               showPassword={showPassword}
               setShowPassword={setShowPassword}
@@ -144,6 +183,7 @@ export const LeftSide: React.FC<LeftSideProps> = ({
         <SignInUtilities
           isSignUp={isSignUp}
           isForgot={isForgot}
+          isReset={isReset}
           rememberMe={formData.rememberMe}
           handleInputChange={handleInputChange}
           updateMode={updateMode}
@@ -160,12 +200,14 @@ export const LeftSide: React.FC<LeftSideProps> = ({
           isLoading={isLoading}
           isSignUp={isSignUp}
           isForgot={isForgot}
+          isReset={isReset}
           handleSubmit={handleSubmit}
         />
 
         <FooterToggle
           isSignUp={isSignUp}
           isForgot={isForgot}
+          isReset={isReset}
           toggleAuthMode={toggleAuthMode}
           updateMode={updateMode}
         />

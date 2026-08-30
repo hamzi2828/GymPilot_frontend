@@ -28,7 +28,7 @@ const VideosSection = ({ content = DEFAULT_VIDEOS }: { content?: VideosContent }
   if (videos.length === 0) return null;
 
   return (
-    <section className="home-dark-section py-16 lg:py-24 px-4 md:px-8 lg:px-20 relative overflow-hidden">
+    <section className="section surface-dark home-dark-section relative overflow-hidden">
       <div className="home-testimonials-glow" aria-hidden="true"></div>
 
       <div className="mx-auto relative">

@@ -1,5 +1,7 @@
 "use client";
 import React, { useState, FormEvent } from 'react';
+import Link from 'next/link';
+import { ArrowRight } from 'lucide-react';
 import { registrationService } from '../../packages/services/registrationService';
 import { ContactContent, DEFAULT_CONTACT } from '../services/homeService';
 import { AccentText, Reveal } from './SectionHeading';
@@ -72,9 +74,9 @@ const ContactSection = ({ content = DEFAULT_CONTACT }: { content?: ContactConten
   };
 
   return (
-    <section className="gymfolio8-contact-bg py-16 lg:py-20 px-4 sm:px-8 lg:px-20 relative overflow-hidden">
+    <section className="section gymfolio8-contact-bg relative overflow-hidden">
       {/* Background Image */}
-      <div className="gymfolio8-bg-image absolute right-0 top-0 w-[720px] h-[642px]  hidden xl:block"></div>
+      <div className="gymfolio8-bg-image absolute right-0 inset-y-0 w-1/2 hidden xl:block" aria-hidden="true"></div>
 
       <div className=" mx-auto relative">
         <div className="grid lg:grid-cols-2 gap-8 lg:gap-32 items-center">
@@ -93,7 +95,12 @@ const ContactSection = ({ content = DEFAULT_CONTACT }: { content?: ContactConten
                   </h2>
                 </div>
 
-                <p className="home-section-description text-sm leading-6">{content.description}</p>
+                <p className="home-section-description">{content.description}</p>
+
+                <Link href="/contact-us" className="btn btn--outline">
+                  <span>Other ways to reach us</span>
+                  <ArrowRight size={16} strokeWidth={2.2} aria-hidden="true" />
+                </Link>
               </header>
             </div>
           </Reveal>

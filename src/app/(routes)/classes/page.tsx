@@ -17,7 +17,7 @@ const Classes = () => {
   }, [router]);
 
   return (
-    <main className="pt-20">
+    <main>
 
         <HeroAbout />
             <GymfolioAllClasses onClassClick={handleClassClick} />

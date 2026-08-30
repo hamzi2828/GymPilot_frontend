@@ -10,7 +10,7 @@ const GymAboutSection = ({ content = DEFAULT_ABOUT }: { content?: AboutContent }
   const imageSrc = resolveMediaUrl(content.image) || DEFAULT_ABOUT.image;
 
   return (
-    <section className="py-8 md:py-20 px-4 md:px-8 lg:px-20">
+    <section className="section surface-paper">
       <div className="mx-auto">
         <div className="custom-flex-container">
           {/* First Content Block - About Us */}
@@ -25,14 +25,14 @@ const GymAboutSection = ({ content = DEFAULT_ABOUT }: { content?: AboutContent }
             needs >= 80px. The padding below is one step past each, which is
             the clearance you can see between the text and the photo.
           */}
-          <Reveal className="flex-1 z-6 relative">
+          <Reveal className="flex-1 z-6 relative home-reveal--left">
             <article className="space-y-8 lg:pr-12 xl:pr-24 for-mobile-center">
               <header className="space-y-4 for-mobile-center">
                 <div className="flex items-center gap-2">
                   <span className="home-eyebrow-dot" aria-hidden="true"></span>
                   <span className="home-eyebrow-label">{content.badge}</span>
                 </div>
-                <h2 className="home-section-title text-2xl md:text-3xl lg:text-4xl text-black">
+                <h2 className="home-section-title text-2xl md:text-3xl lg:text-[42px] text-black">
                   <AccentText text={content.heading} />
                 </h2>
               </header>
@@ -51,31 +51,41 @@ const GymAboutSection = ({ content = DEFAULT_ABOUT }: { content?: AboutContent }
               </ul>
 
               {content.ctaText && (
-                <Link href={content.ctaLink || "/packages"} className="hero-cta-button inline-flex">
-                  <span className="hero-cta-text">{content.ctaText}</span>
-                  <i className="fas fa-arrow-right" aria-hidden="true"></i>
+                <Link href={content.ctaLink || "/packages"} className="btn btn--primary btn--lg">
+                  <span>{content.ctaText}</span>
+                  <i className="fas fa-arrow-right text-xs" aria-hidden="true"></i>
                 </Link>
               )}
             </article>
           </Reveal>
 
           {/* Center Image */}
-          <Reveal delay={120} className="lg:relative lg:-mx-20 xl:-mx-32 gymfolio3-z-index lg:order-none">
+          <Reveal delay={120} className="lg:relative lg:-mx-20 xl:-mx-32 gymfolio3-z-index lg:order-none home-reveal--scale">
             <figure className="relative home-about-figure">
               <Image
                 src={imageSrc}
                 alt="Training at the gym"
                 width={600}
                 height={500}
-                className="w-full max-w-md lg:max-w-lg xl:max-w-2xl h-76 md:h-80 lg:h-96 xl:h-[500px] object-cover rounded-2xl"
+                className="w-full max-w-md lg:max-w-lg xl:max-w-2xl h-76 md:h-80 lg:h-96 xl:h-[500px] object-cover"
                 priority
                 unoptimized={/^https?:\/\//i.test(imageSrc)}
               />
+              {/* Anchors the artwork with a fact — a cut-out PNG on its own
+                  reads as an empty panel. */}
+              <figcaption className="home-about-badge">
+                <b>7</b>
+                <span>
+                  days a week
+                  <br />
+                  coached floor
+                </span>
+              </figcaption>
             </figure>
           </Reveal>
 
           {/* Second Content Block */}
-          <Reveal delay={200} className="flex-1 z-9 relative">
+          <Reveal delay={200} className="flex-1 z-9 relative home-reveal--right">
             <article className="space-y-8 lg:pl-12 xl:pl-24">
               <header className="space-y-4 for-mobile-center">
                 <h2 className="home-section-title text-2xl md:text-3xl text-black">
@@ -86,17 +96,23 @@ const GymAboutSection = ({ content = DEFAULT_ABOUT }: { content?: AboutContent }
 
               <div className="space-y-6">
                 {content.progress.map((bar, idx) => (
-                  <div key={idx} className="space-y-2">
+                  <div key={idx} className="space-y-2.5">
                     <div className="flex justify-between items-center">
                       <h3 className="gymfolio3-progress-label text-gray-900 font-medium">{bar.label}</h3>
-                      <span className="gymfolio3-progress-label text-gray-900 font-medium">
+                      <span className="gymfolio3-progress-label text-gray-900 font-semibold">
                         {Math.min(100, Math.max(0, Number(bar.value) || 0))}%
                       </span>
                     </div>
-                    <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
+                    <div className="home-progress-track">
+                      {/* Width comes from --w so the bar can grow from zero the
+                          first time the block scrolls into view (see CSS). */}
                       <div
                         className="home-progress-fill h-full rounded-full"
-                        style={{ width: `${Math.min(100, Math.max(0, Number(bar.value) || 0))}%` }}
+                        style={
+                          {
+                            "--w": `${Math.min(100, Math.max(0, Number(bar.value) || 0))}%`,
+                          } as React.CSSProperties
+                        }
                       ></div>
                     </div>
                   </div>

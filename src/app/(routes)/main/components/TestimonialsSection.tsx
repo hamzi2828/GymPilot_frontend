@@ -69,7 +69,7 @@ const TestimonialsSection = ({
   }, []);
 
   return (
-    <section className="home-dark-section home-testimonials py-16 lg:py-24 px-4 md:px-8 lg:px-20 relative overflow-hidden">
+    <section className="section surface-dark home-dark-section home-testimonials relative overflow-hidden">
       {/* Soft accent glow behind the cards */}
       <div className="home-testimonials-glow" aria-hidden="true"></div>
 

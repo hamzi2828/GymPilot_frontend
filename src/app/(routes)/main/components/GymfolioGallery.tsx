@@ -39,7 +39,7 @@ const GymfolioGallery = ({ content = DEFAULT_GALLERY }: { content?: GalleryConte
   if (groups.length === 0) return null;
 
   return (
-    <section className="gymfolio6-gallery-bg py-16 lg:py-20 px-4 sm:px-8 lg:px-20">
+    <section className="section surface-paper gymfolio6-gallery-bg">
       <div className="mx-auto">
         {/* Header */}
         <Reveal>

@@ -7,9 +7,9 @@ import ContactSection from "../main/components/ContactSection";
 import HeroCarousel from "../main/components/HeroCarousel";
 const Packages = () => {
   return (
-    <main className="pt-20">
-      
-       <HeroCarousel />
+    // No top padding: HeroCarousel is full-bleed and the header floats on it.
+    <main>
+      <HeroCarousel compact />
       <GymfolioPricing />
       <ContactSection/>
            
