@@ -1,6 +1,6 @@
 import React from "react";
 
-export type UserTab = "profile" | "bookings" | "pt" | "history" | "visits" | "checkin";
+export type UserTab = "profile" | "bookings" | "pt" | "history" | "visits" | "checkin" | "work";
 
 /** Tab keys in the order they appear, so the URL and the UI cannot drift. */
 export const USER_TABS: { key: UserTab; label: string; icon: string }[] = [
@@ -16,6 +16,8 @@ export const USER_TABS: { key: UserTab; label: string; icon: string }[] = [
   // scrolls below the thing it belongs to. It is its own view now.
   { key: "visits", label: "Recent visits", icon: "fas fa-calendar-check" },
   { key: "checkin", label: "Check-in QR", icon: "fas fa-qrcode" },
+  // Staff accounts only: shifts, leave and payslips. Hidden for members.
+  { key: "work", label: "My work", icon: "fas fa-briefcase" },
 ];
 
 /** Narrows an arbitrary `?tab=` value, keeping the legacy `orders` alias. */
@@ -30,13 +32,15 @@ export function parseUserTab(value: string | null): UserTab | null {
 export interface TabsProps {
   activeTab: UserTab;
   onChange: (tab: UserTab) => void;
+  /** Tabs to leave out for this account (e.g. "work" for members). */
+  hide?: UserTab[];
 }
 
-export const Tabs: React.FC<TabsProps> = ({ activeTab, onChange }) => {
+export const Tabs: React.FC<TabsProps> = ({ activeTab, onChange, hide = [] }) => {
   return (
     <div className="border-b border-gray-200 mb-8 overflow-x-auto">
       <nav className="flex gap-6 min-w-max">
-        {USER_TABS.map((tab) => (
+        {USER_TABS.filter((tab) => !hide.includes(tab.key)).map((tab) => (
           <button
             key={tab.key}
             onClick={() => onChange(tab.key)}

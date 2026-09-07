@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { FiSearch } from "react-icons/fi";
 import {
@@ -498,6 +499,12 @@ export default function StaffAdminPage() {
       {err && (
         <div className="mb-6 rounded-xl border border-rose-200 bg-white px-4 py-3 text-sm text-rose-700">{err}</div>
       )}
+
+      <div className="mb-5 flex flex-wrap gap-2 text-sm">
+        <Link href="/admin/staff/roster" className="rounded-lg border border-neutral-200 px-3 py-1.5 font-medium text-neutral-700 hover:bg-neutral-50">Roster</Link>
+        <Link href="/admin/staff/leave" className="rounded-lg border border-neutral-200 px-3 py-1.5 font-medium text-neutral-700 hover:bg-neutral-50">Leave</Link>
+        <Link href="/admin/staff/payslips" className="rounded-lg border border-neutral-200 px-3 py-1.5 font-medium text-neutral-700 hover:bg-neutral-50">Payslips</Link>
+      </div>
 
       {counts && (
         <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">

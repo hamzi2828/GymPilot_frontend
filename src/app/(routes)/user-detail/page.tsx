@@ -13,6 +13,8 @@ import { PrivacySection } from "./components/PrivacySection";
 import { NotificationsSection } from "./components/NotificationsSection";
 import { ProfileExtrasSection } from "./components/ProfileExtrasSection";
 import { PtSection } from "./components/PtSection";
+import { WorkSection, type Work } from "./components/WorkSection";
+import { getAuthHeader } from "@/helper/helper";
 import {
   getUserDetailForProfile,
   updateUser,
@@ -51,6 +53,15 @@ const UserProfilePageContent: React.FC = () => {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState<string | null>(null);
   const [monthLoading, setMonthLoading] = useState(false);
+  // Staff accounts get a "My work" tab; the API answers null for members.
+  const [work, setWork] = useState<Work | null>(null);
+  useEffect(() => {
+    const base = process.env.NEXT_PUBLIC_BACKEND_URL || "";
+    fetch(`${base}/staff/me/work`, { headers: getAuthHeader() })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((json) => setWork(json?.data || null))
+      .catch(() => setWork(null));
+  }, []);
 
   const showToast = (msg: string, type: "success" | "error" | "info" = "success") => {
     setToast({ show: true, msg, type });
@@ -278,7 +289,7 @@ const UserProfilePageContent: React.FC = () => {
 
       <section className="px-4 sm:px-6 lg:px-8 xl:px-20 py-8 sm:py-12">
         <Header userProfile={userProfile} />
-        <Tabs activeTab={activeTab} onChange={handleTabChange} />
+        <Tabs activeTab={activeTab} onChange={handleTabChange} hide={work ? [] : ["work"]} />
 
         {activeTab === "profile" && (
           <ProfileSection<UserProfile>
@@ -304,6 +315,8 @@ const UserProfilePageContent: React.FC = () => {
         {activeTab === "bookings" && <BookingsSection />}
 
         {activeTab === "pt" && <PtSection />}
+
+        {activeTab === "work" && work && <WorkSection initial={work} />}
 
         {activeTab === "checkin" && <CheckInSection />}
 
