@@ -49,6 +49,7 @@ interface InvoiceConfig {
 }
 
 interface MembershipConfig {
+  waiver?: { required?: boolean; version?: string; text?: string };
   allowMemberFreeze?: boolean;
   maxFreezeDays?: number;
   allowMemberCancel?: boolean;
@@ -504,6 +505,15 @@ function SettingsAdminPageInner() {
             <Toggle label="Members can freeze online" checked={settings.membership?.allowMemberFreeze !== false} onChange={(v) => setSettings({ ...settings, membership: { ...(settings.membership || {}), allowMemberFreeze: v } })} />
             <TextField label="Max freeze days per request" type="number" value={settings.membership?.maxFreezeDays ?? 30} onChange={(v) => setSettings({ ...settings, membership: { ...(settings.membership || {}), maxFreezeDays: Number(v) || 30 } })} />
             <Toggle label="Members can cancel online" checked={settings.membership?.allowMemberCancel !== false} onChange={(v) => setSettings({ ...settings, membership: { ...(settings.membership || {}), allowMemberCancel: v } })} />
+            <div className="md:col-span-2 mt-2 border-t border-neutral-100 pt-4">
+              <p className="text-xs font-semibold text-neutral-700">Membership agreement (waiver)</p>
+              <p className="text-xs text-neutral-500">Members sign it by typing their name in their profile; staff can record a paper signature from Users → Profile. Change the version to ask everyone to sign again.</p>
+            </div>
+            <Toggle label="Members must sign before training" checked={!!settings.membership?.waiver?.required} onChange={(v) => setSettings({ ...settings, membership: { ...(settings.membership || {}), waiver: { ...(settings.membership?.waiver || {}), required: v } } })} />
+            <TextField label="Agreement version" value={settings.membership?.waiver?.version ?? "1.0"} onChange={(v) => setSettings({ ...settings, membership: { ...(settings.membership || {}), waiver: { ...(settings.membership?.waiver || {}), version: v } } })} />
+            <div className="md:col-span-2">
+              <TextArea label="Agreement text" value={settings.membership?.waiver?.text ?? ""} onChange={(v) => setSettings({ ...settings, membership: { ...(settings.membership || {}), waiver: { ...(settings.membership?.waiver || {}), text: v } } })} placeholder="I understand that exercise carries risks…" />
+            </div>
           </div>
 
           <div className="mt-8">

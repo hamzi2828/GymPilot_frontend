@@ -15,6 +15,7 @@ import {
 } from "../_shared/ui";
 import { API_BASE, GYMFOLIO_API, apiGet, apiJson } from "../_shared/api";
 import UsersImportModal from "./UsersImportModal";
+import MemberProfileModal from "./MemberProfileModal";
 
 interface User {
   _id: string;
@@ -24,6 +25,10 @@ interface User {
   role?: "user" | "admin" | "moderator";
   status?: "active" | "inactive" | "blocked";
   createdAt?: string;
+  phone?: string | null;
+  tags?: string[];
+  memberCode?: string | null;
+  isActive?: boolean;
 }
 
 // Roles come from the Roles & Access collection rather than a hardcoded list,
@@ -55,6 +60,9 @@ export default function UsersAdminPage() {
   // Create-user dialog
   const [createOpen, setCreateOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [profileFor, setProfileFor] = useState<User | null>(null);
+  const [query, setQuery] = useState("");
+  const [tagFilter, setTagFilter] = useState("");
   const [creating, setCreating] = useState(false);
   const [createErr, setCreateErr] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ tone: "ok" | "warn"; text: string } | null>(null);
@@ -194,6 +202,14 @@ export default function UsersAdminPage() {
     }
   };
 
+  const allTags = Array.from(new Set(list.flatMap((u) => u.tags || []))).sort();
+  const q = query.trim().toLowerCase();
+  const visible = list.filter((u) => {
+    if (tagFilter && !(u.tags || []).includes(tagFilter)) return false;
+    if (!q) return true;
+    return `${u.firstName || ""} ${u.lastName || ""} ${u.email} ${u.phone || ""} ${u.memberCode || ""}`.toLowerCase().includes(q);
+  });
+
   return (
     <div>
       <PageHeader
@@ -227,18 +243,40 @@ export default function UsersAdminPage() {
         </div>
       )}
 
+      <div className="mb-5 flex flex-wrap items-end gap-3">
+        <div className="w-72">
+          <TextField label="Search" value={query} onChange={setQuery} placeholder="Name, email, phone or member code" />
+        </div>
+        {allTags.length > 0 && (
+          <div className="w-48">
+            <SelectField label="Tag" value={tagFilter} onChange={setTagFilter} options={allTags.map((t) => ({ value: t, label: t }))} placeholder="All tags" />
+          </div>
+        )}
+        <p className="pb-2 text-xs text-neutral-500">{visible.length} of {list.length}</p>
+      </div>
+
       {loading ? (
         <Spinner />
       ) : (
         <Table
           columns={["Name", "Email", "Role", "Status", "Joined", "Actions"]}
-          rows={list.map((u) => [
-            <div key="n" className="font-medium text-neutral-900">{[u.firstName, u.lastName].filter(Boolean).join(" ") || "—"}</div>,
+          rows={visible.map((u) => [
+            <div key="n">
+              <p className="font-medium text-neutral-900">{[u.firstName, u.lastName].filter(Boolean).join(" ") || "—"}</p>
+              {(u.tags || []).length > 0 && (
+                <p className="mt-0.5 flex flex-wrap gap-1">
+                  {(u.tags || []).map((t) => (
+                    <span key={t} className="rounded-full bg-neutral-100 px-1.5 text-[10px] text-neutral-600">{t}</span>
+                  ))}
+                </p>
+              )}
+            </div>,
             u.email,
             <Badge key="r" color={u.role === "admin" ? "blue" : "neutral"}>{u.role || "user"}</Badge>,
             <Badge key="s" color={u.status === "active" ? "green" : "neutral"}>{u.status || "active"}</Badge>,
             u.createdAt ? new Date(u.createdAt).toLocaleDateString() : "—",
             <div key="a" className="flex gap-2">
+              <SecondaryButton onClick={() => setProfileFor(u)}>Profile</SecondaryButton>
               <SecondaryButton onClick={() => openAssign(u)}>Package</SecondaryButton>
               <SecondaryButton onClick={() => { setSelected(u); setRole(u.role || "user"); }}>Role</SecondaryButton>
               <SecondaryButton
@@ -383,6 +421,8 @@ export default function UsersAdminPage() {
           </div>
         )}
       </Modal>
+
+      <MemberProfileModal userId={profileFor ? profileFor._id : null} onClose={() => setProfileFor(null)} onSaved={load} />
 
       <Modal open={!!selected} onClose={() => setSelected(null)} title="Update Role" size="sm">
         {selected && (

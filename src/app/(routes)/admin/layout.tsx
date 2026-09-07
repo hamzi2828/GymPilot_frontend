@@ -23,6 +23,7 @@ const ROUTE_TABS: { prefix: string; tab: string }[] = [
   { prefix: "/admin/users", tab: "users" },
   { prefix: "/admin/contact-queries", tab: "contact-queries" },
   { prefix: "/admin/messaging", tab: "messaging" },
+  { prefix: "/admin/leads", tab: "leads" },
   { prefix: "/admin/homepage", tab: "homepage" },
   { prefix: "/admin/hero-slides", tab: "hero-slides" },
   { prefix: "/admin/testimonials", tab: "testimonials" },
