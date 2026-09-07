@@ -29,6 +29,7 @@ import {
   FiUserPlus,
   FiTarget,
   FiAlertCircle,
+  FiBarChart2,
 } from "react-icons/fi";
 
 interface MenuItem {
@@ -56,7 +57,10 @@ const iconCls = "w-[18px] h-[18px]";
 const sections: MenuSection[] = [
   {
     heading: "Overview",
-    items: [{ name: "Dashboard", path: "/admin", icon: <FiHome className={iconCls} />, tab: "dashboard" }],
+    items: [
+      { name: "Dashboard", path: "/admin", icon: <FiHome className={iconCls} />, tab: "dashboard" },
+      { name: "Reports", path: "/admin/reports", icon: <FiBarChart2 className={iconCls} />, tab: "reports" },
+    ],
   },
   {
     heading: "Fitness",

@@ -10,6 +10,7 @@ import { isAuthenticated } from "@/helper/helper";
 // Which tab each admin route belongs to. Longest prefix wins, so
 // /admin/package-registrations is not mistaken for /admin/package-orders.
 const ROUTE_TABS: { prefix: string; tab: string }[] = [
+  { prefix: "/admin/reports", tab: "reports" },
   { prefix: "/admin/classes", tab: "classes" },
   { prefix: "/admin/timetable-changes", tab: "classes" },
   { prefix: "/admin/pt", tab: "pt" },
