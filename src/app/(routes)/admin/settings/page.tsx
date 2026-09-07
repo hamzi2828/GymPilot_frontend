@@ -700,12 +700,13 @@ function SettingsAdminPageInner() {
 
       {/* ---------------- Logo ---------------- */}
       {tab === "logo" && (
-        <Card className="p-6 max-w-3xl">
+        <Card className="p-6">
           <SectionHeading
             title="Branding"
             hint="Uploaded logos appear in the site header and footer straight away — no redeploy needed."
           />
 
+          <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
           {([
             {
               key: "logo" as const,
@@ -728,7 +729,7 @@ function SettingsAdminPageInner() {
               hKey: "footerLogoHeight" as const,
             },
           ]).map((slot, idx) => (
-            <div key={slot.key} className={idx > 0 ? "mt-8 border-t border-neutral-200 pt-8" : ""}>
+            <div key={slot.key} className={idx > 0 ? "border-t border-neutral-200 pt-6 xl:border-t-0 xl:pt-0" : ""}>
               <h3 className="text-sm font-semibold text-neutral-900">{slot.title}</h3>
               <p className="mb-3 mt-0.5 text-xs text-neutral-500">{slot.hint}</p>
 
@@ -802,6 +803,7 @@ function SettingsAdminPageInner() {
               </div>
             </div>
           ))}
+          </div>
 
           <div className="mt-6 flex justify-end">
             <PrimaryButton onClick={save} disabled={saving}>{saving ? "Saving..." : "Save Logo Sizes"}</PrimaryButton>
@@ -811,7 +813,7 @@ function SettingsAdminPageInner() {
 
       {/* ---------------- Stripe ---------------- */}
       {tab === "stripe" && (
-        <Card className="p-6 max-w-3xl">
+        <Card className="p-6">
           <SectionHeading
             title="Stripe Credentials"
             hint="Stored securely on the server. Saved secrets are shown masked — leave a masked field untouched to keep the existing value."
@@ -825,7 +827,7 @@ function SettingsAdminPageInner() {
             />
           </div>
 
-          <div className="grid grid-cols-1 gap-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
             <TextField
               label="Publishable Key"
               value={stripe.publishableKey}
@@ -881,13 +883,13 @@ function SettingsAdminPageInner() {
 
       {/* ---------------- SMTP ---------------- */}
       {tab === "smtp" && (
-        <Card className="p-6 max-w-3xl">
+        <Card className="p-6">
           <SectionHeading
             title="Outgoing Mail (SMTP)"
             hint="Used for member credential emails and order notifications. Overrides the server environment variables once set."
           />
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
             <TextField label="Host" value={smtp.host} onChange={(v) => setSmtp({ host: v })} placeholder="smtp.gmail.com" />
             <TextField label="Port" type="number" value={smtp.port} onChange={(v) => setSmtp({ port: Number(v) })} placeholder="587" />
             <TextField label="Username" value={smtp.user} onChange={(v) => setSmtp({ user: v })} />
@@ -949,7 +951,7 @@ function SettingsAdminPageInner() {
               <p className="text-xs text-neutral-500 mt-1">Add one so members know where to send payment.</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
               {banks.map((b) => (
                 <div key={b._id} className="rounded-xl border border-neutral-200 p-4">
                   <div className="flex items-start gap-4">
@@ -1012,13 +1014,13 @@ function SettingsAdminPageInner() {
 
       {/* ---------------- Colour Scheme ---------------- */}
       {tab === "theme" && (
-        <Card className="p-6 max-w-3xl">
+        <Card className="p-6">
           <SectionHeading
             title="Colour Scheme"
             hint="Applies across the whole public site — header, buttons, links and footer. Selecting previews it instantly; Save makes it live for everyone."
           />
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {THEMES.map((t) => {
               const active = (settings.theme || DEFAULT_THEME_KEY) === t.key;
               return (

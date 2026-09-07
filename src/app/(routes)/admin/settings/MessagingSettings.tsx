@@ -108,12 +108,7 @@ export default function MessagingSettings({
   };
 
   return (
-    <div className="max-w-3xl space-y-6">
-      <Card className="p-6">
-        <Heading title="Phone numbers" hint="Members who saved a local number (e.g. 0300…) get this country code added when we text them." />
-        <TextField label="Default country code" value={m.defaultCountryCode || ""} onChange={(v) => onChange({ ...m, defaultCountryCode: v })} placeholder="+92" />
-      </Card>
-
+    <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
       <Card className="p-6">
         <Heading title="SMS" hint="Booking confirmations, reminders and campaigns by text message." />
         <SelectField label="Provider" value={sms.provider || "none"} allowClear={false} onChange={(v) => patch("sms", { provider: v })} options={[{ value: "none", label: "Off" }, { value: "twilio", label: "Twilio" }, { value: "http", label: "Custom HTTP gateway" }]} />
@@ -167,6 +162,11 @@ export default function MessagingSettings({
       </Card>
 
       <Card className="p-6">
+        <Heading title="Phone numbers" hint="Members who saved a local number (e.g. 0300…) get this country code added when we text them." />
+        <TextField label="Default country code" value={m.defaultCountryCode || ""} onChange={(v) => onChange({ ...m, defaultCountryCode: v })} placeholder="+92" />
+      </Card>
+
+      <Card className="p-6">
         <Heading title="Automations" hint="Sent by the daily job to members who have not opted out of marketing. Edit the wording under Messaging → Wording." />
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <TextField label="“We miss you” after this many days without a visit (0 = off)" type="number" value={String(auto.absentDays ?? 0)} onChange={(v) => patch("automations", { absentDays: Number(v) || 0 })} />
@@ -177,7 +177,7 @@ export default function MessagingSettings({
         </div>
       </Card>
 
-      <div className="flex justify-end">
+      <div className="flex justify-end xl:col-span-2">
         <PrimaryButton onClick={() => onSave()} disabled={saving}>
           {saving ? "Saving..." : "Save Messaging Settings"}
         </PrimaryButton>
