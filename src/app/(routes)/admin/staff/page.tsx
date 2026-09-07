@@ -18,6 +18,9 @@ import {
   Select2,
 } from "../_shared/ui";
 import { API_BASE, apiGet, apiJson } from "../_shared/api";
+import { currencyOptions } from "@/data/countries";
+
+const CURRENCY_OPTIONS = currencyOptions();
 import { usePermissions } from "@/components/admin/PermissionsProvider";
 
 const WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
@@ -140,7 +143,7 @@ const emptyDraft: Draft = {
   basis: "salaried",
   salary: "",
   hourlyRate: "",
-  currency: "PKR",
+  currency: "",
   cycle: "monthly",
   contractHoursPerWeek: "",
   bankName: "",
@@ -280,6 +283,16 @@ export default function StaffAdminPage() {
     return () => clearTimeout(timer);
   }, [search]);
 
+  // The gym's currency (Settings → General); payroll starts on it.
+  const [defaultCurrency, setDefaultCurrency] = useState("USD");
+  useEffect(() => {
+    apiGet<{ data?: { currency?: string } }>(`${API_BASE}/settings`)
+      .then((r) => {
+        if (r.data?.currency) setDefaultCurrency(r.data.currency);
+      })
+      .catch(() => {});
+  }, []);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -383,7 +396,7 @@ export default function StaffAdminPage() {
         basis: draft.basis,
         salary: Number(draft.salary) || 0,
         hourlyRate: Number(draft.hourlyRate) || 0,
-        currency: draft.currency.trim() || "PKR",
+        currency: draft.currency.trim() || defaultCurrency,
         cycle: draft.cycle,
         contractHoursPerWeek: Number(draft.contractHoursPerWeek) || 0,
         bankName: draft.bankName.trim(),
@@ -842,11 +855,12 @@ export default function StaffAdminPage() {
                 />
               )}
 
-              <TextField
-                label="Currency"
-                value={draft.currency}
-                onChange={(v) => setDraft({ ...draft, currency: v })}
-              />
+              <div>
+                <span className="text-xs font-semibold text-neutral-700">Currency</span>
+                <div className="mt-1">
+                  <Select2 ariaLabel="Currency" value={draft.currency || defaultCurrency} onChange={(v) => setDraft({ ...draft, currency: v })} options={CURRENCY_OPTIONS} />
+                </div>
+              </div>
 
               <div>
                 <span className="text-xs font-semibold text-neutral-700">Pay cycle</span>

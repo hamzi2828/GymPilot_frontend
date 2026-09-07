@@ -16,7 +16,10 @@ import {
   Spinner,
   Table,
 } from "../_shared/ui";
-import { GYMFOLIO_API, apiGet, apiJson } from "../_shared/api";
+import { API_BASE, GYMFOLIO_API, apiGet, apiJson } from "../_shared/api";
+import { currencyOptions } from "@/data/countries";
+
+const CURRENCY_OPTIONS = currencyOptions();
 
 type Kind = "membership" | "session_pack" | "day_pass" | "trial" | "pt_pack";
 type BillingMode = "one_time" | "recurring";
@@ -78,6 +81,16 @@ export default function PackagesAdminPage() {
   const [featuresText, setFeaturesText] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The gym's currency (Settings → General); new packages start on it.
+  const [defaultCurrency, setDefaultCurrency] = useState("USD");
+
+  useEffect(() => {
+    apiGet<{ data?: { currency?: string } }>(`${API_BASE}/settings`)
+      .then((r) => {
+        if (r.data?.currency) setDefaultCurrency(r.data.currency);
+      })
+      .catch(() => {});
+  }, []);
 
   const load = async () => {
     setLoading(true);
@@ -95,7 +108,7 @@ export default function PackagesAdminPage() {
 
   const openCreate = () => {
     setEditing(null);
-    setForm({ isActive: true, currency: "PKR", theme: "light", period: "month", kind: "membership", durationDays: 0, sessions: 0, joiningFee: 0 });
+    setForm({ isActive: true, currency: defaultCurrency, theme: "light", period: "month", kind: "membership", durationDays: 0, sessions: 0, joiningFee: 0 });
     setBilling(DEFAULT_BILLING);
     setFeaturesText("");
     setError(null);
@@ -223,7 +236,7 @@ export default function PackagesAdminPage() {
             options={(Object.keys(KIND_LABELS) as Kind[]).map((k) => ({ value: k, label: KIND_LABELS[k] }))}
           />
           <TextField label="Price" required value={form.price} onChange={(v) => setForm({ ...form, price: v })} placeholder="e.g. 49 or 49.99" />
-          <TextField label="Currency" required value={form.currency} onChange={(v) => setForm({ ...form, currency: v.toUpperCase() })} />
+          <SelectField label="Currency" value={form.currency} allowClear={false} onChange={(v) => setForm({ ...form, currency: v })} options={CURRENCY_OPTIONS} />
 
           <div className="md:col-span-2 rounded-lg border border-neutral-200 bg-neutral-50/60 p-4">
             <p className="text-xs font-semibold text-neutral-700">Billing</p>

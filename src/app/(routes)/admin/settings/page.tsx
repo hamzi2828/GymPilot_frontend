@@ -15,7 +15,9 @@ import {
   Badge,
   Spinner,
   Modal,
+  Select2,
 } from "../_shared/ui";
+import { countryOptions, currencyOptions, countryByCode } from "@/data/countries";
 import { API_BASE, apiGet, apiJson, authHeaders } from "../_shared/api";
 import { THEMES, DEFAULT_THEME_KEY } from "@/theme/themes";
 import { setActiveTheme } from "@/components/ThemeProvider";
@@ -60,6 +62,7 @@ interface Settings {
   _id?: string;
   siteName?: string;
   currency?: string;
+  country?: string;
   taxRate?: number;
   ianaTimezone?: string;
   gymSlug?: string | null;
@@ -108,6 +111,10 @@ interface Bank {
 }
 
 const SETTINGS_API = `${API_BASE}/settings`;
+
+// Built once: ~120 countries and ~170 currencies, named by the browser.
+const COUNTRY_OPTIONS = countryOptions();
+const CURRENCY_OPTIONS = currencyOptions();
 
 /** Uploaded assets are stored as backend-relative /uploads paths (or absolute
  *  blob URLs); bundled /images assets are served by Next itself. */
@@ -487,10 +494,38 @@ function SettingsAdminPageInner() {
           </div>
 
           <div className="mt-8">
-            <SectionHeading title="Money, tax & time" hint="Prices are shown and charged in this currency. Tax is treated as included in your prices and shown on invoices." />
+            <SectionHeading title="Country, currency, tax & time" hint="Pick your country and the currency and clock fill in. Prices everywhere — memberships, classes, shop, payslips — are shown and charged in this currency. Tax is treated as included in your prices and shown on invoices." />
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <TextField label="Currency (ISO code)" value={settings.currency} onChange={(v) => setSettings({ ...settings, currency: v.toUpperCase() })} placeholder="USD, GBP, PKR, AED…" />
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <label className="block">
+              <span className="text-xs font-medium text-neutral-600">Country</span>
+              <div className="mt-1">
+                <Select2
+                  ariaLabel="Country"
+                  value={settings.country || undefined}
+                  onChange={(code) => {
+                    const c = countryByCode(code);
+                    setSettings({
+                      ...settings,
+                      country: code,
+                      currency: c ? c.currency : settings.currency,
+                      ianaTimezone: settings.ianaTimezone && settings.ianaTimezone !== "UTC" ? settings.ianaTimezone : c ? c.timezone : settings.ianaTimezone,
+                    });
+                  }}
+                  options={COUNTRY_OPTIONS}
+                  placeholder="Choose your country"
+                  searchPlaceholder="Type a country…"
+                  allowClear
+                />
+              </div>
+            </label>
+            <label className="block">
+              <span className="text-xs font-medium text-neutral-600">Currency</span>
+              <div className="mt-1">
+                <Select2 ariaLabel="Currency" value={settings.currency || undefined} onChange={(v) => setSettings({ ...settings, currency: v })} options={CURRENCY_OPTIONS} placeholder="Choose a currency" searchPlaceholder="Code or name…" />
+              </div>
+              <p className="mt-1 text-[11px] text-neutral-500">Applies to every price in the gym.</p>
+            </label>
             <TextField label="Tax rate included in prices (%)" type="number" value={settings.taxRate} onChange={(v) => setSettings({ ...settings, taxRate: Number(v) || 0 })} />
             <TextField label="Timezone (IANA)" value={settings.ianaTimezone} onChange={(v) => setSettings({ ...settings, ianaTimezone: v })} placeholder="Europe/London" />
           </div>
