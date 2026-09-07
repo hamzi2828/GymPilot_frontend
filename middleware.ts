@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+// The platform panel (every gym, their plans) moved to its own app,
+// GymPilot_frontendAdmin, together with the marketing site. Old links and
+// bookmarks to /super-admin here are sent there so nothing that used to
+// work stops working.
+const PLATFORM_ADMIN_URL = (process.env.NEXT_PUBLIC_PLATFORM_ADMIN_URL || 'http://localhost:3001').replace(/\/+$/, '');
+
 // Protect routes that require authentication
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
@@ -10,17 +16,8 @@ export function middleware(req: NextRequest) {
   const isPlatform = pathname === '/super-admin' || pathname.startsWith('/super-admin/');
   if (!isUserDetail && !isAdmin && !isPlatform) return NextResponse.next();
 
-  // The platform panel (every gym, their plans) has its own session, issued
-  // by /api/platform and stored in its own cookie. A gym login is no use
-  // here, and this session is no use on a gym's pages. Coarse, like the
-  // admin check below: the API re-verifies the token on every request.
   if (isPlatform) {
-    if (pathname === '/super-admin/login' || pathname === '/super-admin/forgot' || pathname === '/super-admin/reset') return NextResponse.next();
-    if (req.cookies.get('platform_token')?.value) return NextResponse.next();
-    const url = req.nextUrl.clone();
-    url.pathname = '/super-admin/login';
-    url.search = '';
-    return NextResponse.redirect(url);
+    return NextResponse.redirect(`${PLATFORM_ADMIN_URL}${pathname}${req.nextUrl.search}`);
   }
 
   const token = req.cookies.get('auth_token')?.value;
@@ -62,7 +59,7 @@ export function middleware(req: NextRequest) {
     }
     return NextResponse.next();
   }
-  
+
   return NextResponse.next();
 }
 

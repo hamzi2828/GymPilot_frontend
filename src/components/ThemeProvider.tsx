@@ -1,7 +1,6 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState } from "react";
-import { usePathname } from "next/navigation";
 import { applyTheme, getTheme, DEFAULT_THEME_KEY } from "@/theme/themes";
 import TenantUnavailable from "@/components/TenantUnavailable";
 
@@ -103,7 +102,6 @@ function writeCache(key: string, value: string) {
 export default function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [settings, setSettings] = useState<SiteSettings>(DEFAULTS);
   const [unavailable, setUnavailable] = useState<Unavailable | null>(null);
-  const pathname = usePathname();
 
   useEffect(() => {
     const cachedTheme = readCache(THEME_CACHE_KEY);
@@ -187,13 +185,9 @@ export default function ThemeProvider({ children }: { children: React.ReactNode 
     };
   }, []);
 
-  // The platform panel lives on any domain, including one with no gym, so it
-  // is never replaced by the notice.
-  const isPlatformPanel = !!pathname && pathname.startsWith("/super-admin");
-
   return (
     <SiteSettingsContext.Provider value={settings}>
-      {unavailable && !isPlatformPanel ? (
+      {unavailable ? (
         <TenantUnavailable code={unavailable.code} message={unavailable.message} host={unavailable.host} />
       ) : (
         children
