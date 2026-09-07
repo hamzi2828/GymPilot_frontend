@@ -1,6 +1,6 @@
 import React from "react";
 
-export type UserTab = "profile" | "bookings" | "history" | "visits" | "checkin";
+export type UserTab = "profile" | "bookings" | "pt" | "history" | "visits" | "checkin";
 
 /** Tab keys in the order they appear, so the URL and the UI cannot drift. */
 export const USER_TABS: { key: UserTab; label: string; icon: string }[] = [
@@ -8,6 +8,7 @@ export const USER_TABS: { key: UserTab; label: string; icon: string }[] = [
   // Sits second because it is the only tab a member acts on rather than reads:
   // everything below it is a record of what already happened.
   { key: "bookings", label: "My classes", icon: "fas fa-calendar-days" },
+  { key: "pt", label: "Personal training", icon: "fas fa-dumbbell" },
   // "History" rather than "Orders": what a member has here is a
   // membership and a record of turning up, not a parcel.
   { key: "history", label: "History", icon: "fas fa-clock-rotate-left" },

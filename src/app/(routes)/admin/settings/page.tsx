@@ -84,6 +84,9 @@ interface Settings {
   stripe?: StripeConfig;
   smtp?: SmtpConfig;
   messaging?: MessagingConfig;
+  booking?: { horizonDays?: number; cutoffMinutes?: number; cancelHours?: number; requireActiveMembership?: boolean; useCredits?: boolean; noShowStrikes?: number; noShowWindowDays?: number; noShowBanDays?: number; autoNoShow?: boolean };
+  pt?: { slotMinutes?: number; defaultCommissionPercent?: number; allowMemberBooking?: boolean; requirePack?: boolean; cancelHours?: number; horizonDays?: number };
+  rooms?: string[];
 }
 
 interface Bank {
@@ -513,6 +516,35 @@ function SettingsAdminPageInner() {
             <TextField label="Agreement version" value={settings.membership?.waiver?.version ?? "1.0"} onChange={(v) => setSettings({ ...settings, membership: { ...(settings.membership || {}), waiver: { ...(settings.membership?.waiver || {}), version: v } } })} />
             <div className="md:col-span-2">
               <TextArea label="Agreement text" value={settings.membership?.waiver?.text ?? ""} onChange={(v) => setSettings({ ...settings, membership: { ...(settings.membership || {}), waiver: { ...(settings.membership?.waiver || {}), text: v } } })} placeholder="I understand that exercise carries risks…" />
+            </div>
+
+            <div className="md:col-span-2 mt-2 border-t border-neutral-100 pt-4">
+              <p className="text-xs font-semibold text-neutral-700">Class booking rules</p>
+              <p className="text-xs text-neutral-500">How far ahead members can book, when booking closes, cancellations and no-shows. Leave as they are to keep today&apos;s behaviour.</p>
+            </div>
+            <TextField label="Book up to (days ahead)" type="number" value={settings.booking?.horizonDays ?? 30} onChange={(v) => setSettings({ ...settings, booking: { ...(settings.booking || {}), horizonDays: Number(v) || 30 } })} />
+            <TextField label="Booking closes (minutes before start)" type="number" value={settings.booking?.cutoffMinutes ?? 15} onChange={(v) => setSettings({ ...settings, booking: { ...(settings.booking || {}), cutoffMinutes: Number(v) || 0 } })} />
+            <TextField label="Cancel-by window (hours before; later = credit lost)" type="number" value={settings.booking?.cancelHours ?? 2} onChange={(v) => setSettings({ ...settings, booking: { ...(settings.booking || {}), cancelHours: Number(v) || 0 } })} />
+            <TextField label="No-shows before booking is paused (0 = never)" type="number" value={settings.booking?.noShowStrikes ?? 0} onChange={(v) => setSettings({ ...settings, booking: { ...(settings.booking || {}), noShowStrikes: Number(v) || 0 } })} />
+            <TextField label="…counted over (days)" type="number" value={settings.booking?.noShowWindowDays ?? 30} onChange={(v) => setSettings({ ...settings, booking: { ...(settings.booking || {}), noShowWindowDays: Number(v) || 30 } })} />
+            <TextField label="…paused for (days)" type="number" value={settings.booking?.noShowBanDays ?? 7} onChange={(v) => setSettings({ ...settings, booking: { ...(settings.booking || {}), noShowBanDays: Number(v) || 7 } })} />
+            <Toggle label="Only members with a live membership can book" checked={!!settings.booking?.requireActiveMembership} onChange={(v) => setSettings({ ...settings, booking: { ...(settings.booking || {}), requireActiveMembership: v } })} />
+            <Toggle label="Class packs: a booking uses one session credit" checked={settings.booking?.useCredits !== false} onChange={(v) => setSettings({ ...settings, booking: { ...(settings.booking || {}), useCredits: v } })} />
+            <Toggle label="Mark unattended bookings as no-shows the next day" checked={!!settings.booking?.autoNoShow} onChange={(v) => setSettings({ ...settings, booking: { ...(settings.booking || {}), autoNoShow: v } })} />
+
+            <div className="md:col-span-2 mt-2 border-t border-neutral-100 pt-4">
+              <p className="text-xs font-semibold text-neutral-700">Personal training</p>
+              <p className="text-xs text-neutral-500">Trainers&apos; availability comes from the Trainers screen; sessions are booked in the member portal or under Fitness → Personal Training.</p>
+            </div>
+            <TextField label="Session length (minutes)" type="number" value={settings.pt?.slotMinutes ?? 60} onChange={(v) => setSettings({ ...settings, pt: { ...(settings.pt || {}), slotMinutes: Number(v) || 60 } })} />
+            <TextField label="Default trainer commission (%)" type="number" value={settings.pt?.defaultCommissionPercent ?? 0} onChange={(v) => setSettings({ ...settings, pt: { ...(settings.pt || {}), defaultCommissionPercent: Number(v) || 0 } })} />
+            <TextField label="Cancel-by window (hours before)" type="number" value={settings.pt?.cancelHours ?? 12} onChange={(v) => setSettings({ ...settings, pt: { ...(settings.pt || {}), cancelHours: Number(v) || 0 } })} />
+            <TextField label="Book up to (days ahead)" type="number" value={settings.pt?.horizonDays ?? 30} onChange={(v) => setSettings({ ...settings, pt: { ...(settings.pt || {}), horizonDays: Number(v) || 30 } })} />
+            <Toggle label="Members can book sessions online" checked={settings.pt?.allowMemberBooking !== false} onChange={(v) => setSettings({ ...settings, pt: { ...(settings.pt || {}), allowMemberBooking: v } })} />
+            <Toggle label="A PT pack is required to book" checked={!!settings.pt?.requirePack} onChange={(v) => setSettings({ ...settings, pt: { ...(settings.pt || {}), requirePack: v } })} />
+
+            <div className="md:col-span-2 mt-2 border-t border-neutral-100 pt-4">
+              <TextField label="Rooms / studios (comma separated)" value={(settings.rooms || []).join(", ")} onChange={(v) => setSettings({ ...settings, rooms: v.split(",").map((r) => r.trim()).filter(Boolean) })} placeholder="Studio A, Studio B, Spin room" />
             </div>
           </div>
 

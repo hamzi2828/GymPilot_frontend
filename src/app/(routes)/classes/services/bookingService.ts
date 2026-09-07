@@ -18,6 +18,11 @@ export interface ClassSession {
   start_time: string;
   end_time: string;
   instructor_name: string;
+  room: string;
+  // A one-off change to this session (Admin → Timetable changes).
+  is_cancelled: boolean;
+  is_substitute: boolean;
+  change_note: string;
   capacity: number;
   duration_minutes: number | null;
   difficulty: string;

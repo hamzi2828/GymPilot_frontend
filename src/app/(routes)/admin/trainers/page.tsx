@@ -49,6 +49,10 @@ interface Trainer {
    * with nothing here always comes out as "no schedule".
    */
   availability?: ScheduleRow[];
+  /** Personal training: bookable one-to-one, the per-session rate, their cut. */
+  acceptsPt?: boolean;
+  ptRate?: number;
+  commissionPercent?: number | null;
 }
 
 interface StaffOption {
@@ -129,6 +133,8 @@ export default function TrainersAdminPage() {
         // userId is handled below: it is the one field whose null is
         // meaningful, and skipping it here would make "unlink" impossible.
         if (k === "userId") return;
+        // Same for the commission: blank means "use the gym's default".
+        if (k === "commissionPercent") return;
         // Sent as JSON below.
         if (k === "availability") return;
         if (v === undefined || v === null) return;
@@ -140,6 +146,7 @@ export default function TrainersAdminPage() {
       // never undo it -- the field simply would not be in the request, and the
       // server would keep whatever it had.
       fd.append("userId", form.userId || "");
+      fd.append("commissionPercent", form.commissionPercent === null || form.commissionPercent === undefined ? "" : String(form.commissionPercent));
       // Always sent, so clearing every shift really clears the roster.
       fd.append(
         "availability",
@@ -245,6 +252,9 @@ export default function TrainersAdminPage() {
           <TextField label="Email" type="email" value={form.email} onChange={(v) => setForm({ ...form, email: v })} />
           <TextField label="Phone" value={form.phone} onChange={(v) => setForm({ ...form, phone: v })} />
           <TextField label="Experience (years)" type="number" value={form.experience} onChange={(v) => setForm({ ...form, experience: Number(v) })} />
+          <TextField label="PT rate per session (0 = pack only)" type="number" value={form.ptRate ?? 0} onChange={(v) => setForm({ ...form, ptRate: Number(v) || 0 })} />
+          <TextField label="PT commission % (blank = gym default)" type="number" value={form.commissionPercent ?? ""} onChange={(v) => setForm({ ...form, commissionPercent: v === "" ? null : Number(v) })} />
+          <Toggle label="Takes personal training bookings" checked={form.acceptsPt !== false} onChange={(v) => setForm({ ...form, acceptsPt: v })} />
           <div className="md:col-span-2">
             <SelectField
               label="Staff account (for payroll)"

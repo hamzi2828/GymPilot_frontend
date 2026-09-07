@@ -35,6 +35,7 @@ interface GymClass {
   duration?: number;
   difficulty?: string;
   capacity?: number;
+  room?: string;
   category?: string;
   price?: number;
   isActive: boolean;
@@ -243,6 +244,7 @@ export default function ClassesAdminPage() {
           />
           <TextField label="Duration (min)" type="number" value={form.duration} onChange={(v) => setForm({ ...form, duration: Number(v) })} />
           <TextField label="Capacity" type="number" value={form.capacity} onChange={(v) => setForm({ ...form, capacity: Number(v) })} />
+          <TextField label="Room / studio" value={form.room ?? ""} onChange={(v) => setForm({ ...form, room: v })} placeholder="Studio A" />
           <TextField label="Price" type="number" value={form.price} onChange={(v) => setForm({ ...form, price: Number(v) })} />
           <label className="block">
             <span className="text-xs font-medium text-neutral-600">Thumbnail</span>

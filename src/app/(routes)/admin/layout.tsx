@@ -11,6 +11,8 @@ import { isAuthenticated } from "@/helper/helper";
 // /admin/package-registrations is not mistaken for /admin/package-orders.
 const ROUTE_TABS: { prefix: string; tab: string }[] = [
   { prefix: "/admin/classes", tab: "classes" },
+  { prefix: "/admin/timetable-changes", tab: "classes" },
+  { prefix: "/admin/pt", tab: "pt" },
   { prefix: "/admin/trainers", tab: "trainers" },
   { prefix: "/admin/packages", tab: "packages" },
   { prefix: "/admin/package-orders", tab: "package-orders" },

@@ -205,7 +205,7 @@ export default function TimetablePage() {
                       <article
                         key={key}
                         className={`rounded-xl border p-4 transition-colors ${
-                          s.is_closed
+                          s.is_closed || s.is_cancelled
                             ? "border-neutral-200 bg-neutral-50 opacity-60"
                             : mine
                             ? "border-emerald-300 bg-emerald-50/40"
@@ -219,7 +219,18 @@ export default function TimetablePage() {
                               {s.start_time}
                               {s.end_time ? `–${s.end_time}` : ""}
                               {s.instructor_name ? ` · ${s.instructor_name}` : ""}
+                              {s.room ? ` · ${s.room}` : ""}
                             </p>
+                            {s.is_cancelled && (
+                              <p className="mt-1 text-xs font-semibold text-rose-600">
+                                Cancelled{s.change_note ? ` — ${s.change_note}` : ""}
+                              </p>
+                            )}
+                            {!s.is_cancelled && s.is_substitute && (
+                              <p className="mt-1 text-xs font-semibold text-amber-700">
+                                Change this week{s.change_note ? ` — ${s.change_note}` : ""}
+                              </p>
+                            )}
                           </div>
                           {s.difficulty && (
                             <span className="shrink-0 rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] font-semibold text-neutral-600">
@@ -255,6 +266,8 @@ export default function TimetablePage() {
                                 </button>
                               )}
                             </div>
+                          ) : s.is_cancelled ? (
+                            <span className="text-sm text-neutral-400">Not running</span>
                           ) : s.is_closed ? (
                             <span className="text-sm text-neutral-400">Booking closed</span>
                           ) : (

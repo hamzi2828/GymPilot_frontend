@@ -27,6 +27,8 @@ import {
   FiFileText,
   FiSend,
   FiUserPlus,
+  FiTarget,
+  FiAlertCircle,
 } from "react-icons/fi";
 
 interface MenuItem {
@@ -61,6 +63,8 @@ const sections: MenuSection[] = [
     items: [
       { name: "Classes", path: "/admin/classes", icon: <FiActivity className={iconCls} />, tab: "classes" },
       { name: "Bookings", path: "/admin/bookings", icon: <FiCalendar className={iconCls} />, tab: "bookings" },
+      { name: "Timetable changes", path: "/admin/timetable-changes", icon: <FiAlertCircle className={iconCls} />, tab: "classes" },
+      { name: "Personal Training", path: "/admin/pt", icon: <FiTarget className={iconCls} />, tab: "pt" },
       { name: "Trainers", path: "/admin/trainers", icon: <FiUserCheck className={iconCls} />, tab: "trainers" },
       { name: "Packages", path: "/admin/packages", icon: <FiTag className={iconCls} />, tab: "packages" },
     ],

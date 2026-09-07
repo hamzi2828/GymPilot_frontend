@@ -12,6 +12,7 @@ import { CheckInSection } from "./components/CheckInSection";
 import { PrivacySection } from "./components/PrivacySection";
 import { NotificationsSection } from "./components/NotificationsSection";
 import { ProfileExtrasSection } from "./components/ProfileExtrasSection";
+import { PtSection } from "./components/PtSection";
 import {
   getUserDetailForProfile,
   updateUser,
@@ -301,6 +302,8 @@ const UserProfilePageContent: React.FC = () => {
         {activeTab === "profile" && userProfile && <NotificationsSection />}
 
         {activeTab === "bookings" && <BookingsSection />}
+
+        {activeTab === "pt" && <PtSection />}
 
         {activeTab === "checkin" && <CheckInSection />}
 
