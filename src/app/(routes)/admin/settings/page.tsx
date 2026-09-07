@@ -2,6 +2,7 @@
 
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { FiBriefcase, FiCalendar, FiDollarSign, FiGlobe, FiUsers } from "react-icons/fi";
 import Image from "next/image";
 import {
   PageHeader,
@@ -129,7 +130,7 @@ const BANKS_API = `${API_BASE}/banks`;
 type TabKey = "general" | "logo" | "stripe" | "smtp" | "messaging" | "banks" | "theme";
 
 const TABS: { key: TabKey; label: string; hint: string }[] = [
-  { key: "general", label: "General", hint: "Business name, contact details and social links" },
+  { key: "general", label: "General", hint: "Business, money and time, memberships, bookings, website" },
   { key: "logo", label: "Logo", hint: "Header and footer branding" },
   { key: "stripe", label: "Stripe", hint: "Payment gateway credentials" },
   { key: "smtp", label: "SMTP", hint: "Outbound email configuration" },
@@ -137,6 +138,22 @@ const TABS: { key: TabKey; label: string; hint: string }[] = [
   { key: "banks", label: "Banks", hint: "Bank accounts and payment barcodes" },
   { key: "theme", label: "Colour Scheme", hint: "Public site palette" },
 ];
+
+// The General tab is five screens, not one long one. The active section
+// lives in the URL beside the tab (?tab=general&section=money).
+type SectionKey = "business" | "money" | "members" | "bookings" | "website";
+
+const GENERAL_SECTIONS: { key: SectionKey; label: string; hint: string; icon: React.ComponentType<{ className?: string }> }[] = [
+  { key: "business", label: "Business", hint: "Name, contact details, social links", icon: FiBriefcase },
+  { key: "money", label: "Money & time", hint: "Country, currency, tax, clock, invoices", icon: FiDollarSign },
+  { key: "members", label: "Memberships", hint: "Self-service and the signed agreement", icon: FiUsers },
+  { key: "bookings", label: "Bookings & PT", hint: "Class rules, personal training, rooms", icon: FiCalendar },
+  { key: "website", label: "Website", hint: "Language, search, map, opening hours", icon: FiGlobe },
+];
+
+function isSectionKey(v: string | null): v is SectionKey {
+  return !!v && GENERAL_SECTIONS.some((s) => s.key === v);
+}
 
 function SectionHeading({ title, hint }: { title: string; hint?: string }) {
   return (
@@ -193,6 +210,14 @@ function SettingsAdminPageInner() {
   const setTab = (next: TabKey) => {
     const params = new URLSearchParams(searchParams.toString());
     params.set("tab", next);
+    router.replace(`/admin/settings?${params.toString()}`, { scroll: false });
+  };
+  const urlSection = searchParams.get("section");
+  const section: SectionKey = isSectionKey(urlSection) ? urlSection : "business";
+  const setSection = (next: SectionKey) => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("tab", "general");
+    params.set("section", next);
     router.replace(`/admin/settings?${params.toString()}`, { scroll: false });
   };
   const [settings, setSettings] = useState<Settings | null>(null);
@@ -444,7 +469,16 @@ function SettingsAdminPageInner() {
 
   return (
     <div>
-      <PageHeader eyebrow="System" title="Settings" />
+      <PageHeader
+        title="Settings"
+        actions={
+          tab === "general" ? (
+            <PrimaryButton onClick={save} disabled={saving}>
+              {saving ? "Saving..." : "Save Changes"}
+            </PrimaryButton>
+          ) : undefined
+        }
+      />
 
       {/* Tabs */}
       <div className="mb-6 border-b border-neutral-200">
@@ -481,131 +515,187 @@ function SettingsAdminPageInner() {
 
       {/* ---------------- General ---------------- */}
       {tab === "general" && (
-        <Card className="p-6 max-w-3xl">
-          <SectionHeading title="Business Information" hint="Shown across the public site, the admin panel and in emails." />
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <TextField label="Business Name" value={settings.siteName} onChange={(v) => setSettings({ ...settings, siteName: v })} />
-            <TextField label="Contact Email" type="email" value={settings.contactEmail} onChange={(v) => setSettings({ ...settings, contactEmail: v })} />
-            <TextField label="Contact Phone" value={settings.contactPhone} onChange={(v) => setSettings({ ...settings, contactPhone: v })} />
-            <TextField label="Address" value={settings.address} onChange={(v) => setSettings({ ...settings, address: v })} />
-            <div className="md:col-span-2">
-              <TextArea label="Site Description" value={settings.siteDescription} onChange={(v) => setSettings({ ...settings, siteDescription: v })} />
+        <div className="lg:grid lg:grid-cols-[236px_minmax(0,1fr)] lg:gap-8">
+          {/* Section navigation: a strip on small screens, a column on large ones. */}
+          <nav aria-label="General settings sections" className="mb-5 lg:mb-0">
+            <div className="flex gap-1 overflow-x-auto pb-1 lg:sticky lg:top-2 lg:flex-col lg:pb-0">
+              {GENERAL_SECTIONS.map((sec) => {
+                const active = section === sec.key;
+                const Icon = sec.icon;
+                return (
+                  <button
+                    key={sec.key}
+                    type="button"
+                    onClick={() => setSection(sec.key)}
+                    aria-current={active ? "page" : undefined}
+                    className={`flex shrink-0 items-start gap-3 rounded-lg px-3 py-2.5 text-left transition-colors ${
+                      active ? "bg-neutral-900 text-white" : "text-neutral-700 hover:bg-neutral-100"
+                    }`}
+                  >
+                    <Icon className={`mt-0.5 h-4 w-4 shrink-0 ${active ? "text-white" : "text-neutral-400"}`} />
+                    <span className="min-w-0">
+                      <span className="block whitespace-nowrap text-sm font-medium">{sec.label}</span>
+                      <span className={`hidden text-xs lg:block ${active ? "text-neutral-300" : "text-neutral-500"}`}>{sec.hint}</span>
+                    </span>
+                  </button>
+                );
+              })}
             </div>
-          </div>
+          </nav>
 
-          <div className="mt-8">
-            <SectionHeading title="Country, currency, tax & time" hint="Pick your country and the currency and clock fill in. Prices everywhere — memberships, classes, shop, payslips — are shown and charged in this currency. Tax is treated as included in your prices and shown on invoices." />
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <label className="block">
-              <span className="text-xs font-medium text-neutral-600">Country</span>
-              <div className="mt-1">
-                <Select2
-                  ariaLabel="Country"
-                  value={settings.country || undefined}
-                  onChange={(code) => {
-                    const c = countryByCode(code);
-                    setSettings({
-                      ...settings,
-                      country: code,
-                      currency: c ? c.currency : settings.currency,
-                      ianaTimezone: settings.ianaTimezone && settings.ianaTimezone !== "UTC" ? settings.ianaTimezone : c ? c.timezone : settings.ianaTimezone,
-                    });
-                  }}
-                  options={COUNTRY_OPTIONS}
-                  placeholder="Choose your country"
-                  searchPlaceholder="Type a country…"
-                  allowClear
-                />
-              </div>
-            </label>
-            <label className="block">
-              <span className="text-xs font-medium text-neutral-600">Currency</span>
-              <div className="mt-1">
-                <Select2 ariaLabel="Currency" value={settings.currency || undefined} onChange={(v) => setSettings({ ...settings, currency: v })} options={CURRENCY_OPTIONS} placeholder="Choose a currency" searchPlaceholder="Code or name…" />
-              </div>
-              <p className="mt-1 text-[11px] text-neutral-500">Applies to every price in the gym.</p>
-            </label>
-            <TextField label="Tax rate included in prices (%)" type="number" value={settings.taxRate} onChange={(v) => setSettings({ ...settings, taxRate: Number(v) || 0 })} />
-            <TextField label="Timezone (IANA)" value={settings.ianaTimezone} onChange={(v) => setSettings({ ...settings, ianaTimezone: v })} placeholder="Europe/London" />
-          </div>
+          <div className="min-w-0 space-y-6">
+            {section === "business" && (
+              <>
+                <Card className="p-6">
+                  <SectionHeading title="Business Information" hint="Shown across the public site, the admin panel and in emails." />
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                    <TextField label="Business Name" value={settings.siteName} onChange={(v) => setSettings({ ...settings, siteName: v })} />
+                    <TextField label="Contact Email" type="email" value={settings.contactEmail} onChange={(v) => setSettings({ ...settings, contactEmail: v })} />
+                    <TextField label="Contact Phone" value={settings.contactPhone} onChange={(v) => setSettings({ ...settings, contactPhone: v })} />
+                    <div className="md:col-span-2 xl:col-span-3">
+                      <TextField label="Address" value={settings.address} onChange={(v) => setSettings({ ...settings, address: v })} />
+                    </div>
+                    <div className="md:col-span-2 xl:col-span-3">
+                      <TextArea label="Site Description" value={settings.siteDescription} onChange={(v) => setSettings({ ...settings, siteDescription: v })} />
+                    </div>
+                  </div>
+                </Card>
 
-          <div className="mt-8">
-            <SectionHeading title="Invoices" hint="Issued automatically when a membership is paid and attached to the confirmation email." />
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <TextField label="Number prefix" value={settings.invoice?.prefix ?? "INV"} onChange={(v) => setSettings({ ...settings, invoice: { ...(settings.invoice || {}), prefix: v.toUpperCase() } })} />
-            <TextField label="Tax label" value={settings.invoice?.taxLabel ?? "Tax"} onChange={(v) => setSettings({ ...settings, invoice: { ...(settings.invoice || {}), taxLabel: v } })} placeholder="VAT, GST, Sales tax" />
-            <TextField label="Tax registration number" value={settings.invoice?.taxNumber ?? ""} onChange={(v) => setSettings({ ...settings, invoice: { ...(settings.invoice || {}), taxNumber: v } })} />
-            <div className="md:col-span-3">
-              <TextArea label="Invoice footer note" value={settings.invoice?.footerNote ?? ""} onChange={(v) => setSettings({ ...settings, invoice: { ...(settings.invoice || {}), footerNote: v } })} />
-            </div>
-          </div>
+                <Card className="p-6">
+                  <SectionHeading title="Social Links" hint="Shown in the website footer. Leave blank to hide a network." />
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                    <TextField label="Facebook" value={settings.facebook} onChange={(v) => setSettings({ ...settings, facebook: v })} />
+                    <TextField label="Instagram" value={settings.instagram} onChange={(v) => setSettings({ ...settings, instagram: v })} />
+                    <TextField label="Twitter" value={settings.twitter} onChange={(v) => setSettings({ ...settings, twitter: v })} />
+                    <TextField label="YouTube" value={settings.youtube} onChange={(v) => setSettings({ ...settings, youtube: v })} />
+                    <TextField label="LinkedIn" value={settings.linkedin} onChange={(v) => setSettings({ ...settings, linkedin: v })} />
+                  </div>
+                </Card>
+              </>
+            )}
 
-          <div className="mt-8">
-            <SectionHeading title="Membership self-service" hint="What members may do to their own membership from their account page." />
+            {section === "money" && (
+              <>
+                <Card className="p-6">
+                  <SectionHeading title="Country, currency, tax & time" hint="Pick your country and the currency and clock fill in. Prices everywhere — memberships, classes, shop, payslips — are shown and charged in this currency. Tax is treated as included in your prices and shown on invoices." />
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+                    <label className="block">
+                      <span className="text-xs font-medium text-neutral-600">Country</span>
+                      <div className="mt-1">
+                        <Select2
+                          ariaLabel="Country"
+                          value={settings.country || undefined}
+                          onChange={(code) => {
+                            const c = countryByCode(code);
+                            setSettings({
+                              ...settings,
+                              country: code,
+                              currency: c ? c.currency : settings.currency,
+                              ianaTimezone: settings.ianaTimezone && settings.ianaTimezone !== "UTC" ? settings.ianaTimezone : c ? c.timezone : settings.ianaTimezone,
+                            });
+                          }}
+                          options={COUNTRY_OPTIONS}
+                          placeholder="Choose your country"
+                          searchPlaceholder="Type a country…"
+                          allowClear
+                        />
+                      </div>
+                    </label>
+                    <label className="block">
+                      <span className="text-xs font-medium text-neutral-600">Currency</span>
+                      <div className="mt-1">
+                        <Select2 ariaLabel="Currency" value={settings.currency || undefined} onChange={(v) => setSettings({ ...settings, currency: v })} options={CURRENCY_OPTIONS} placeholder="Choose a currency" searchPlaceholder="Code or name…" />
+                      </div>
+                      <p className="mt-1 text-[11px] text-neutral-500">Applies to every price in the gym.</p>
+                    </label>
+                    <TextField label="Tax rate included in prices (%)" type="number" value={settings.taxRate} onChange={(v) => setSettings({ ...settings, taxRate: Number(v) || 0 })} />
+                    <TextField label="Timezone (IANA)" value={settings.ianaTimezone} onChange={(v) => setSettings({ ...settings, ianaTimezone: v })} placeholder="Europe/London" />
+                  </div>
+                </Card>
+
+                <Card className="p-6">
+                  <SectionHeading title="Invoices" hint="Issued automatically when a membership is paid and attached to the confirmation email." />
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                    <TextField label="Number prefix" value={settings.invoice?.prefix ?? "INV"} onChange={(v) => setSettings({ ...settings, invoice: { ...(settings.invoice || {}), prefix: v.toUpperCase() } })} />
+                    <TextField label="Tax label" value={settings.invoice?.taxLabel ?? "Tax"} onChange={(v) => setSettings({ ...settings, invoice: { ...(settings.invoice || {}), taxLabel: v } })} placeholder="VAT, GST, Sales tax" />
+                    <TextField label="Tax registration number" value={settings.invoice?.taxNumber ?? ""} onChange={(v) => setSettings({ ...settings, invoice: { ...(settings.invoice || {}), taxNumber: v } })} />
+                    <div className="md:col-span-3">
+                      <TextArea label="Invoice footer note" value={settings.invoice?.footerNote ?? ""} onChange={(v) => setSettings({ ...settings, invoice: { ...(settings.invoice || {}), footerNote: v } })} />
+                    </div>
+                  </div>
+                </Card>
+              </>
+            )}
+
+            {section === "members" && (
+              <>
+                <Card className="p-6">
+                  <SectionHeading title="Membership self-service" hint="What members may do to their own membership from their account page." />
+                  <div className="grid grid-cols-1 items-end gap-4 md:grid-cols-3">
+                    <Toggle label="Members can freeze online" checked={settings.membership?.allowMemberFreeze !== false} onChange={(v) => setSettings({ ...settings, membership: { ...(settings.membership || {}), allowMemberFreeze: v } })} />
+                    <TextField label="Max freeze days per request" type="number" value={settings.membership?.maxFreezeDays ?? 30} onChange={(v) => setSettings({ ...settings, membership: { ...(settings.membership || {}), maxFreezeDays: Number(v) || 30 } })} />
+                    <Toggle label="Members can cancel online" checked={settings.membership?.allowMemberCancel !== false} onChange={(v) => setSettings({ ...settings, membership: { ...(settings.membership || {}), allowMemberCancel: v } })} />
+                  </div>
+                </Card>
+
+                <Card className="p-6">
+                  <SectionHeading title="Membership agreement (waiver)" hint="Members sign it by typing their name in their profile; staff can record a paper signature from Users → Profile. Change the version to ask everyone to sign again." />
+                  <div className="grid grid-cols-1 items-end gap-4 md:grid-cols-3">
+                    <Toggle label="Members must sign before training" checked={!!settings.membership?.waiver?.required} onChange={(v) => setSettings({ ...settings, membership: { ...(settings.membership || {}), waiver: { ...(settings.membership?.waiver || {}), required: v } } })} />
+                    <TextField label="Agreement version" value={settings.membership?.waiver?.version ?? "1.0"} onChange={(v) => setSettings({ ...settings, membership: { ...(settings.membership || {}), waiver: { ...(settings.membership?.waiver || {}), version: v } } })} />
+                    <div className="md:col-span-3">
+                      <TextArea label="Agreement text" value={settings.membership?.waiver?.text ?? ""} onChange={(v) => setSettings({ ...settings, membership: { ...(settings.membership || {}), waiver: { ...(settings.membership?.waiver || {}), text: v } } })} placeholder="I understand that exercise carries risks…" />
+                    </div>
+                  </div>
+                </Card>
+              </>
+            )}
+
+            {section === "bookings" && (
+              <>
+                <Card className="p-6">
+                  <SectionHeading title="Class booking rules" hint="How far ahead members can book, when booking closes, cancellations and no-shows. Leave as they are to keep today's behaviour." />
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                    <TextField label="Book up to (days ahead)" type="number" value={settings.booking?.horizonDays ?? 30} onChange={(v) => setSettings({ ...settings, booking: { ...(settings.booking || {}), horizonDays: Number(v) || 30 } })} />
+                    <TextField label="Booking closes (minutes before start)" type="number" value={settings.booking?.cutoffMinutes ?? 15} onChange={(v) => setSettings({ ...settings, booking: { ...(settings.booking || {}), cutoffMinutes: Number(v) || 0 } })} />
+                    <TextField label="Cancel-by window (hours before; later = credit lost)" type="number" value={settings.booking?.cancelHours ?? 2} onChange={(v) => setSettings({ ...settings, booking: { ...(settings.booking || {}), cancelHours: Number(v) || 0 } })} />
+                    <TextField label="No-shows before booking is paused (0 = never)" type="number" value={settings.booking?.noShowStrikes ?? 0} onChange={(v) => setSettings({ ...settings, booking: { ...(settings.booking || {}), noShowStrikes: Number(v) || 0 } })} />
+                    <TextField label="…counted over (days)" type="number" value={settings.booking?.noShowWindowDays ?? 30} onChange={(v) => setSettings({ ...settings, booking: { ...(settings.booking || {}), noShowWindowDays: Number(v) || 30 } })} />
+                    <TextField label="…paused for (days)" type="number" value={settings.booking?.noShowBanDays ?? 7} onChange={(v) => setSettings({ ...settings, booking: { ...(settings.booking || {}), noShowBanDays: Number(v) || 7 } })} />
+                  </div>
+                  <div className="mt-5 grid grid-cols-1 gap-3 border-t border-neutral-100 pt-5 md:grid-cols-3">
+                    <Toggle label="Only members with a live membership can book" checked={!!settings.booking?.requireActiveMembership} onChange={(v) => setSettings({ ...settings, booking: { ...(settings.booking || {}), requireActiveMembership: v } })} />
+                    <Toggle label="Class packs: a booking uses one session credit" checked={settings.booking?.useCredits !== false} onChange={(v) => setSettings({ ...settings, booking: { ...(settings.booking || {}), useCredits: v } })} />
+                    <Toggle label="Mark unattended bookings as no-shows the next day" checked={!!settings.booking?.autoNoShow} onChange={(v) => setSettings({ ...settings, booking: { ...(settings.booking || {}), autoNoShow: v } })} />
+                  </div>
+                </Card>
+
+                <Card className="p-6">
+                  <SectionHeading title="Personal training" hint="Trainers' availability comes from the Trainers screen; sessions are booked in the member portal or under Fitness → Personal Training." />
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+                    <TextField label="Session length (minutes)" type="number" value={settings.pt?.slotMinutes ?? 60} onChange={(v) => setSettings({ ...settings, pt: { ...(settings.pt || {}), slotMinutes: Number(v) || 60 } })} />
+                    <TextField label="Default trainer commission (%)" type="number" value={settings.pt?.defaultCommissionPercent ?? 0} onChange={(v) => setSettings({ ...settings, pt: { ...(settings.pt || {}), defaultCommissionPercent: Number(v) || 0 } })} />
+                    <TextField label="Cancel-by window (hours before)" type="number" value={settings.pt?.cancelHours ?? 12} onChange={(v) => setSettings({ ...settings, pt: { ...(settings.pt || {}), cancelHours: Number(v) || 0 } })} />
+                    <TextField label="Book up to (days ahead)" type="number" value={settings.pt?.horizonDays ?? 30} onChange={(v) => setSettings({ ...settings, pt: { ...(settings.pt || {}), horizonDays: Number(v) || 30 } })} />
+                  </div>
+                  <div className="mt-5 grid grid-cols-1 gap-3 border-t border-neutral-100 pt-5 md:grid-cols-2">
+                    <Toggle label="Members can book sessions online" checked={settings.pt?.allowMemberBooking !== false} onChange={(v) => setSettings({ ...settings, pt: { ...(settings.pt || {}), allowMemberBooking: v } })} />
+                    <Toggle label="A PT pack is required to book" checked={!!settings.pt?.requirePack} onChange={(v) => setSettings({ ...settings, pt: { ...(settings.pt || {}), requirePack: v } })} />
+                  </div>
+                </Card>
+
+                <Card className="p-6">
+                  <SectionHeading title="Rooms / studios" hint="Where classes happen. Each class picks one of these; the timetable shows it." />
+                  <TextField label="Rooms / studios (comma separated)" value={(settings.rooms || []).join(", ")} onChange={(v) => setSettings({ ...settings, rooms: v.split(",").map((r) => r.trim()).filter(Boolean) })} placeholder="Studio A, Studio B, Spin room" />
+                </Card>
+              </>
+            )}
+
+            {section === "website" && <WebsiteSettings settings={settings} setSettings={setSettings} />}
+
+            <p className="text-xs text-neutral-500">One save (top right) covers every section of General.</p>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
-            <Toggle label="Members can freeze online" checked={settings.membership?.allowMemberFreeze !== false} onChange={(v) => setSettings({ ...settings, membership: { ...(settings.membership || {}), allowMemberFreeze: v } })} />
-            <TextField label="Max freeze days per request" type="number" value={settings.membership?.maxFreezeDays ?? 30} onChange={(v) => setSettings({ ...settings, membership: { ...(settings.membership || {}), maxFreezeDays: Number(v) || 30 } })} />
-            <Toggle label="Members can cancel online" checked={settings.membership?.allowMemberCancel !== false} onChange={(v) => setSettings({ ...settings, membership: { ...(settings.membership || {}), allowMemberCancel: v } })} />
-            <div className="md:col-span-2 mt-2 border-t border-neutral-100 pt-4">
-              <p className="text-xs font-semibold text-neutral-700">Membership agreement (waiver)</p>
-              <p className="text-xs text-neutral-500">Members sign it by typing their name in their profile; staff can record a paper signature from Users → Profile. Change the version to ask everyone to sign again.</p>
-            </div>
-            <Toggle label="Members must sign before training" checked={!!settings.membership?.waiver?.required} onChange={(v) => setSettings({ ...settings, membership: { ...(settings.membership || {}), waiver: { ...(settings.membership?.waiver || {}), required: v } } })} />
-            <TextField label="Agreement version" value={settings.membership?.waiver?.version ?? "1.0"} onChange={(v) => setSettings({ ...settings, membership: { ...(settings.membership || {}), waiver: { ...(settings.membership?.waiver || {}), version: v } } })} />
-            <div className="md:col-span-2">
-              <TextArea label="Agreement text" value={settings.membership?.waiver?.text ?? ""} onChange={(v) => setSettings({ ...settings, membership: { ...(settings.membership || {}), waiver: { ...(settings.membership?.waiver || {}), text: v } } })} placeholder="I understand that exercise carries risks…" />
-            </div>
-
-            <div className="md:col-span-2 mt-2 border-t border-neutral-100 pt-4">
-              <p className="text-xs font-semibold text-neutral-700">Class booking rules</p>
-              <p className="text-xs text-neutral-500">How far ahead members can book, when booking closes, cancellations and no-shows. Leave as they are to keep today&apos;s behaviour.</p>
-            </div>
-            <TextField label="Book up to (days ahead)" type="number" value={settings.booking?.horizonDays ?? 30} onChange={(v) => setSettings({ ...settings, booking: { ...(settings.booking || {}), horizonDays: Number(v) || 30 } })} />
-            <TextField label="Booking closes (minutes before start)" type="number" value={settings.booking?.cutoffMinutes ?? 15} onChange={(v) => setSettings({ ...settings, booking: { ...(settings.booking || {}), cutoffMinutes: Number(v) || 0 } })} />
-            <TextField label="Cancel-by window (hours before; later = credit lost)" type="number" value={settings.booking?.cancelHours ?? 2} onChange={(v) => setSettings({ ...settings, booking: { ...(settings.booking || {}), cancelHours: Number(v) || 0 } })} />
-            <TextField label="No-shows before booking is paused (0 = never)" type="number" value={settings.booking?.noShowStrikes ?? 0} onChange={(v) => setSettings({ ...settings, booking: { ...(settings.booking || {}), noShowStrikes: Number(v) || 0 } })} />
-            <TextField label="…counted over (days)" type="number" value={settings.booking?.noShowWindowDays ?? 30} onChange={(v) => setSettings({ ...settings, booking: { ...(settings.booking || {}), noShowWindowDays: Number(v) || 30 } })} />
-            <TextField label="…paused for (days)" type="number" value={settings.booking?.noShowBanDays ?? 7} onChange={(v) => setSettings({ ...settings, booking: { ...(settings.booking || {}), noShowBanDays: Number(v) || 7 } })} />
-            <Toggle label="Only members with a live membership can book" checked={!!settings.booking?.requireActiveMembership} onChange={(v) => setSettings({ ...settings, booking: { ...(settings.booking || {}), requireActiveMembership: v } })} />
-            <Toggle label="Class packs: a booking uses one session credit" checked={settings.booking?.useCredits !== false} onChange={(v) => setSettings({ ...settings, booking: { ...(settings.booking || {}), useCredits: v } })} />
-            <Toggle label="Mark unattended bookings as no-shows the next day" checked={!!settings.booking?.autoNoShow} onChange={(v) => setSettings({ ...settings, booking: { ...(settings.booking || {}), autoNoShow: v } })} />
-
-            <div className="md:col-span-2 mt-2 border-t border-neutral-100 pt-4">
-              <p className="text-xs font-semibold text-neutral-700">Personal training</p>
-              <p className="text-xs text-neutral-500">Trainers&apos; availability comes from the Trainers screen; sessions are booked in the member portal or under Fitness → Personal Training.</p>
-            </div>
-            <TextField label="Session length (minutes)" type="number" value={settings.pt?.slotMinutes ?? 60} onChange={(v) => setSettings({ ...settings, pt: { ...(settings.pt || {}), slotMinutes: Number(v) || 60 } })} />
-            <TextField label="Default trainer commission (%)" type="number" value={settings.pt?.defaultCommissionPercent ?? 0} onChange={(v) => setSettings({ ...settings, pt: { ...(settings.pt || {}), defaultCommissionPercent: Number(v) || 0 } })} />
-            <TextField label="Cancel-by window (hours before)" type="number" value={settings.pt?.cancelHours ?? 12} onChange={(v) => setSettings({ ...settings, pt: { ...(settings.pt || {}), cancelHours: Number(v) || 0 } })} />
-            <TextField label="Book up to (days ahead)" type="number" value={settings.pt?.horizonDays ?? 30} onChange={(v) => setSettings({ ...settings, pt: { ...(settings.pt || {}), horizonDays: Number(v) || 30 } })} />
-            <Toggle label="Members can book sessions online" checked={settings.pt?.allowMemberBooking !== false} onChange={(v) => setSettings({ ...settings, pt: { ...(settings.pt || {}), allowMemberBooking: v } })} />
-            <Toggle label="A PT pack is required to book" checked={!!settings.pt?.requirePack} onChange={(v) => setSettings({ ...settings, pt: { ...(settings.pt || {}), requirePack: v } })} />
-
-            <div className="md:col-span-2 mt-2 border-t border-neutral-100 pt-4">
-              <TextField label="Rooms / studios (comma separated)" value={(settings.rooms || []).join(", ")} onChange={(v) => setSettings({ ...settings, rooms: v.split(",").map((r) => r.trim()).filter(Boolean) })} placeholder="Studio A, Studio B, Spin room" />
-            </div>
-
-            <WebsiteSettings settings={settings} setSettings={setSettings} />
-          </div>
-
-          <div className="mt-8">
-            <SectionHeading title="Social Links" />
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <TextField label="Facebook" value={settings.facebook} onChange={(v) => setSettings({ ...settings, facebook: v })} />
-            <TextField label="Instagram" value={settings.instagram} onChange={(v) => setSettings({ ...settings, instagram: v })} />
-            <TextField label="Twitter" value={settings.twitter} onChange={(v) => setSettings({ ...settings, twitter: v })} />
-            <TextField label="YouTube" value={settings.youtube} onChange={(v) => setSettings({ ...settings, youtube: v })} />
-            <TextField label="LinkedIn" value={settings.linkedin} onChange={(v) => setSettings({ ...settings, linkedin: v })} />
-          </div>
-
-          <div className="flex justify-end mt-6">
-            <PrimaryButton onClick={save} disabled={saving}>{saving ? "Saving..." : "Save Changes"}</PrimaryButton>
-          </div>
-        </Card>
+        </div>
       )}
 
       {/* ---------------- Logo ---------------- */}
