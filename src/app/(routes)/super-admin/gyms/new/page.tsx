@@ -7,7 +7,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { PageHeader, Card, PrimaryButton, SecondaryButton, TextField, TextArea } from "../../../admin/_shared/ui";
-import { platformFetch, type Plan, type Gym } from "../../_shared/api";
+import { platformFetch, type Plan, type Gym, type PlatformConfig } from "../../_shared/api";
 
 const COMMON_TIMEZONES = [
   "UTC",
@@ -40,12 +40,14 @@ const COMMON_TIMEZONES = [
 export default function NewGymPage() {
   const router = useRouter();
   const [plans, setPlans] = useState<Plan[]>([]);
+  const [config, setConfig] = useState<PlatformConfig | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [form, setForm] = useState({
     name: "",
     slug: "",
+    databaseName: "",
     domains: "",
     ownerFirstName: "",
     ownerLastName: "",
@@ -65,9 +67,14 @@ export default function NewGymPage() {
     platformFetch<{ data: Plan[] }>("/plans")
       .then((res) => setPlans(res.data.filter((p) => p.isActive)))
       .catch(() => setPlans([]));
+    platformFetch<{ data: PlatformConfig }>("/config")
+      .then((res) => setConfig(res.data))
+      .catch(() => setConfig(null));
   }, []);
 
   const suggestedSlug = form.slug || form.name.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  // Mirrors databaseNameFor() on the server: <prefix><slug>, unsafe characters replaced.
+  const suggestedDatabase = `${config?.tenant_database_prefix ?? ""}${suggestedSlug.replace(/[^a-z0-9_-]/gi, "_")}`;
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -79,6 +86,7 @@ export default function NewGymPage() {
         body: {
           name: form.name,
           slug: suggestedSlug,
+          database: form.databaseName.trim() ? { name: form.databaseName.trim() } : undefined,
           domains: form.domains
             .split(/[\s,]+/)
             .map((d) => d.trim())
@@ -118,6 +126,13 @@ export default function NewGymPage() {
             <div className="mt-4 grid gap-4 md:grid-cols-2">
               <TextField label="Gym name" value={form.name} onChange={set("name")} required placeholder="Iron Works Fitness" />
               <TextField label="Slug" value={form.slug} onChange={set("slug")} placeholder={suggestedSlug || "iron-works"} />
+            </div>
+            <div className="mt-4">
+              <TextField label="Database name (optional)" value={form.databaseName} onChange={set("databaseName")} placeholder={suggestedDatabase || `${config?.tenant_database_prefix ?? ""}iron-works`} />
+              <p className="mt-1 text-xs text-neutral-500">
+                Leave empty to use <span className="font-mono">{suggestedDatabase || `${config?.tenant_database_prefix ?? ""}<slug>`}</span> — a new database beside{" "}
+                <span className="font-mono">{config?.platform_database || "the main database"}</span> on the same cluster.
+              </p>
             </div>
             <div className="mt-4">
               <TextArea

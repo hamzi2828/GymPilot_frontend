@@ -15,7 +15,7 @@ export function middleware(req: NextRequest) {
   // here, and this session is no use on a gym's pages. Coarse, like the
   // admin check below: the API re-verifies the token on every request.
   if (isPlatform) {
-    if (pathname === '/super-admin/login') return NextResponse.next();
+    if (pathname === '/super-admin/login' || pathname === '/super-admin/forgot' || pathname === '/super-admin/reset') return NextResponse.next();
     if (req.cookies.get('platform_token')?.value) return NextResponse.next();
     const url = req.nextUrl.clone();
     url.pathname = '/super-admin/login';

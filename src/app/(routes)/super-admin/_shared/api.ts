@@ -91,6 +91,14 @@ export interface PlatformAdmin {
   name: string;
   email: string;
   last_login: string | null;
+  two_factor?: boolean;
+}
+
+export interface PlatformConfig {
+  platform_database: string;
+  tenant_database_prefix: string;
+  root_domain: string;
+  default_tenant_slug: string;
 }
 
 export interface Plan {

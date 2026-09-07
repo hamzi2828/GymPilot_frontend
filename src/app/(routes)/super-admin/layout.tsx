@@ -9,7 +9,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { FiGrid, FiHome, FiLayers, FiList, FiLogOut } from "react-icons/fi";
+import { FiGrid, FiHome, FiLayers, FiList, FiLogOut, FiUser } from "react-icons/fi";
 import { clearPlatformToken, getPlatformToken, platformFetch, type PlatformAdmin } from "./_shared/api";
 
 const NAV = [
@@ -17,12 +17,14 @@ const NAV = [
   { name: "Gyms", path: "/super-admin/gyms", icon: <FiGrid className="h-[18px] w-[18px]" /> },
   { name: "Plans", path: "/super-admin/plans", icon: <FiLayers className="h-[18px] w-[18px]" /> },
   { name: "Audit log", path: "/super-admin/audit", icon: <FiList className="h-[18px] w-[18px]" /> },
+  { name: "My account", path: "/super-admin/account", icon: <FiUser className="h-[18px] w-[18px]" /> },
 ];
 
 export default function SuperAdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const isLogin = pathname === "/super-admin/login";
+  // Pages that work without a session: sign-in and the password reset flow.
+  const isLogin = pathname === "/super-admin/login" || pathname === "/super-admin/forgot" || pathname === "/super-admin/reset";
 
   const [admin, setAdmin] = useState<PlatformAdmin | null>(null);
   const [checked, setChecked] = useState(false);
