@@ -5,10 +5,12 @@ import Link from "next/link";
 import '@fortawesome/fontawesome-free/css/all.css';
 import { contactService, ContactFormData, ContactValidationErrors } from "./services/contactService";
 import { useSiteSettings } from "@/components/ThemeProvider";
+import { useLanguage } from "@/i18n/LanguageProvider";
 
 const ContactUsPage = () => {
   // Phone and address come from admin settings, so they stay correct after a move.
-  const { mobileNumber, address } = useSiteSettings();
+  const { mobileNumber, address, maps, openingHours } = useSiteSettings();
+  const { t } = useLanguage();
 
   const [formData, setFormData] = useState<ContactFormData>({
     fullName: '',
@@ -223,11 +225,38 @@ const ContactUsPage = () => {
                       {address && (
                         <p>
                           <strong>Visit us:</strong> {address}
+                          {maps.placeUrl && (
+                            <>
+                              {" · "}
+                              <a href={maps.placeUrl} target="_blank" rel="noreferrer" className="underline hover:no-underline">
+                                {t("contact.openMaps")}
+                              </a>
+                            </>
+                          )}
                         </p>
+                      )}
+                      {openingHours.length > 0 && (
+                        <div>
+                          <strong>{t("contact.hours")}:</strong>
+                          <ul className="mt-1 grid grid-cols-1 gap-x-6 sm:grid-cols-2">
+                            {openingHours.map((h) => (
+                              <li key={h.day} className="flex justify-between gap-4">
+                                <span>{h.day}</span>
+                                <span>{h.closed ? t("contact.closed") : `${h.open} – ${h.close}`}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
                       )}
                       <p>We reply to every message within one working day.</p>
                     </div>
                   </header>
+
+                  {maps.embedUrl && (
+                    <div className="mb-8 overflow-hidden rounded-lg border border-gray-200">
+                      <iframe src={maps.embedUrl} title="Map" className="h-72 w-full" loading="lazy" referrerPolicy="no-referrer-when-downgrade" allowFullScreen />
+                    </div>
+                  )}
 
                   <div className="bg-gray-50 rounded-lg p-6 lg:p-8">
                     <h2 className="privacy-faq-title text-xl mb-6">

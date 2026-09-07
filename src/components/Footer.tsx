@@ -2,6 +2,7 @@
 
 import React from "react";
 import { useSiteSettings } from "@/components/ThemeProvider";
+import { useLanguage } from "@/i18n/LanguageProvider";
 import Image from "next/image";
 import Link from "next/link";
 
@@ -18,6 +19,7 @@ const Footer = () => {
     twitterUrl,
     tiktokUrl,
   } = useSiteSettings();
+  const { t } = useLanguage();
   const brandLogo = footerLogoUrl || logoUrl;
 
   // Only profiles the admin has actually filled in get a link — an unset
@@ -80,39 +82,39 @@ const Footer = () => {
           <div className="footer-links-content">
             {/* Programs */}
             <div className="footer-links-column">
-              <h4 className="footer-column-heading">Programs</h4>
+              <h4 className="footer-column-heading">{t("footer.programs")}</h4>
               <nav className="footer-nav-links">
-                <Link href="/packages" className="footer-nav-link">Packages</Link>
-                <Link href="/classes" className="footer-nav-link">Our Classes</Link>
-                <Link href="/trainers" className="footer-nav-link">Our Trainers</Link>
+                <Link href="/packages" className="footer-nav-link">{t("footer.packages")}</Link>
+                <Link href="/classes" className="footer-nav-link">{t("footer.classes")}</Link>
+                <Link href="/trainers" className="footer-nav-link">{t("footer.trainers")}</Link>
               </nav>
             </div>
 
             {/* Support */}
             <div className="footer-links-column">
-              <h4 className="footer-column-heading">Support</h4>
+              <h4 className="footer-column-heading">{t("footer.support")}</h4>
               <nav className="footer-nav-links">
-                <Link href="/contact-us" className="footer-nav-link">Contact Us</Link>
-                <Link href="/trainers" className="footer-nav-link">Trainer Details</Link>
-                <Link href="/faqs" className="footer-nav-link">FAQs</Link>
+                <Link href="/contact-us" className="footer-nav-link">{t("footer.contact")}</Link>
+                <Link href="/trainers" className="footer-nav-link">{t("footer.trainerDetails")}</Link>
+                <Link href="/faqs" className="footer-nav-link">{t("footer.faqs")}</Link>
               
               </nav>
             </div>
 
             {/* Company */}
             <div className="footer-links-column">
-              <h4 className="footer-column-heading">Company</h4>
+              <h4 className="footer-column-heading">{t("footer.company")}</h4>
               <nav className="footer-nav-links">
-                <Link href="/about-us" className="footer-nav-link">About Us</Link>
-                <Link href="/privacy-policy" className="footer-nav-link">Privacy Policy</Link>
+                <Link href="/about-us" className="footer-nav-link">{t("footer.about")}</Link>
+                <Link href="/privacy-policy" className="footer-nav-link">{t("footer.privacy")}</Link>
                
-                <Link href="/contact-us" className="footer-nav-link">Get In Touch</Link>
+                <Link href="/contact-us" className="footer-nav-link">{t("footer.getInTouch")}</Link>
               </nav>
             </div>
 
             {/* Social */}
             <div className="footer-links-column footer-social-column">
-              <h4 className="footer-column-heading">Follow Us</h4>
+              <h4 className="footer-column-heading">{t("footer.follow")}</h4>
               <nav className="footer-nav-links">
                 {socials.length > 0 ? (
                   socials.map((s) => (
@@ -145,13 +147,13 @@ const Footer = () => {
               <span className="footer-copyright-symbol">©</span>
               <span className="footer-copyright-year">{new Date().getFullYear()}</span>
               <span className="footer-copyright-text">
-                {" "}{siteName} — All rights reserved
+                {" "}{siteName} — {t("footer.rights")}
               </span>
             </p>
             <nav className="footer-legal-links">
-              <Link href="/privacy-policy" className="footer-legal-link">Privacy Policy</Link>
-              <Link href="/terms" className="footer-legal-link">Terms</Link>
-              <Link href="/contact-us" className="footer-legal-link">Contact Us</Link>
+              <Link href="/privacy-policy" className="footer-legal-link">{t("footer.privacy")}</Link>
+              <Link href="/terms" className="footer-legal-link">{t("footer.terms")}</Link>
+              <Link href="/contact-us" className="footer-legal-link">{t("footer.contact")}</Link>
             </nav>
           </div>
         </div>

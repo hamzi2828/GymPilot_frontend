@@ -10,6 +10,7 @@ import {
   type ClassSession,
 } from "../classes/services/bookingService";
 import { isAuthenticated } from "@/helper/helper";
+import { useLanguage } from "@/i18n/LanguageProvider";
 
 // Seven days at a time. A month of sessions in one scroll is unreadable, and
 // the booking horizon is thirty days anyway.
@@ -42,6 +43,7 @@ export default function TimetablePage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
+  const { t } = useLanguage();
 
   const to = useMemo(() => addDays(from, DAYS_SHOWN - 1), [from]);
 
@@ -153,32 +155,32 @@ export default function TimetablePage() {
           disabled={from <= todayKey()}
           className="rounded-full border border-neutral-300 px-4 py-2 text-sm font-semibold text-neutral-700 disabled:opacity-40 hover:border-neutral-400"
         >
-          ← Previous week
+          {t("tt.prev")}
         </button>
         <button
           type="button"
           onClick={() => setFrom(todayKey())}
           className="rounded-full border border-neutral-300 px-4 py-2 text-sm font-semibold text-neutral-700 hover:border-neutral-400"
         >
-          This week
+          {t("tt.thisWeek")}
         </button>
         <button
           type="button"
           onClick={() => setFrom(addDays(from, DAYS_SHOWN))}
           className="rounded-full border border-neutral-300 px-4 py-2 text-sm font-semibold text-neutral-700 hover:border-neutral-400"
         >
-          Next week →
+          {t("tt.next")}
         </button>
         <Link
           href="/user-detail?tab=bookings"
           className="ml-auto text-sm font-semibold underline underline-offset-4 text-neutral-700"
         >
-          My bookings
+          {t("tt.myBookings")}
         </Link>
       </div>
 
       {loading ? (
-        <p className="text-neutral-500">Loading the timetable…</p>
+        <p className="text-neutral-500">{t("tt.loading")}</p>
       ) : (
         <div className="space-y-8">
           {byDay.map(([date, list]) => (
@@ -187,14 +189,14 @@ export default function TimetablePage() {
                 {dayLabel(date)}
                 {date === todayKey() && (
                   <span className="ml-2 rounded-full bg-[var(--accent)] px-2 py-0.5 text-[11px] font-bold text-black">
-                    Today
+                    {t("tt.today")}
                   </span>
                 )}
               </h2>
 
               {list.length === 0 ? (
                 <p className="rounded-xl border border-dashed border-neutral-200 px-4 py-6 text-sm text-neutral-400">
-                  No classes scheduled.
+                  {t("tt.none")}
                 </p>
               ) : (
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
@@ -242,9 +244,9 @@ export default function TimetablePage() {
                         <p className="mt-3 text-[13px] text-neutral-500">
                           {s.capacity > 0
                             ? s.is_full
-                              ? `Full · ${s.waitlist_count} on the waiting list`
-                              : `${s.spots_left} of ${s.capacity} places left`
-                            : "Open session"}
+                              ? t("tt.full", { n: s.waitlist_count })
+                              : t("tt.left", { n: s.spots_left, cap: s.capacity })
+                            : t("tt.open")}
                         </p>
 
                         <div className="mt-4">
@@ -252,8 +254,8 @@ export default function TimetablePage() {
                             <div className="flex items-center justify-between gap-2">
                               <span className="text-sm font-bold text-emerald-700">
                                 {mine.status === "waitlisted"
-                                  ? `Waiting list #${mine.waitlist_position}`
-                                  : "Booked"}
+                                  ? t("tt.waitingPos", { n: mine.waitlist_position ?? "" })
+                                  : t("tt.booked")}
                               </span>
                               {!s.is_closed && (
                                 <button
@@ -262,14 +264,14 @@ export default function TimetablePage() {
                                   disabled={busy === key}
                                   className="text-sm font-semibold text-neutral-600 underline underline-offset-4 disabled:opacity-40"
                                 >
-                                  {busy === key ? "Cancelling…" : "Cancel"}
+                                  {busy === key ? t("tt.cancelling") : t("tt.cancel")}
                                 </button>
                               )}
                             </div>
                           ) : s.is_cancelled ? (
-                            <span className="text-sm text-neutral-400">Not running</span>
+                            <span className="text-sm text-neutral-400">{t("tt.notRunning")}</span>
                           ) : s.is_closed ? (
-                            <span className="text-sm text-neutral-400">Booking closed</span>
+                            <span className="text-sm text-neutral-400">{t("tt.closed")}</span>
                           ) : (
                             <button
                               type="button"
@@ -278,10 +280,10 @@ export default function TimetablePage() {
                               className="w-full rounded-lg bg-neutral-900 px-4 py-2.5 text-sm font-bold text-white hover:bg-neutral-800 disabled:opacity-50"
                             >
                               {busy === key
-                                ? "Booking…"
+                                ? t("tt.booking")
                                 : s.is_full
-                                ? "Join waiting list"
-                                : "Book a place"}
+                                ? t("tt.waitlist")
+                                : t("tt.book")}
                             </button>
                           )}
                         </div>

@@ -36,6 +36,11 @@ type SiteSettings = {
   whatsappButton: { number: string; message: string } | null;
   // Set when the gym has push notifications on; members subscribe with it.
   pushPublicKey: string;
+  // The language the site reads in and its direction (Settings → General).
+  locale: { language: string; direction: "ltr" | "rtl" };
+  // Where the gym is, for the contact page.
+  maps: { embedUrl: string; placeUrl: string };
+  openingHours: { day: string; open: string; close: string; closed: boolean }[];
 };
 
 const DEFAULT_LOGO = "/images/logo.png";
@@ -58,6 +63,9 @@ const DEFAULTS: SiteSettings = {
   tiktokUrl: "",
   whatsappButton: null,
   pushPublicKey: "",
+  locale: { language: "en", direction: "ltr" },
+  maps: { embedUrl: "", placeUrl: "" },
+  openingHours: [],
 };
 
 const SiteSettingsContext = createContext<SiteSettings>(DEFAULTS);
@@ -165,6 +173,9 @@ export default function ThemeProvider({ children }: { children: React.ReactNode 
           tiktokUrl: d.tiktokUrl || "",
           whatsappButton: d.whatsappButton && d.whatsappButton.number ? { number: String(d.whatsappButton.number), message: String(d.whatsappButton.message || "") } : null,
           pushPublicKey: d.pushPublicKey || "",
+          locale: { language: (d.locale && d.locale.language) || "en", direction: d.locale && d.locale.direction === "rtl" ? "rtl" : "ltr" },
+          maps: { embedUrl: (d.maps && d.maps.embedUrl) || "", placeUrl: (d.maps && d.maps.placeUrl) || "" },
+          openingHours: Array.isArray(d.openingHours) ? d.openingHours : [],
         });
       } catch {
         // Offline or API down — CSS defaults in globals.css still apply.

@@ -16,11 +16,26 @@ const FALLBACK = {
   siteUrl: process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000",
 };
 
+export type OpeningHour = { day: string; open: string; close: string; closed: boolean };
+
 type PublicSettings = {
   siteName?: string;
   siteUrl?: string;
   logoUrl?: string;
+  address?: string;
+  mobileNumber?: string;
+  facebookUrl?: string;
+  instagramUrl?: string;
+  youtubeUrl?: string;
+  twitterUrl?: string;
+  tiktokUrl?: string;
+  seo?: { title?: string; description?: string; keywords?: string; ogImage?: string };
+  maps?: { embedUrl?: string; placeUrl?: string; latitude?: number | null; longitude?: number | null };
+  openingHours?: OpeningHour[];
+  locale?: { language?: string; direction?: "ltr" | "rtl" };
 };
+
+export type SiteSettingsForSeo = Required<Pick<PublicSettings, "siteName" | "siteUrl">> & PublicSettings;
 
 /**
  * Reads the public settings document.

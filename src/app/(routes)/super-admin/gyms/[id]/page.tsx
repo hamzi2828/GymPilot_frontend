@@ -41,6 +41,9 @@ export default function GymDetailPage() {
   const [admins, setAdmins] = useState<Admin[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // What the website host said when domains were saved: added to Vercel,
+  // or the DNS record the owner has to create.
+  const [hosting, setHosting] = useState<{ connected: boolean; added: { host: string; added: boolean; verified?: boolean; error?: string; skipped?: string; verification?: { type: string; domain: string; value: string }[]; dns: { type: string; name: string; value: string; note: string } }[] } | null>(null);
   const [busy, setBusy] = useState(false);
 
   // Editors
@@ -240,8 +243,8 @@ export default function GymDetailPage() {
             <PrimaryButton
               disabled={busy}
               onClick={() =>
-                run("Domains saved", () =>
-                  platformFetch(`/gyms/${id}/domains`, {
+                run("Domains saved", async () => {
+                  const res = await platformFetch<{ hosting?: typeof hosting }>(`/gyms/${id}/domains`, {
                     method: "PUT",
                     body: {
                       domains: domainsText
@@ -250,13 +253,34 @@ export default function GymDetailPage() {
                         .filter(Boolean)
                         .map((host, i) => ({ host, isPrimary: i === 0 })),
                     },
-                  })
-                )
+                  });
+                  setHosting(res.hosting || null);
+                })
               }
             >
               Save domains
             </PrimaryButton>
           </div>
+          {hosting && hosting.added.length > 0 && (
+            <div className="mt-4 space-y-2 rounded-lg bg-neutral-50 p-3 text-xs text-neutral-700">
+              {hosting.added.map((h) => (
+                <div key={h.host}>
+                  <p className="font-semibold text-neutral-900">
+                    {h.host} — {h.added ? (h.verified === false ? "added to Vercel, awaiting verification" : "added to the website host") : h.skipped ? "not added automatically" : `could not be added (${h.error})`}
+                  </p>
+                  <p>
+                    DNS: add a <span className="font-mono">{h.dns.type}</span> record for <span className="font-mono">{h.dns.name}</span> pointing to <span className="font-mono">{h.dns.value}</span>. {h.dns.note}
+                  </p>
+                  {(h.verification || []).map((v, i) => (
+                    <p key={i}>
+                      Verification: <span className="font-mono">{v.type}</span> record <span className="font-mono">{v.domain}</span> = <span className="font-mono">{v.value}</span>
+                    </p>
+                  ))}
+                </div>
+              ))}
+              {!hosting.connected && <p className="text-neutral-500">Connect Vercel on the API (VERCEL_TOKEN, VERCEL_PROJECT_ID) to add domains to the website project automatically.</p>}
+            </div>
+          )}
         </Card>
 
         {/* Subscription */}

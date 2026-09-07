@@ -7,6 +7,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { ArrowRight, LogOut, Menu, ShieldCheck, UserRound, X } from "lucide-react";
 import { getCurrentUser, getRole, removeToken } from "@/helper/helper";
 import { useSiteSettings } from "@/components/ThemeProvider";
+import { LanguageSwitcher, useLanguage } from "@/i18n/LanguageProvider";
 
 /** Distance scrolled before the bar leaves its "over the hero" state. */
 const CONDENSE_AT = 28;
@@ -22,6 +23,7 @@ const Header = () => {
   const router = useRouter();
   // Logo and business name come from admin settings, not a hardcoded asset.
   const { logoUrl, logoWidth, logoHeight, siteName } = useSiteSettings();
+  const { t } = useLanguage();
 
   // Routes whose first element is a full-bleed photographic banner. On these
   // the bar carries no surface at all, so the artwork reaches the top edge of
@@ -129,17 +131,17 @@ const Header = () => {
 
   // Admins land on the dashboard rather than the member profile page.
   const accountHref = isAdmin ? routes.admin : routes.userDetails;
-  const accountLabel = isAdmin ? "Admin Panel" : "My Account";
+  const accountLabel = isAdmin ? t("nav.admin") : t("nav.account");
 
   // Create navigation items from featured categories and static pages
   const navItems = [
-    { key: "about", label: "About", href: routes.about },
-    { key: "packages", label: "Packages", href: routes.packages },
-    { key: "classes", label: "Classes", href: routes.classes },
-    { key: "timetable", label: "Timetable", href: routes.timetable },
-    { key: "trainers", label: "Trainers", href: routes.trainers },
-    { key: "contact", label: "Contact", href: routes.contact },
-    { key: "blogs", label: "Blog", href: routes.blogs },
+    { key: "about", label: t("nav.about"), href: routes.about },
+    { key: "packages", label: t("nav.packages"), href: routes.packages },
+    { key: "classes", label: t("nav.classes"), href: routes.classes },
+    { key: "timetable", label: t("nav.timetable"), href: routes.timetable },
+    { key: "trainers", label: t("nav.trainers"), href: routes.trainers },
+    { key: "contact", label: t("nav.contact"), href: routes.contact },
+    { key: "blogs", label: t("nav.blog"), href: routes.blogs },
   ];
 
   const isActive = (href: string) => pathname === href || pathname.startsWith(href + "/");
@@ -250,7 +252,10 @@ const Header = () => {
 
         {/* Actions */}
         <div className="site-header__actions">
-          <div className="site-header__actions-desktop">{desktopActions()}</div>
+          <div className="site-header__actions-desktop">
+            <LanguageSwitcher className="mr-2 hidden lg:inline-block" />
+            {desktopActions()}
+          </div>
 
           <button
             type="button"

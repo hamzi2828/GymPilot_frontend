@@ -20,6 +20,7 @@ import { API_BASE, apiGet, apiJson, authHeaders } from "../_shared/api";
 import { THEMES, DEFAULT_THEME_KEY } from "@/theme/themes";
 import { setActiveTheme } from "@/components/ThemeProvider";
 import MessagingSettings, { type MessagingConfig } from "./MessagingSettings";
+import WebsiteSettings from "./WebsiteSettings";
 
 interface StripeConfig {
   publishableKey?: string;
@@ -84,6 +85,11 @@ interface Settings {
   stripe?: StripeConfig;
   smtp?: SmtpConfig;
   messaging?: MessagingConfig;
+  seo?: { title?: string; description?: string; keywords?: string; ogImage?: string };
+  maps?: { embedUrl?: string; placeUrl?: string; latitude?: number | null; longitude?: number | null };
+  openingHours?: { day: string; open: string; close: string; closed: boolean }[];
+  locale?: { language?: string; direction?: "ltr" | "rtl" };
+  siteUrl?: string;
   booking?: { horizonDays?: number; cutoffMinutes?: number; cancelHours?: number; requireActiveMembership?: boolean; useCredits?: boolean; noShowStrikes?: number; noShowWindowDays?: number; noShowBanDays?: number; autoNoShow?: boolean };
   pt?: { slotMinutes?: number; defaultCommissionPercent?: number; allowMemberBooking?: boolean; requirePack?: boolean; cancelHours?: number; horizonDays?: number };
   rooms?: string[];
@@ -546,6 +552,8 @@ function SettingsAdminPageInner() {
             <div className="md:col-span-2 mt-2 border-t border-neutral-100 pt-4">
               <TextField label="Rooms / studios (comma separated)" value={(settings.rooms || []).join(", ")} onChange={(v) => setSettings({ ...settings, rooms: v.split(",").map((r) => r.trim()).filter(Boolean) })} placeholder="Studio A, Studio B, Spin room" />
             </div>
+
+            <WebsiteSettings settings={settings} setSettings={setSettings} />
           </div>
 
           <div className="mt-8">
