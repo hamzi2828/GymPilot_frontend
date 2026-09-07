@@ -10,6 +10,7 @@ import { HistorySection } from "./components/HistorySection";
 import { VisitsSection } from "./components/VisitsSection";
 import { CheckInSection } from "./components/CheckInSection";
 import { PrivacySection } from "./components/PrivacySection";
+import { NotificationsSection } from "./components/NotificationsSection";
 import {
   getUserDetailForProfile,
   updateUser,
@@ -295,6 +296,7 @@ const UserProfilePageContent: React.FC = () => {
             onChanged={refreshUserData}
           />
         )}
+        {activeTab === "profile" && userProfile && <NotificationsSection />}
 
         {activeTab === "bookings" && <BookingsSection />}
 

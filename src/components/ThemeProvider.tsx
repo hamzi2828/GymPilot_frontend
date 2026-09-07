@@ -32,6 +32,10 @@ type SiteSettings = {
   youtubeUrl: string;
   twitterUrl: string;
   tiktokUrl: string;
+  // The floating WhatsApp button, when the gym has switched it on.
+  whatsappButton: { number: string; message: string } | null;
+  // Set when the gym has push notifications on; members subscribe with it.
+  pushPublicKey: string;
 };
 
 const DEFAULT_LOGO = "/images/logo.png";
@@ -52,6 +56,8 @@ const DEFAULTS: SiteSettings = {
   youtubeUrl: "",
   twitterUrl: "",
   tiktokUrl: "",
+  whatsappButton: null,
+  pushPublicKey: "",
 };
 
 const SiteSettingsContext = createContext<SiteSettings>(DEFAULTS);
@@ -157,6 +163,8 @@ export default function ThemeProvider({ children }: { children: React.ReactNode 
           youtubeUrl: d.youtubeUrl || "",
           twitterUrl: d.twitterUrl || "",
           tiktokUrl: d.tiktokUrl || "",
+          whatsappButton: d.whatsappButton && d.whatsappButton.number ? { number: String(d.whatsappButton.number), message: String(d.whatsappButton.message || "") } : null,
+          pushPublicKey: d.pushPublicKey || "",
         });
       } catch {
         // Offline or API down — CSS defaults in globals.css still apply.

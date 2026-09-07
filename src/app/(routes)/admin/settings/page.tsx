@@ -19,6 +19,7 @@ import {
 import { API_BASE, apiGet, apiJson, authHeaders } from "../_shared/api";
 import { THEMES, DEFAULT_THEME_KEY } from "@/theme/themes";
 import { setActiveTheme } from "@/components/ThemeProvider";
+import MessagingSettings, { type MessagingConfig } from "./MessagingSettings";
 
 interface StripeConfig {
   publishableKey?: string;
@@ -81,6 +82,7 @@ interface Settings {
   footerLogoHeight?: number;
   stripe?: StripeConfig;
   smtp?: SmtpConfig;
+  messaging?: MessagingConfig;
 }
 
 interface Bank {
@@ -107,13 +109,14 @@ function absoluteAsset(url: string) {
 }
 const BANKS_API = `${API_BASE}/banks`;
 
-type TabKey = "general" | "logo" | "stripe" | "smtp" | "banks" | "theme";
+type TabKey = "general" | "logo" | "stripe" | "smtp" | "messaging" | "banks" | "theme";
 
 const TABS: { key: TabKey; label: string; hint: string }[] = [
   { key: "general", label: "General", hint: "Business name, contact details and social links" },
   { key: "logo", label: "Logo", hint: "Header and footer branding" },
   { key: "stripe", label: "Stripe", hint: "Payment gateway credentials" },
   { key: "smtp", label: "SMTP", hint: "Outbound email configuration" },
+  { key: "messaging", label: "Messaging", hint: "SMS, WhatsApp, push and automations" },
   { key: "banks", label: "Banks", hint: "Bank accounts and payment barcodes" },
   { key: "theme", label: "Colour Scheme", hint: "Public site palette" },
 ];
@@ -736,6 +739,18 @@ function SettingsAdminPageInner() {
             <PrimaryButton onClick={save} disabled={saving}>{saving ? "Saving..." : "Save SMTP Settings"}</PrimaryButton>
           </div>
         </Card>
+      )}
+
+      {/* ---------------- Messaging ---------------- */}
+      {tab === "messaging" && (
+        <MessagingSettings
+          value={settings.messaging || {}}
+          onChange={(next) => setSettings({ ...settings, messaging: next })}
+          onSave={save}
+          onReload={load}
+          saving={saving}
+          onNotice={(tone, text) => setNotice({ tone, text })}
+        />
       )}
 
       {/* ---------------- Banks ---------------- */}

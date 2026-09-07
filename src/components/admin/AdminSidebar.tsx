@@ -25,6 +25,7 @@ import {
   FiDollarSign,
   FiCalendar,
   FiFileText,
+  FiSend,
 } from "react-icons/fi";
 
 interface MenuItem {
@@ -85,6 +86,7 @@ const sections: MenuSection[] = [
     items: [
       { name: "Users", path: "/admin/users", icon: <FiUsers className={iconCls} />, tab: "users" },
       { name: "Contact Queries", path: "/admin/contact-queries", icon: <FiMessageSquare className={iconCls} />, tab: "contact-queries" },
+      { name: "Messaging", path: "/admin/messaging", icon: <FiSend className={iconCls} />, tab: "messaging" },
     ],
   },
   {
