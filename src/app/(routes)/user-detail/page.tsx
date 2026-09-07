@@ -14,6 +14,7 @@ import { NotificationsSection } from "./components/NotificationsSection";
 import { ProfileExtrasSection } from "./components/ProfileExtrasSection";
 import { PtSection } from "./components/PtSection";
 import { WorkSection, type Work } from "./components/WorkSection";
+import { ShopSection } from "./components/ShopSection";
 import { getAuthHeader } from "@/helper/helper";
 import {
   getUserDetailForProfile,
@@ -311,6 +312,7 @@ const UserProfilePageContent: React.FC = () => {
         )}
         {activeTab === "profile" && userProfile && <ProfileExtrasSection onChanged={refreshUserData} />}
         {activeTab === "profile" && userProfile && <NotificationsSection />}
+        {activeTab === "profile" && userProfile && <ShopSection />}
 
         {activeTab === "bookings" && <BookingsSection />}
 

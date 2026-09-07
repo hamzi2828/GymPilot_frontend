@@ -16,6 +16,9 @@ interface Report {
     revenue: number;
     expenses: number;
     net: number;
+    membership_revenue: number;
+    shop_revenue: number;
+    shop_sales: number;
     paid_orders: number;
     new_members: number;
     visits: number;
@@ -33,6 +36,7 @@ interface Report {
   other_currencies: { currency: string; total: number; orders: number }[];
   classes: { name: string; booked: number; attended: number; no_show: number; waitlisted: number; attendance_rate: number | null }[];
   pt: { scheduled: number; completed: number; cancelled: number; no_show: number; value: number; commission: number };
+  top_products: { name: string; quantity: number; total: number; margin: number }[];
   leads: { new: number; contacted: number; trial: number; won: number; lost: number; total: number };
 }
 
@@ -149,7 +153,7 @@ export default function ReportsPage() {
       ) : (
         <div className="space-y-6">
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-6">
-            <Kpi label="Revenue" value={money(data.kpis.revenue)} hint={`${data.kpis.paid_orders} paid orders`} />
+            <Kpi label="Revenue" value={money(data.kpis.revenue)} hint={`memberships ${money(data.kpis.membership_revenue)} · shop ${money(data.kpis.shop_revenue)}`} />
             <Kpi label="Expenses" value={money(data.kpis.expenses)} />
             <Kpi label="Net" value={money(data.kpis.net)} tone={data.kpis.net >= 0 ? "text-emerald-700" : "text-rose-700"} />
             <Kpi label="New members" value={data.kpis.new_members} hint={`${data.kpis.members_total} in total`} />
@@ -183,6 +187,10 @@ export default function ReportsPage() {
             <Card className="p-5">
               <h2 className="mb-3 text-sm font-semibold text-neutral-900">Revenue by package</h2>
               <HBarList rows={data.revenue_by_package.map((p) => ({ label: p.name, value: p.total, hint: `(${p.orders})` }))} valueLabel={money} />
+            </Card>
+            <Card className="p-5">
+              <h2 className="mb-3 text-sm font-semibold text-neutral-900">Shop: top products ({data.kpis.shop_sales} sales)</h2>
+              <HBarList rows={data.top_products.map((p) => ({ label: p.name, value: p.total, hint: `(${p.quantity} sold · margin ${money(p.margin)})` }))} valueLabel={money} />
             </Card>
             <Card className="p-5">
               <h2 className="mb-3 text-sm font-semibold text-neutral-900">Classes by demand</h2>

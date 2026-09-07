@@ -30,6 +30,8 @@ import {
   FiTarget,
   FiAlertCircle,
   FiBarChart2,
+  FiShoppingCart,
+  FiArchive,
 } from "react-icons/fi";
 
 interface MenuItem {
@@ -79,6 +81,7 @@ const sections: MenuSection[] = [
       { name: "Package Orders", path: "/admin/package-orders", icon: <FiShoppingBag className={iconCls} />, tab: "package-orders" },
       { name: "Registrations", path: "/admin/package-registrations", icon: <FiClipboard className={iconCls} />, tab: "registrations" },
       { name: "Coupons", path: "/admin/coupons", icon: <FiTag className={iconCls} />, tab: "coupons" },
+      { name: "Shop / POS", path: "/admin/pos", icon: <FiShoppingCart className={iconCls} />, tab: "pos" },
     ],
   },
   {
@@ -87,6 +90,7 @@ const sections: MenuSection[] = [
       { name: "Attendance", path: "/admin/attendance", icon: <FiClock className={iconCls} />, tab: "attendance" },
       { name: "Accounts", path: "/admin/accounts", icon: <FiDollarSign className={iconCls} />, tab: "accounts" },
       { name: "Staff", path: "/admin/staff", icon: <FiBriefcase className={iconCls} />, tab: "staff" },
+      { name: "Lockers", path: "/admin/lockers", icon: <FiArchive className={iconCls} />, tab: "lockers" },
       { name: "Roles & Access", path: "/admin/roles", icon: <FiShield className={iconCls} />, tab: "roles" },
     ],
   },

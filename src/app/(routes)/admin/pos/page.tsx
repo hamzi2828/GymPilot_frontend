@@ -1,0 +1,329 @@
+"use client";
+
+// The till: tap products into a basket, pick a member if it is for one,
+// take payment, print the receipt. Stock comes off as it sells.
+
+import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { PageHeader, Card, PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, SelectField, Badge, Spinner } from "../_shared/ui";
+import { API_BASE, apiGet, apiJson } from "../_shared/api";
+import { usePermissions } from "@/components/admin/PermissionsProvider";
+
+const POS_API = `${API_BASE}/admin/pos`;
+
+interface Product {
+  id: string;
+  name: string;
+  sku: string;
+  category: string;
+  price: number;
+  track_stock: boolean;
+  stock: number;
+  low: boolean;
+  is_active: boolean;
+}
+interface MemberOption {
+  _id: string;
+  firstName?: string;
+  lastName?: string;
+  email: string;
+  memberCode?: string | null;
+}
+interface Sale {
+  id: string;
+  receipt_number: string;
+  items: { name: string; quantity: number; unit_price: number; total: number }[];
+  subtotal: number;
+  discount: number;
+  tax_rate: number;
+  tax_amount: number;
+  total: number;
+  currency: string;
+  payment_method: string;
+  status: "paid" | "refunded";
+  member_name: string;
+  sold_by: string;
+  paid_at: string;
+}
+interface SalesResponse {
+  range: { label: string };
+  summary: { totals: Record<string, number>; by_method: Record<string, number>; sales: number; items: number };
+  data: Sale[];
+}
+
+const METHODS = [
+  { value: "cash", label: "Cash" },
+  { value: "card", label: "Card" },
+  { value: "bank_transfer", label: "Bank transfer" },
+  { value: "online", label: "Online" },
+  { value: "account", label: "On account" },
+  { value: "other", label: "Other" },
+];
+const fmt = (n: number, c: string) => `${c} ${Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+export default function PosPage() {
+  const { can } = usePermissions();
+  const editable = can("pos", "manage");
+  const [products, setProducts] = useState<Product[]>([]);
+  const [currency, setCurrency] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [basket, setBasket] = useState<{ product: Product; quantity: number }[]>([]);
+  const [discount, setDiscount] = useState("0");
+  const [method, setMethod] = useState("cash");
+  const [members, setMembers] = useState<MemberOption[]>([]);
+  const [memberQuery, setMemberQuery] = useState("");
+  const [memberId, setMemberId] = useState("");
+  const [category, setCategory] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [receipt, setReceipt] = useState<Sale | null>(null);
+  const [notice, setNotice] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
+  const [sales, setSales] = useState<SalesResponse | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [p, s] = await Promise.all([apiGet<{ currency: string; data: Product[] }>(`${POS_API}/products`), apiGet<SalesResponse>(`${POS_API}/sales`)]);
+      setProducts(p.data || []);
+      setCurrency(p.currency || "");
+      setSales(s);
+    } catch (e) {
+      setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not load the shop" });
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  useEffect(() => {
+    if (!memberQuery.trim() || members.length) return;
+    apiGet<{ data?: MemberOption[]; users?: MemberOption[] }>(`${API_BASE}/get/allUsers?role=user`)
+      .then((r) => setMembers((r.data || r.users || []) as MemberOption[]))
+      .catch(() => setMembers([]));
+  }, [memberQuery, members.length]);
+
+  const categories = useMemo(() => Array.from(new Set(products.map((p) => p.category))).sort(), [products]);
+  const shown = products.filter((p) => !category || p.category === category);
+  const matches = useMemo(() => {
+    const q = memberQuery.trim().toLowerCase();
+    if (!q) return [];
+    return members.filter((m) => `${m.firstName || ""} ${m.lastName || ""} ${m.email} ${m.memberCode || ""}`.toLowerCase().includes(q)).slice(0, 6);
+  }, [members, memberQuery]);
+  const chosenMember = members.find((m) => m._id === memberId);
+
+  const add = (p: Product) => {
+    setBasket((b) => {
+      const existing = b.find((x) => x.product.id === p.id);
+      if (existing) return b.map((x) => (x.product.id === p.id ? { ...x, quantity: x.quantity + 1 } : x));
+      return [...b, { product: p, quantity: 1 }];
+    });
+  };
+  const setQty = (id: string, qty: number) => setBasket((b) => b.map((x) => (x.product.id === id ? { ...x, quantity: Math.max(1, qty) } : x)));
+  const remove = (id: string) => setBasket((b) => b.filter((x) => x.product.id !== id));
+  const subtotal = basket.reduce((s, x) => s + x.product.price * x.quantity, 0);
+  const total = Math.max(0, subtotal - (Number(discount) || 0));
+
+  const checkout = async () => {
+    setBusy(true);
+    setNotice(null);
+    try {
+      const res = await apiJson<{ data: Sale }>(`${POS_API}/sales`, "POST", {
+        items: basket.map((x) => ({ productId: x.product.id, quantity: x.quantity })),
+        discount: Number(discount) || 0,
+        paymentMethod: method,
+        memberId: memberId || undefined,
+      });
+      setReceipt(res.data);
+      setBasket([]);
+      setDiscount("0");
+      setMemberId("");
+      setMemberQuery("");
+      await load();
+    } catch (e) {
+      setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not record the sale" });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const refund = async (s: Sale) => {
+    const reason = prompt(`Refund ${s.receipt_number} (${fmt(s.total, s.currency)})? Reason:`);
+    if (reason === null) return;
+    try {
+      await apiJson(`${POS_API}/sales/${s.id}/refund`, "POST", { reason });
+      await load();
+    } catch (e) {
+      setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not refund" });
+    }
+  };
+
+  return (
+    <div>
+      <PageHeader
+        eyebrow="Sales"
+        title="Shop / POS"
+        actions={
+          <Link href="/admin/inventory" className="rounded-lg border border-neutral-200 px-3 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-50">
+            Products &amp; stock
+          </Link>
+        }
+      />
+      {notice && <p className={`mb-4 rounded-lg px-3 py-2 text-sm ${notice.tone === "ok" ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}>{notice.text}</p>}
+      {loading ? (
+        <Spinner />
+      ) : (
+        <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
+          <div>
+            {products.length === 0 ? (
+              <Card className="p-8 text-center text-sm text-neutral-500">
+                No products yet. <Link href="/admin/inventory" className="underline">Add some</Link> to start selling.
+              </Card>
+            ) : (
+              <>
+                {categories.length > 1 && (
+                  <div className="mb-3 flex flex-wrap gap-1.5">
+                    <button type="button" onClick={() => setCategory("")} className={`rounded-full border px-3 py-1 text-xs ${!category ? "border-neutral-900 bg-neutral-900 text-white" : "border-neutral-200 text-neutral-600"}`}>All</button>
+                    {categories.map((c) => (
+                      <button key={c} type="button" onClick={() => setCategory(c)} className={`rounded-full border px-3 py-1 text-xs capitalize ${category === c ? "border-neutral-900 bg-neutral-900 text-white" : "border-neutral-200 text-neutral-600"}`}>{c}</button>
+                    ))}
+                  </div>
+                )}
+                <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
+                  {shown.map((p) => (
+                    <button key={p.id} type="button" disabled={!editable || (p.track_stock && p.stock <= 0)} onClick={() => add(p)} className="rounded-xl border border-neutral-200 bg-white p-4 text-left transition-colors hover:border-neutral-400 disabled:opacity-40">
+                      <p className="text-sm font-semibold text-neutral-900">{p.name}</p>
+                      <p className="mt-1 text-sm text-neutral-700">{fmt(p.price, currency)}</p>
+                      {p.track_stock && <p className={`mt-1 text-[11px] ${p.low ? "text-rose-600" : "text-neutral-400"}`}>{p.stock} in stock</p>}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {sales && (
+              <Card className="mt-6 p-5">
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                  <h2 className="text-sm font-semibold text-neutral-900">Sales · {sales.range.label}</h2>
+                  <p className="text-xs text-neutral-500">
+                    {sales.summary.sales} sales · {sales.summary.items} items · {Object.entries(sales.summary.totals).map(([c, n]) => fmt(n, c)).join(", ") || "—"}
+                    {Object.keys(sales.summary.by_method).length ? ` (${Object.entries(sales.summary.by_method).map(([m, n]) => `${m} ${n}`).join(", ")})` : ""}
+                  </p>
+                </div>
+                {sales.data.length === 0 ? (
+                  <p className="text-sm text-neutral-500">Nothing sold this month yet.</p>
+                ) : (
+                  <div className="divide-y divide-neutral-100">
+                    {sales.data.slice(0, 30).map((s) => (
+                      <div key={s.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
+                        <div>
+                          <span className="font-mono text-xs">{s.receipt_number}</span> · {s.items.map((i) => `${i.quantity}× ${i.name}`).join(", ")}
+                          {s.member_name ? <span className="text-neutral-500"> · {s.member_name}</span> : null}
+                          <span className="block text-[11px] text-neutral-400">{new Date(s.paid_at).toLocaleString()} · {s.payment_method} · {s.sold_by}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold">{fmt(s.total, s.currency)}</span>
+                          <Badge color={s.status === "paid" ? "green" : "neutral"}>{s.status}</Badge>
+                          <SecondaryButton onClick={() => setReceipt(s)}>Receipt</SecondaryButton>
+                          {editable && s.status === "paid" && <DangerButton onClick={() => refund(s)}>Refund</DangerButton>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </Card>
+            )}
+          </div>
+
+          <Card className="h-fit p-5 lg:sticky lg:top-4">
+            <h2 className="text-sm font-semibold text-neutral-900">Basket</h2>
+            {basket.length === 0 ? (
+              <p className="mt-2 text-sm text-neutral-500">Tap products to add them.</p>
+            ) : (
+              <div className="mt-3 divide-y divide-neutral-100">
+                {basket.map((x) => (
+                  <div key={x.product.id} className="flex items-center justify-between gap-2 py-2 text-sm">
+                    <div className="min-w-0">
+                      <p className="truncate font-medium text-neutral-900">{x.product.name}</p>
+                      <p className="text-xs text-neutral-500">{fmt(x.product.price, currency)} each</p>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button type="button" onClick={() => setQty(x.product.id, x.quantity - 1)} className="h-7 w-7 rounded-md border border-neutral-200">−</button>
+                      <span className="w-6 text-center">{x.quantity}</span>
+                      <button type="button" onClick={() => setQty(x.product.id, x.quantity + 1)} className="h-7 w-7 rounded-md border border-neutral-200">+</button>
+                      <button type="button" onClick={() => remove(x.product.id)} className="ml-1 text-neutral-400 hover:text-rose-600">×</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="mt-4 space-y-3">
+              <TextField label="Member (optional)" value={memberQuery} onChange={(v) => { setMemberQuery(v); setMemberId(""); }} placeholder="Name, email or code" />
+              {matches.length > 0 && !memberId && (
+                <div className="rounded-lg border border-neutral-200">
+                  {matches.map((m) => (
+                    <button key={m._id} type="button" onClick={() => { setMemberId(m._id); setMemberQuery([m.firstName, m.lastName].filter(Boolean).join(" ") || m.email); }} className="block w-full px-3 py-1.5 text-left text-sm hover:bg-neutral-50">
+                      {[m.firstName, m.lastName].filter(Boolean).join(" ") || m.email} <span className="text-xs text-neutral-500">{m.email}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {chosenMember && <p className="text-xs text-emerald-700">For {chosenMember.email}</p>}
+              <TextField label="Discount" type="number" value={discount} onChange={setDiscount} />
+              <SelectField label="Payment" value={method} allowClear={false} onChange={setMethod} options={METHODS} />
+              <div className="flex items-center justify-between border-t border-neutral-200 pt-3 text-sm">
+                <span className="text-neutral-600">Total</span>
+                <span className="text-lg font-semibold text-neutral-900">{fmt(total, currency)}</span>
+              </div>
+              <PrimaryButton onClick={checkout} disabled={!editable || busy || basket.length === 0}>
+                {busy ? "Recording…" : "Take payment"}
+              </PrimaryButton>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      <Modal open={!!receipt} onClose={() => setReceipt(null)} title={receipt ? `Receipt ${receipt.receipt_number}` : ""} size="sm">
+        {receipt && (
+          <div className="text-sm" id="receipt">
+            <p className="text-xs text-neutral-500">{new Date(receipt.paid_at).toLocaleString()}{receipt.member_name ? ` · ${receipt.member_name}` : ""}</p>
+            <div className="mt-3 divide-y divide-neutral-100">
+              {receipt.items.map((i, idx) => (
+                <div key={idx} className="flex justify-between py-1.5">
+                  <span>
+                    {i.quantity} × {i.name}
+                  </span>
+                  <span>{fmt(i.total, receipt.currency)}</span>
+                </div>
+              ))}
+            </div>
+            <div className="mt-3 space-y-1 border-t border-neutral-200 pt-3">
+              {receipt.discount > 0 && (
+                <div className="flex justify-between text-neutral-600">
+                  <span>Discount</span>
+                  <span>−{fmt(receipt.discount, receipt.currency)}</span>
+                </div>
+              )}
+              {receipt.tax_amount > 0 && (
+                <div className="flex justify-between text-neutral-500">
+                  <span>Includes tax ({receipt.tax_rate}%)</span>
+                  <span>{fmt(receipt.tax_amount, receipt.currency)}</span>
+                </div>
+              )}
+              <div className="flex justify-between text-base font-semibold">
+                <span>Total ({receipt.payment_method})</span>
+                <span>{fmt(receipt.total, receipt.currency)}</span>
+              </div>
+            </div>
+            {receipt.status === "refunded" && <p className="mt-3 text-rose-600">Refunded</p>}
+            <div className="mt-5 flex justify-end gap-2">
+              <SecondaryButton onClick={() => window.print()}>Print</SecondaryButton>
+              <PrimaryButton onClick={() => setReceipt(null)}>Done</PrimaryButton>
+            </div>
+          </div>
+        )}
+      </Modal>
+    </div>
+  );
+}
