@@ -7,7 +7,21 @@ export function middleware(req: NextRequest) {
   // Identify protected routes
   const isUserDetail = pathname === '/user-detail' || pathname.startsWith('/user-detail/');
   const isAdmin = pathname === '/admin' || pathname.startsWith('/admin/');
-  if (!isUserDetail && !isAdmin) return NextResponse.next();
+  const isPlatform = pathname === '/super-admin' || pathname.startsWith('/super-admin/');
+  if (!isUserDetail && !isAdmin && !isPlatform) return NextResponse.next();
+
+  // The platform panel (every gym, their plans) has its own session, issued
+  // by /api/platform and stored in its own cookie. A gym login is no use
+  // here, and this session is no use on a gym's pages. Coarse, like the
+  // admin check below: the API re-verifies the token on every request.
+  if (isPlatform) {
+    if (pathname === '/super-admin/login') return NextResponse.next();
+    if (req.cookies.get('platform_token')?.value) return NextResponse.next();
+    const url = req.nextUrl.clone();
+    url.pathname = '/super-admin/login';
+    url.search = '';
+    return NextResponse.redirect(url);
+  }
 
   const token = req.cookies.get('auth_token')?.value;
   const role = req.cookies.get('auth_role')?.value;
@@ -53,5 +67,5 @@ export function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/user-detail', '/user-detail/:path*', '/admin', '/admin/:path*'],
+  matcher: ['/user-detail', '/user-detail/:path*', '/admin', '/admin/:path*', '/super-admin', '/super-admin/:path*'],
 };

@@ -1,6 +1,6 @@
 import React from "react";
 
-export type UserTab = "profile" | "bookings" | "history" | "visits";
+export type UserTab = "profile" | "bookings" | "history" | "visits" | "checkin";
 
 /** Tab keys in the order they appear, so the URL and the UI cannot drift. */
 export const USER_TABS: { key: UserTab; label: string; icon: string }[] = [
@@ -14,6 +14,7 @@ export const USER_TABS: { key: UserTab; label: string; icon: string }[] = [
   // Attendance used to live at the bottom of History, where it was three
   // scrolls below the thing it belongs to. It is its own view now.
   { key: "visits", label: "Recent visits", icon: "fas fa-calendar-check" },
+  { key: "checkin", label: "Check-in QR", icon: "fas fa-qrcode" },
 ];
 
 /** Narrows an arbitrary `?tab=` value, keeping the legacy `orders` alias. */

@@ -15,6 +15,7 @@ const ROUTE_TABS: { prefix: string; tab: string }[] = [
   { prefix: "/admin/packages", tab: "packages" },
   { prefix: "/admin/package-orders", tab: "package-orders" },
   { prefix: "/admin/package-registrations", tab: "registrations" },
+  { prefix: "/admin/coupons", tab: "coupons" },
   { prefix: "/admin/attendance", tab: "attendance" },
   { prefix: "/admin/accounts", tab: "accounts" },
   { prefix: "/admin/staff", tab: "staff" },
@@ -27,6 +28,8 @@ const ROUTE_TABS: { prefix: string; tab: string }[] = [
   { prefix: "/admin/blog-settings", tab: "blog-settings" },
   { prefix: "/admin/blogs", tab: "blogs" },
   { prefix: "/admin/settings", tab: "settings" },
+  { prefix: "/admin/setup", tab: "settings" },
+  { prefix: "/admin/audit-log", tab: "audit" },
 ];
 
 function tabForPath(pathname: string | null): string {
@@ -77,6 +80,16 @@ function AdminShell({ children }: { children: React.ReactNode }) {
 
         <main className="admin-scroll flex-1 overflow-y-auto px-6 py-8 lg:px-10 lg:py-10">
           <div className="mx-auto max-w-[1400px]">
+            {/* A brand-new gym is pointed at the setup wizard until its owner
+                has been through it; nobody is forced, it is just always there. */}
+            {me && me.setup_completed === false && can("settings", "manage") && pathname !== "/admin/setup" && (
+              <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                <span>Your gym is not fully set up yet — name, currency, a first package and how you get paid take a few minutes.</span>
+                <button type="button" onClick={() => router.push("/admin/setup")} className="rounded-lg bg-neutral-900 px-3 py-1.5 text-xs font-semibold text-white">
+                  Finish setup
+                </button>
+              </div>
+            )}
             {allowedHere ? (
               children
             ) : (

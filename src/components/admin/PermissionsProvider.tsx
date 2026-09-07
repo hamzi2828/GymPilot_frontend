@@ -21,6 +21,8 @@ export interface AdminIdentity {
   role_name: string;
   is_staff: boolean;
   job_title: string;
+  /** False until the owner has completed the setup wizard. */
+  setup_completed?: boolean;
 }
 
 interface PermissionsState {

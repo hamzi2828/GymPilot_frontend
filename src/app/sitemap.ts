@@ -1,5 +1,6 @@
 import type { MetadataRoute } from "next";
 import { getSiteSettings } from "@/helper/siteMetadata";
+import { serverTenantFetch } from "@/helper/tenant.server";
 
 const API_BASE = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:4000";
 
@@ -19,7 +20,7 @@ const STATIC_ROUTES: { path: string; priority: number; changeFrequency: Metadata
 /** Fetches a list endpoint, returning [] rather than failing the whole sitemap. */
 async function fetchList<T>(path: string): Promise<T[]> {
   try {
-    const res = await fetch(`${API_BASE}${path}`, { next: { revalidate: 3600 } });
+    const res = await serverTenantFetch(`${API_BASE}${path}`, { next: { revalidate: 3600 } });
     if (!res.ok) return [];
     const json = await res.json();
     return Array.isArray(json?.data) ? json.data : [];

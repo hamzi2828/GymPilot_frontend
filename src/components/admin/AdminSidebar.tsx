@@ -68,6 +68,7 @@ const sections: MenuSection[] = [
     items: [
       { name: "Package Orders", path: "/admin/package-orders", icon: <FiShoppingBag className={iconCls} />, tab: "package-orders" },
       { name: "Registrations", path: "/admin/package-registrations", icon: <FiClipboard className={iconCls} />, tab: "registrations" },
+      { name: "Coupons", path: "/admin/coupons", icon: <FiTag className={iconCls} />, tab: "coupons" },
     ],
   },
   {
@@ -99,7 +100,10 @@ const sections: MenuSection[] = [
   },
   {
     heading: "System",
-    items: [{ name: "Settings", path: "/admin/settings", icon: <FiSettings className={iconCls} />, tab: "settings" }],
+    items: [
+      { name: "Settings", path: "/admin/settings", icon: <FiSettings className={iconCls} />, tab: "settings" },
+      { name: "Audit log", path: "/admin/audit-log", icon: <FiFileText className={iconCls} />, tab: "audit" },
+    ],
   },
 ];
 

@@ -8,6 +8,8 @@ import { BookingsSection } from "./components/BookingsSection";
 import { ProfileSection } from "./components/ProfileSection";
 import { HistorySection } from "./components/HistorySection";
 import { VisitsSection } from "./components/VisitsSection";
+import { CheckInSection } from "./components/CheckInSection";
+import { PrivacySection } from "./components/PrivacySection";
 import {
   getUserDetailForProfile,
   updateUser,
@@ -286,8 +288,17 @@ const UserProfilePageContent: React.FC = () => {
             isSaving={saving}                // ✅ parent controls saving state
           />
         )}
+        {activeTab === "profile" && userProfile && (
+          <PrivacySection
+            twoFactorEnabled={!!(userProfile as unknown as { twoFactor?: { enabled?: boolean } }).twoFactor?.enabled}
+            biometricConsent={(userProfile as unknown as { consents?: { biometric?: { given: boolean; at?: string | null; source?: string } } }).consents?.biometric || null}
+            onChanged={refreshUserData}
+          />
+        )}
 
         {activeTab === "bookings" && <BookingsSection />}
+
+        {activeTab === "checkin" && <CheckInSection />}
 
         {activeTab === "history" && (
           <HistorySection
@@ -302,6 +313,7 @@ const UserProfilePageContent: React.FC = () => {
               handleTabChange("visits");
             }}
             onViewVisits={() => handleTabChange("visits")}
+            onRefresh={fetchHistory}
           />
         )}
 

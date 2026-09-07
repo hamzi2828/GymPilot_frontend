@@ -4,7 +4,8 @@ import React, { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { LeftSide } from "./components/LeftSide";
 import { RightSide } from "./components/RightSide";
-import { signUp, login, requestPasswordReset, resetPassword } from "./service/authService";
+import TwoFactorStep from "./components/TwoFactorStep";
+import { signUp, login, requestPasswordReset, resetPassword, verifyTwoFactor } from "./service/authService";
 import { setToken, setRole } from "@/helper/helper";
 import type { Mode } from "./components/leftsSideComponents/types";
 
@@ -58,6 +59,32 @@ const AuthPage: React.FC = () => {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [termsError, setTermsError] = useState<string | null>(null);
+  // A pending second step: the password was right, the emailed code is next.
+  const [twoFactor, setTwoFactor] = useState<{ challengeId: string; message: string } | null>(null);
+
+  // What happens once a token is in hand, whichever step produced it.
+  const finishSignIn = (res: { token: string; data?: { role?: string } }) => {
+    setToken(res.token);
+    try {
+      if (res?.data?.role) setRole(res.data.role);
+    } catch {}
+    const worksHere = !!res?.data?.role && res.data.role !== "user";
+    router.replace(worksHere ? "/admin" : redirectTo || "/");
+  };
+
+  const verifyCode = async (code: string) => {
+    if (!twoFactor) return;
+    setIsLoading(true);
+    setNotice(null);
+    try {
+      const res = await verifyTwoFactor({ challengeId: twoFactor.challengeId, code });
+      finishSignIn(res);
+    } catch (err: unknown) {
+      setNotice({ tone: "error", text: err instanceof Error ? err.message : "Could not verify the code" });
+    } finally {
+      setIsLoading(false);
+    }
+  };
   type Errors = Partial<Record<
     | "firstName"
     | "lastName"
@@ -105,6 +132,15 @@ const AuthPage: React.FC = () => {
     const qs = params.toString();
     router.replace(`/authentication${qs ? `?${qs}` : ""}`);
     resetForm(false);
+  };
+
+  // One-tap fill for the demo-login buttons: drop a known-good email + password
+  // into the form so a reviewer only has to press Sign In. Clears any stale
+  // errors/notice from a previous attempt.
+  const fillCredentials = (email: string, password: string) => {
+    setFormData((prev) => ({ ...prev, email, password }));
+    setErrors({});
+    setNotice(null);
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -216,20 +252,16 @@ const AuthPage: React.FC = () => {
 
       // Sign In flow
       const res = await login({ email: formData.email, password: formData.password });
-      setToken(res.token);
-      try {
-        if (res?.data?.role) {
-          // Persist role for middleware and client guards
-          setRole(res.data.role);
-        }
-      } catch {}
+      if (res.requires2fa && res.challengeId) {
+        // Password accepted; the emailed code comes next.
+        setTwoFactor({ challengeId: res.challengeId, message: res.message });
+        return;
+      }
       // Anyone who works here lands on the panel -- what they can actually
       // open there is decided by their role's permissions. Gym members
       // resume whatever they were doing (checkout, most often) or land on
       // the homepage.
-      const worksHere = !!res?.data?.role && res.data.role !== "user";
-      const destination = worksHere ? "/admin" : redirectTo || "/";
-      router.replace(destination);
+      finishSignIn(res);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Request failed";
       setNotice({ tone: "error", text: msg });
@@ -272,7 +304,19 @@ const AuthPage: React.FC = () => {
 
   return (
     <div className="min-h-screen flex overflow-hidden bg-gradient-to-br from-gray-50 via-white to-gray-100">
-      {/* Left Side - Auth Form */}
+      {/* Left Side - Auth Form, or the second step once a password is accepted */}
+      {twoFactor ? (
+        <TwoFactorStep
+          message={twoFactor.message}
+          onVerify={verifyCode}
+          onBack={() => {
+            setTwoFactor(null);
+            setNotice(null);
+          }}
+          isLoading={isLoading}
+          notice={notice}
+        />
+      ) : (
       <LeftSide
         isSignUp={isSignUp}
         isForgot={isForgot}
@@ -280,6 +324,7 @@ const AuthPage: React.FC = () => {
         notice={notice}
         formData={formData}
         handleInputChange={handleInputChange}
+        fillCredentials={fillCredentials}
         handleSubmit={handleSubmit}
         updateMode={updateMode}
         toggleAuthMode={toggleAuthMode}
@@ -291,6 +336,7 @@ const AuthPage: React.FC = () => {
         termsError={termsError}
         errors={errors}
       />
+      )}
 
       <RightSide />
 

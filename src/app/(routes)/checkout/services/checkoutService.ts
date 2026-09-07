@@ -1,5 +1,10 @@
+// src/app/(routes)/checkout/services/checkoutService.ts
+//
+// Buying a package. Two ways to pay: card through the gym's Stripe account
+// (redirect to Stripe Checkout) and bank transfer (an order the member then
+// attaches a receipt to, confirmed by staff).
+
 import { getAuthToken } from "../../../../helper/helper";
-import { loadStripe } from '@stripe/stripe-js';
 
 export interface ShippingAddress {
   email: string;
@@ -16,137 +21,194 @@ export interface ShippingAddress {
   phone?: string;
 }
 
-export interface PaymentMethod {
-  type: 'card' | 'cod' | 'other';
-  cardNumber?: string;
-  expirationDate?: string;
-  securityCode?: string;
-  cardHolderName?: string;
-  useShippingAddress?: boolean;
+export type PaymentMethodKey = "stripe" | "bank_transfer";
+
+export interface BankAccount {
+  _id: string;
+  name: string;
+  accountTitle: string;
+  accountNumber: string;
+  branch?: string;
+  iban?: string;
+  notes?: string;
+  qrCodeUrl?: string;
+}
+
+export interface PaymentMethods {
+  card: boolean;
+  bankTransfer: boolean;
+  banks: BankAccount[];
+  currency: string;
+}
+
+export interface CouponPreview {
+  code: string;
+  description: string;
+  type: "percent" | "amount";
+  value: number;
+  discount: number;
+  total: number;
+  currency: string;
+  appliesToRenewals: boolean;
+}
+
+export interface BankOrder {
+  _id: string;
+  orderNumber: string;
+  status: string;
+  packageDetails: { name: string; period: string; currency: string; price: string };
+  payment: {
+    amount: number;
+    subtotal?: number;
+    discountAmount?: number;
+    couponCode?: string;
+    currency: string;
+    status: string;
+    method: string;
+    proof?: { url?: string; reference?: string; note?: string; uploadedAt?: string; rejectionReason?: string };
+  };
+  subscription?: { startDate?: string; endDate?: string };
+  createdAt: string;
 }
 
 class CheckoutService {
   private baseUrl: string;
-  private stripePromise: ReturnType<typeof loadStripe> | null = null;
 
   constructor() {
-    this.baseUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:4000';
+    this.baseUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:4000";
   }
 
-  private async getStripe() {
-    if (!this.stripePromise) {
-      const response = await fetch(`${this.baseUrl}/api/gymfolio/payment/stripe-public-key`);
-      const data = await response.json();
-      if (data.success && data.publicKey) {
-        this.stripePromise = loadStripe(data.publicKey);
-      }
-    }
-    return this.stripePromise;
-  }
-
-  private getAuthHeaders(): Record<string, string> {
+  private getAuthHeaders(json = true): Record<string, string> {
     const token = getAuthToken();
     return {
-      'Content-Type': 'application/json',
-      ...(token && { 'Authorization': `Bearer ${token}` }),
+      ...(json ? { "Content-Type": "application/json" } : {}),
+      ...(token && { Authorization: `Bearer ${token}` }),
     };
   }
 
-  // Create Stripe checkout session for package subscription
-  async createPackageStripeCheckout(packageId: string, customerInfo: ShippingAddress) {
-    try {
-      console.log('💳 Creating Package Stripe checkout session...');
-
-      // Format customer info
-      const formattedCustomer = {
-        fullName: customerInfo.fullName || `${customerInfo.firstName} ${customerInfo.lastName}`,
-        email: customerInfo.email,
-        phone: customerInfo.phone || customerInfo.phoneNumber,
-        address: customerInfo.address || '',
-        city: customerInfo.city || '',
-        state: customerInfo.state || '',
-        zipCode: customerInfo.zipCode || customerInfo.postalCode || '',
-        country: customerInfo.country || 'United States'
-      };
-
-      const response = await fetch(`${this.baseUrl}/api/gymfolio/payment/create-package-checkout-session`, {
-        method: 'POST',
-        headers: this.getAuthHeaders(),
-        body: JSON.stringify({
-          packageId,
-          customerInfo: formattedCustomer
-        }),
-      });
-
-      const result = await response.json();
-      console.log('- Package checkout session result:', result);
-
-      if (result.success && result.url) {
-        // Redirect to Stripe checkout URL
-        // Using direct URL redirect instead of deprecated stripe.redirectToCheckout()
-        window.location.href = result.url;
-        return;
-      }
-
-      throw new Error(result.message || 'Failed to create package checkout session');
-    } catch (error) {
-      console.error('❌ Error creating Package Stripe checkout:', error);
-      throw error;
-    }
+  private async parse<T>(response: Response, fallback: string): Promise<T> {
+    const json = await response.json().catch(() => ({}));
+    if (!response.ok || json?.success === false) throw new Error(json?.message || fallback);
+    return json as T;
   }
 
-  // Verify payment after redirect from Stripe
+  private formatCustomer(customerInfo: ShippingAddress) {
+    return {
+      fullName: customerInfo.fullName || `${customerInfo.firstName} ${customerInfo.lastName}`,
+      email: customerInfo.email,
+      phone: customerInfo.phone || customerInfo.phoneNumber,
+      address: customerInfo.address || "",
+      city: customerInfo.city || "",
+      state: customerInfo.state || "",
+      zipCode: customerInfo.zipCode || customerInfo.postalCode || "",
+      country: customerInfo.country || "",
+    };
+  }
+
+  /** Which ways of paying this gym offers right now. */
+  async getPaymentMethods(): Promise<PaymentMethods> {
+    const res = await fetch(`${this.baseUrl}/api/gymfolio/payment/methods`, { headers: this.getAuthHeaders(false) });
+    const json = await this.parse<{ data: PaymentMethods }>(res, "Could not load payment methods");
+    return json.data;
+  }
+
+  /** Checks a discount code against a package before paying. */
+  async validateCoupon(code: string, packageId: string): Promise<CouponPreview> {
+    const res = await fetch(`${this.baseUrl}/api/gymfolio/coupons/validate`, {
+      method: "POST",
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify({ code, packageId }),
+    });
+    const json = await this.parse<{ data: CouponPreview }>(res, "That code is not valid");
+    return json.data;
+  }
+
+  /** Card: opens Stripe Checkout (redirects the browser). */
+  async createPackageStripeCheckout(packageId: string, customerInfo: ShippingAddress, couponCode?: string) {
+    const response = await fetch(`${this.baseUrl}/api/gymfolio/payment/create-package-checkout-session`, {
+      method: "POST",
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify({ packageId, customerInfo: this.formatCustomer(customerInfo), couponCode: couponCode || undefined }),
+    });
+    const result = await this.parse<{ url?: string }>(response, "Failed to create package checkout session");
+    if (result.url) {
+      window.location.href = result.url;
+      return;
+    }
+    throw new Error("Failed to create package checkout session");
+  }
+
+  /** Bank transfer: records the order and returns it with the bank details to pay into. */
+  async createBankTransferOrder(packageId: string, customerInfo: ShippingAddress, couponCode?: string): Promise<{ order: BankOrder; banks: BankAccount[] }> {
+    const response = await fetch(`${this.baseUrl}/api/gymfolio/payment/bank-transfer`, {
+      method: "POST",
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify({ packageId, customerInfo: this.formatCustomer(customerInfo), couponCode: couponCode || undefined }),
+    });
+    const json = await this.parse<{ data: BankOrder; banks: BankAccount[] }>(response, "Could not create the order");
+    return { order: json.data, banks: json.banks || [] };
+  }
+
+  async getBanks(): Promise<BankAccount[]> {
+    const res = await fetch(`${this.baseUrl}/api/gymfolio/payment/banks`);
+    const json = await this.parse<{ data: BankAccount[] }>(res, "Could not load bank details");
+    return json.data || [];
+  }
+
+  async getOrder(orderId: string): Promise<BankOrder> {
+    const res = await fetch(`${this.baseUrl}/api/gymfolio/package-orders/${orderId}`, { headers: this.getAuthHeaders() });
+    const json = await this.parse<{ data: BankOrder }>(res, "Could not load the order");
+    return json.data;
+  }
+
+  /** Attaches the transfer receipt (and/or reference) to a bank-transfer order. */
+  async submitTransferProof(orderId: string, { file, reference, note }: { file?: File | null; reference?: string; note?: string }): Promise<string> {
+    const form = new FormData();
+    if (file) form.append("proof", file);
+    if (reference) form.append("reference", reference);
+    if (note) form.append("note", note);
+    const res = await fetch(`${this.baseUrl}/api/gymfolio/package-orders/${orderId}/proof`, {
+      method: "POST",
+      headers: this.getAuthHeaders(false),
+      body: form,
+    });
+    const json = await this.parse<{ message?: string }>(res, "Could not send the receipt");
+    return json.message || "Receipt sent";
+  }
+
   async verifyPayment(sessionId: string) {
-    try {
-      console.log('✅ Verifying payment for session:', sessionId);
-
-      const response = await fetch(`${this.baseUrl}/api/gymfolio/payment/verify/${sessionId}`, {
-        method: 'GET',
-        headers: this.getAuthHeaders(),
-      });
-
-      const result = await response.json();
-      console.log('- Verification result:', result);
-
-      return result;
-    } catch (error) {
-      console.error('❌ Error verifying payment:', error);
-      throw error;
-    }
+    const response = await fetch(`${this.baseUrl}/api/gymfolio/payment/verify/${sessionId}`, {
+      method: "GET",
+      headers: this.getAuthHeaders(),
+    });
+    return response.json();
   }
 
-  // Get Stripe public key
   async getStripePublicKey() {
     try {
       const response = await fetch(`${this.baseUrl}/api/gymfolio/payment/stripe-public-key`);
       const data = await response.json();
       return data.publicKey;
     } catch (error) {
-      console.error('❌ Error getting Stripe public key:', error);
+      console.error("❌ Error getting Stripe public key:", error);
       return null;
     }
   }
 
-  // Validate shipping address
   validateShippingAddress(address: ShippingAddress): { valid: boolean; errors: string[] } {
     const errors: string[] = [];
-
     if (!address.email) {
-      errors.push('Email is required');
+      errors.push("Email is required");
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address.email)) {
-      errors.push('Please enter a valid email address');
+      errors.push("Please enter a valid email address");
     }
-
-    if (!address.firstName?.trim()) errors.push('First name is required');
-    if (!address.lastName?.trim()) errors.push('Last name is required');
-    if (!address.country?.trim()) errors.push('Country is required');
-    if (!address.phoneNumber?.trim()) errors.push('Phone number is required');
-
-    return {
-      valid: errors.length === 0,
-      errors
-    };
+    if (!address.firstName?.trim()) errors.push("First name is required");
+    if (!address.lastName?.trim()) errors.push("Last name is required");
+    if (!address.country?.trim()) errors.push("Country is required");
+    if (!address.phoneNumber?.trim()) errors.push("Phone number is required");
+    return { valid: errors.length === 0, errors };
   }
 }
 
 export const checkoutService = new CheckoutService();
+export default checkoutService;

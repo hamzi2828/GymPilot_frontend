@@ -40,9 +40,29 @@ interface SmtpConfig {
   passSet?: boolean;
 }
 
+interface InvoiceConfig {
+  prefix?: string;
+  taxLabel?: string;
+  taxNumber?: string;
+  footerNote?: string;
+}
+
+interface MembershipConfig {
+  allowMemberFreeze?: boolean;
+  maxFreezeDays?: number;
+  allowMemberCancel?: boolean;
+}
+
 interface Settings {
   _id?: string;
   siteName?: string;
+  currency?: string;
+  taxRate?: number;
+  ianaTimezone?: string;
+  gymSlug?: string | null;
+  stripeWebhookUrl?: string;
+  invoice?: InvoiceConfig;
+  membership?: MembershipConfig;
   siteDescription?: string;
   contactEmail?: string;
   contactPhone?: string;
@@ -454,6 +474,36 @@ function SettingsAdminPageInner() {
           </div>
 
           <div className="mt-8">
+            <SectionHeading title="Money, tax & time" hint="Prices are shown and charged in this currency. Tax is treated as included in your prices and shown on invoices." />
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <TextField label="Currency (ISO code)" value={settings.currency} onChange={(v) => setSettings({ ...settings, currency: v.toUpperCase() })} placeholder="USD, GBP, PKR, AED…" />
+            <TextField label="Tax rate included in prices (%)" type="number" value={settings.taxRate} onChange={(v) => setSettings({ ...settings, taxRate: Number(v) || 0 })} />
+            <TextField label="Timezone (IANA)" value={settings.ianaTimezone} onChange={(v) => setSettings({ ...settings, ianaTimezone: v })} placeholder="Europe/London" />
+          </div>
+
+          <div className="mt-8">
+            <SectionHeading title="Invoices" hint="Issued automatically when a membership is paid and attached to the confirmation email." />
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <TextField label="Number prefix" value={settings.invoice?.prefix ?? "INV"} onChange={(v) => setSettings({ ...settings, invoice: { ...(settings.invoice || {}), prefix: v.toUpperCase() } })} />
+            <TextField label="Tax label" value={settings.invoice?.taxLabel ?? "Tax"} onChange={(v) => setSettings({ ...settings, invoice: { ...(settings.invoice || {}), taxLabel: v } })} placeholder="VAT, GST, Sales tax" />
+            <TextField label="Tax registration number" value={settings.invoice?.taxNumber ?? ""} onChange={(v) => setSettings({ ...settings, invoice: { ...(settings.invoice || {}), taxNumber: v } })} />
+            <div className="md:col-span-3">
+              <TextArea label="Invoice footer note" value={settings.invoice?.footerNote ?? ""} onChange={(v) => setSettings({ ...settings, invoice: { ...(settings.invoice || {}), footerNote: v } })} />
+            </div>
+          </div>
+
+          <div className="mt-8">
+            <SectionHeading title="Membership self-service" hint="What members may do to their own membership from their account page." />
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+            <Toggle label="Members can freeze online" checked={settings.membership?.allowMemberFreeze !== false} onChange={(v) => setSettings({ ...settings, membership: { ...(settings.membership || {}), allowMemberFreeze: v } })} />
+            <TextField label="Max freeze days per request" type="number" value={settings.membership?.maxFreezeDays ?? 30} onChange={(v) => setSettings({ ...settings, membership: { ...(settings.membership || {}), maxFreezeDays: Number(v) || 30 } })} />
+            <Toggle label="Members can cancel online" checked={settings.membership?.allowMemberCancel !== false} onChange={(v) => setSettings({ ...settings, membership: { ...(settings.membership || {}), allowMemberCancel: v } })} />
+          </div>
+
+          <div className="mt-8">
             <SectionHeading title="Social Links" />
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -628,9 +678,21 @@ function SettingsAdminPageInner() {
             </div>
           </div>
 
+          {settings.stripeWebhookUrl && (
+            <div className="mt-5 rounded-lg border border-neutral-200 bg-neutral-50 p-4">
+              <p className="text-xs font-semibold text-neutral-700">Your webhook endpoint</p>
+              <p className="mt-1 break-all font-mono text-xs text-neutral-800">{settings.stripeWebhookUrl}</p>
+              <p className="mt-2 text-xs text-neutral-500">
+                In your Stripe dashboard add this URL under Developers → Webhooks with the events{" "}
+                <span className="font-mono">checkout.session.completed, invoice.paid, invoice.payment_failed, customer.subscription.updated, customer.subscription.deleted, payment_intent.succeeded, payment_intent.payment_failed</span>
+                , then paste its signing secret above. Recurring packages, card updates and automatic renewals depend on it.
+              </p>
+            </div>
+          )}
+
           <p className="mt-5 text-xs text-neutral-500 leading-relaxed">
             Only the publishable key is ever sent to the browser. The secret and webhook values stay
-            on the server and are never returned in full, even here.
+            on the server and are never returned in full, even here. Payments go to <strong>this gym&apos;s</strong> Stripe account.
           </p>
 
           <div className="flex justify-end mt-6">

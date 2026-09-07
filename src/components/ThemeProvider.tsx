@@ -1,7 +1,13 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import { applyTheme, getTheme, DEFAULT_THEME_KEY } from "@/theme/themes";
+import TenantUnavailable from "@/components/TenantUnavailable";
+
+// The API's answer when the domain is not (or no longer) serving a gym.
+const UNAVAILABLE_CODES = new Set(["TENANT_NOT_FOUND", "TENANT_SUSPENDED", "SUBSCRIPTION_INACTIVE"]);
+type Unavailable = { code: string; message?: string; host?: string | null };
 
 const THEME_CACHE_KEY = "site_theme";
 const NAME_CACHE_KEY = "site_name";
@@ -82,6 +88,8 @@ function writeCache(key: string, value: string) {
  */
 export default function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [settings, setSettings] = useState<SiteSettings>(DEFAULTS);
+  const [unavailable, setUnavailable] = useState<Unavailable | null>(null);
+  const pathname = usePathname();
 
   useEffect(() => {
     const cachedTheme = readCache(THEME_CACHE_KEY);
@@ -103,9 +111,23 @@ export default function ThemeProvider({ children }: { children: React.ReactNode 
     (async () => {
       try {
         const res = await fetch(`${base}/settings/public`, { cache: "no-store" });
-        if (!res.ok) return;
+        if (!res.ok) {
+          // A domain with no gym behind it (or a gym that is switched off) is
+          // told so plainly rather than shown a default-branded site. Any
+          // other failure keeps the old behaviour: defaults, no message.
+          try {
+            const err = await res.json();
+            if (err && UNAVAILABLE_CODES.has(err.code) && !cancelled) {
+              setUnavailable({ code: err.code, message: err.message, host: err.host || window.location.host });
+            }
+          } catch {
+            /* not JSON -- treat as an ordinary outage */
+          }
+          return;
+        }
         const json = await res.json();
         if (cancelled) return;
+        setUnavailable(null);
 
         const themeKey: string = json?.data?.theme || DEFAULT_THEME_KEY;
         const siteName: string = json?.data?.siteName || DEFAULT_SITE_NAME;
@@ -146,7 +168,19 @@ export default function ThemeProvider({ children }: { children: React.ReactNode 
     };
   }, []);
 
-  return <SiteSettingsContext.Provider value={settings}>{children}</SiteSettingsContext.Provider>;
+  // The platform panel lives on any domain, including one with no gym, so it
+  // is never replaced by the notice.
+  const isPlatformPanel = !!pathname && pathname.startsWith("/super-admin");
+
+  return (
+    <SiteSettingsContext.Provider value={settings}>
+      {unavailable && !isPlatformPanel ? (
+        <TenantUnavailable code={unavailable.code} message={unavailable.message} host={unavailable.host} />
+      ) : (
+        children
+      )}
+    </SiteSettingsContext.Provider>
+  );
 }
 
 /** Lets the admin settings page preview/persist a choice without a reload. */

@@ -8,16 +8,24 @@ import CheckoutForm, { type OrderData } from "./components/CheckoutForm";
 import OrderSummary from "./components/OrderSummary";
 import { isAuthenticated } from "../../../helper/helper";
 import { packageService, type Package } from "../packages/services/packageService";
+import { checkoutService, type CouponPreview, type PaymentMethodKey, type PaymentMethods } from "./services/checkoutService";
 
 const CheckoutPageContent = () => {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const packageId = searchParams.get('packageId');
+  const packageId = searchParams.get("packageId");
 
   const [loading, setLoading] = useState(true);
   const [packageData, setPackageData] = useState<Package | null>(null);
   const [submitHandler, setSubmitHandler] = useState<(() => void) | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // How the member pays. Card is offered when the gym has Stripe set up, bank
+  // transfer when it has an account on file; the first available one is
+  // preselected.
+  const [methods, setMethods] = useState<PaymentMethods | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethodKey>("stripe");
+  const [coupon, setCoupon] = useState<CouponPreview | null>(null);
 
   const handleSubmitChange = (handler: () => void, submitting: boolean) => {
     setSubmitHandler(() => handler);
@@ -26,46 +34,44 @@ const CheckoutPageContent = () => {
 
   useEffect(() => {
     const initCheckout = async () => {
-      // Check if user is authenticated
       if (!isAuthenticated()) {
-        const redirectUrl = packageId ? `/checkout?packageId=${packageId}` : '/checkout';
-        // Encoded, so the package id survives as part of the redirect value
-        // instead of being parsed as a second query param.
+        const redirectUrl = packageId ? `/checkout?packageId=${packageId}` : "/checkout";
         router.push(`/authentication?redirect=${encodeURIComponent(redirectUrl)}`);
         return;
       }
 
-      // If packageId is present, fetch package details
-      if (packageId) {
-        try {
-          const packages = await packageService.getActivePackages();
-          const selectedPackage = packages.find(p => p._id === packageId);
+      try {
+        const [packages, available] = await Promise.all([
+          packageId ? packageService.getActivePackages() : Promise.resolve([] as Package[]),
+          checkoutService.getPaymentMethods().catch(() => null),
+        ]);
+        setMethods(available);
+        if (available) setPaymentMethod(available.card ? "stripe" : "bank_transfer");
 
+        if (packageId) {
+          const selectedPackage = packages.find((p) => p._id === packageId);
           if (selectedPackage) {
             setPackageData(selectedPackage);
           } else {
-            alert('Package not found');
-            router.push('/packages');
+            alert("Package not found");
+            router.push("/packages");
             return;
           }
-        } catch (error) {
-          console.error('Error fetching package:', error);
-          alert('Failed to load package details');
-          router.push('/packages');
-          return;
-        } finally {
-          setLoading(false);
         }
-      } else {
+      } catch (error) {
+        console.error("Error fetching package:", error);
+        alert("Failed to load package details");
+        router.push("/packages");
+        return;
+      } finally {
         setLoading(false);
       }
     };
-
     initCheckout();
   }, [router, packageId]);
 
   const handleOrderCreate = (orderData: OrderData) => {
-    console.log('Order created:', orderData);
+    console.log("Order created:", orderData);
   };
 
   if (loading) {
@@ -89,11 +95,7 @@ const CheckoutPageContent = () => {
     <main className="pt-24">
       <section className="px-4 sm:px-6 lg:px-20 py-12 sm:py-16 lg:py-20 bg-white">
         <div className="mx-auto">
-          {/* Breadcrumb */}
           <nav aria-label="Breadcrumb" className="mb-6 text-sm text-gray-500">
-            {/* Checkout only ever sells a membership now, so the way back is
-                always the packages page. It used to fall back to /cart, which
-                belonged to the product shop this project was converted from. */}
             <Link href="/packages" className="hover:text-black">
               Packages
             </Link>
@@ -106,11 +108,18 @@ const CheckoutPageContent = () => {
               onOrderCreate={handleOrderCreate}
               packageData={packageData}
               onSubmitChange={handleSubmitChange}
+              paymentMethod={paymentMethod}
+              couponCode={coupon?.code}
             />
             <OrderSummary
               packageData={packageData}
               onSubmit={submitHandler || undefined}
               isSubmitting={isSubmitting}
+              methods={methods}
+              paymentMethod={paymentMethod}
+              onPaymentMethodChange={setPaymentMethod}
+              coupon={coupon}
+              onCouponChange={setCoupon}
             />
           </div>
         </div>
@@ -121,13 +130,15 @@ const CheckoutPageContent = () => {
 
 const CheckoutPage = () => {
   return (
-    <Suspense fallback={
-      <main className="pt-20">
-        <div className="flex justify-center items-center min-h-screen">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#91b200]"></div>
-        </div>
-      </main>
-    }>
+    <Suspense
+      fallback={
+        <main className="pt-20">
+          <div className="flex justify-center items-center min-h-screen">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#91b200]"></div>
+          </div>
+        </main>
+      }
+    >
       <CheckoutPageContent />
     </Suspense>
   );

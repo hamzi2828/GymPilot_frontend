@@ -119,6 +119,23 @@ export interface MembershipOrder {
   endDate: string | null;
   isActive: boolean;
   daysLeft: number | null;
+  /** Stripe renews it; cancelling means "stop renewing". */
+  recurring: boolean;
+  /** A card is on file at Stripe, so the billing portal can be opened. */
+  manageable: boolean;
+  cancelAtPeriodEnd: boolean;
+  freezeResumeAt: string | null;
+  sessionsTotal: number;
+  sessionsLeft: number;
+  invoiceNumber: string | null;
+  lastPaymentError: string;
+  kind: string;
+}
+
+export interface MembershipRules {
+  allowMemberFreeze: boolean;
+  maxFreezeDays: number;
+  allowMemberCancel: boolean;
 }
 
 export interface AttendanceVisit {
@@ -176,6 +193,70 @@ export interface MyAttendance {
 
 const DAY_MS = 86400000;
 
+/* ----------------------- membership self-service ----------------------- */
+
+async function membershipPost(orderId: string, action: string, body?: unknown): Promise<{ message: string; url?: string }> {
+  if (!API_BASE_URL) throw new Error("Missing NEXT_PUBLIC_BACKEND_URL");
+  const res = await fetch(`${API_BASE_URL}/api/gymfolio/package-orders/${orderId}/${action}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...getAuthHeader() },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || json?.success === false) throw new Error(json?.message || "Request failed");
+  return json;
+}
+
+/** What this gym lets members do to their own membership. */
+export async function getMembershipRules(): Promise<MembershipRules> {
+  const res = await fetch(`${API_BASE_URL}/api/gymfolio/membership/rules`);
+  const json = await res.json();
+  if (!res.ok) throw new Error(json?.message || "Could not load membership rules");
+  return json.data;
+}
+
+export async function freezeMembership(orderId: string, days: number, reason: string): Promise<string> {
+  return (await membershipPost(orderId, "freeze", { days, reason })).message;
+}
+
+export async function unfreezeMembership(orderId: string): Promise<string> {
+  return (await membershipPost(orderId, "unfreeze")).message;
+}
+
+export async function cancelMembership(orderId: string, reason: string): Promise<string> {
+  return (await membershipPost(orderId, "cancel", { reason })).message;
+}
+
+export async function resumeMembership(orderId: string): Promise<string> {
+  return (await membershipPost(orderId, "resume")).message;
+}
+
+/** Sends the member to Stripe's billing portal to update their card. */
+export async function openBillingPortal(orderId: string): Promise<void> {
+  const { url } = await membershipPost(orderId, "billing-portal");
+  if (!url) throw new Error("Could not open the billing portal");
+  window.location.href = url;
+}
+
+/** Fetches the invoice PDF with the member's token and opens it. */
+export async function downloadInvoice(orderId: string, number: string): Promise<void> {
+  const res = await fetch(`${API_BASE_URL}/api/gymfolio/package-orders/${orderId}/invoice.pdf`, { headers: getAuthHeader() });
+  if (!res.ok) {
+    const json = await res.json().catch(() => ({}));
+    throw new Error(json?.message || "Could not load the invoice");
+  }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${number}.pdf`;
+  a.target = "_blank";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+
 /** The member's package purchases, newest first, in gym terms. */
 export async function getMembershipHistory(): Promise<MembershipOrder[]> {
   if (!API_BASE_URL) throw new Error("Missing NEXT_PUBLIC_BACKEND_URL");
@@ -203,6 +284,10 @@ export async function getMembershipHistory(): Promise<MembershipOrder[]> {
       const pkg = (order.packageDetails as Record<string, unknown>) || {};
       const payment = (order.payment as Record<string, unknown>) || {};
       const subscription = (order.subscription as Record<string, unknown>) || {};
+      const freeze = (order.freeze as Record<string, unknown>) || {};
+      const sessions = (order.sessions as Record<string, unknown>) || {};
+      const invoice = (order.invoice as Record<string, unknown>) || {};
+      const billing = (pkg.billing as Record<string, unknown>) || {};
 
       const endDate = subscription.endDate ? String(subscription.endDate) : null;
       const end = endDate ? new Date(endDate).getTime() : null;
@@ -228,6 +313,15 @@ export async function getMembershipHistory(): Promise<MembershipOrder[]> {
           !!end &&
           end >= now,
         daysLeft: end ? Math.ceil((end - now) / DAY_MS) : null,
+        recurring: billing.mode === "recurring" || !!payment.stripeSubscriptionId,
+        manageable: !!payment.stripeCustomerId,
+        cancelAtPeriodEnd: !!subscription.cancelAtPeriodEnd,
+        freezeResumeAt: freeze.resumeAt ? String(freeze.resumeAt) : null,
+        sessionsTotal: Number(sessions.total || 0),
+        sessionsLeft: Math.max(0, Number(sessions.total || 0) - Number(sessions.used || 0)),
+        invoiceNumber: invoice.number ? String(invoice.number) : null,
+        lastPaymentError: String(payment.lastPaymentError || ""),
+        kind: String(pkg.kind || "membership"),
       };
     })
     .sort((a, b) => new Date(b.purchasedAt || 0).getTime() - new Date(a.purchasedAt || 0).getTime());

@@ -1,8 +1,9 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import "@fortawesome/fontawesome-free/css/all.css";
-import { checkoutService, type ShippingAddress } from "../services/checkoutService";
+import { checkoutService, type PaymentMethodKey, type ShippingAddress } from "../services/checkoutService";
 import { getCurrentUser } from "../../../../helper/helper";
 import { type Package } from "../../packages/services/packageService";
 
@@ -19,10 +20,14 @@ interface CheckoutFormProps {
   discountAmount?: number;
   packageData?: Package | null;
   onSubmitChange?: (handler: () => void, isSubmitting: boolean) => void;
+  /** Chosen in the order summary; card by default. */
+  paymentMethod?: PaymentMethodKey;
+  /** A validated discount code, applied server-side to whichever way they pay. */
+  couponCode?: string;
 }
 
-const CheckoutForm: React.FC<CheckoutFormProps> = ({ packageData, onSubmitChange }) => {
-  const [paymentMethod] = useState("stripe");
+const CheckoutForm: React.FC<CheckoutFormProps> = ({ packageData, onSubmitChange, paymentMethod = "stripe", couponCode }) => {
+  const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -96,22 +101,20 @@ const CheckoutForm: React.FC<CheckoutFormProps> = ({ packageData, onSubmitChange
         return;
       }
 
-      // If payment method is Stripe, create checkout session
-      if (paymentMethod === 'stripe') {
+      if (isPackageCheckout && packageData) {
         try {
-          // Handle package checkout
-          if (isPackageCheckout && packageData) {
-            await checkoutService.createPackageStripeCheckout(
-              packageData._id,
-              shippingData
-            );
+          if (paymentMethod === 'bank_transfer') {
+            // Records the order and shows the bank details; staff confirm the
+            // payment once it lands.
+            const { order } = await checkoutService.createBankTransferOrder(packageData._id, shippingData, couponCode);
+            router.push(`/checkout/bank-transfer?order=${order._id}`);
             return;
-          } else {
-            alert('Cart checkout not yet implemented for packages');
-            setIsSubmitting(false);
           }
+          // Card: redirects the browser to Stripe Checkout.
+          await checkoutService.createPackageStripeCheckout(packageData._id, shippingData, couponCode);
+          return;
         } catch (error: unknown) {
-          console.error('Stripe checkout error:', error);
+          console.error('Checkout error:', error);
           const errorMessage = error instanceof Error ? error.message : 'Failed to initialize payment. Please try again.';
           alert(errorMessage);
           setIsSubmitting(false);
@@ -124,7 +127,7 @@ const CheckoutForm: React.FC<CheckoutFormProps> = ({ packageData, onSubmitChange
     } finally {
       setIsSubmitting(false);
     }
-  }, [isSubmitting, isPackageCheckout, packageData, shippingData, paymentMethod]);
+  }, [isSubmitting, isPackageCheckout, packageData, shippingData, paymentMethod, couponCode, router]);
 
   // Expose submit handler to parent
   useEffect(() => {

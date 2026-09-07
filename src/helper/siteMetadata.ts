@@ -6,6 +6,7 @@
 // crawlers get the real business name instead of a hardcoded one.
 
 import type { Metadata } from "next";
+import { serverTenantFetch } from "@/helper/tenant.server";
 
 const API_BASE = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:4000";
 
@@ -27,10 +28,14 @@ type PublicSettings = {
  * Cached for an hour: the business name changes rarely, and a metadata lookup
  * must never be the reason a page fails to render — any error falls back to
  * the defaults above.
+ *
+ * Sent with the visitor's domain, so the API answers for THIS gym: every gym
+ * on the platform has its own site, and this render has to know which one it
+ * is. serverTenantFetch also keys the cache on the domain.
  */
 export async function getSiteSettings(): Promise<Required<Pick<PublicSettings, "siteName" | "siteUrl">> & PublicSettings> {
   try {
-    const res = await fetch(`${API_BASE}/settings/public`, {
+    const res = await serverTenantFetch(`${API_BASE}/settings/public`, {
       next: { revalidate: 3600 },
     });
     if (!res.ok) return FALLBACK;

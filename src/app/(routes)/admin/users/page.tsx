@@ -14,6 +14,7 @@ import {
   Table,
 } from "../_shared/ui";
 import { API_BASE, GYMFOLIO_API, apiGet, apiJson } from "../_shared/api";
+import UsersImportModal from "./UsersImportModal";
 
 interface User {
   _id: string;
@@ -53,6 +54,7 @@ export default function UsersAdminPage() {
 
   // Create-user dialog
   const [createOpen, setCreateOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [createErr, setCreateErr] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ tone: "ok" | "warn"; text: string } | null>(null);
@@ -197,8 +199,14 @@ export default function UsersAdminPage() {
       <PageHeader
         eyebrow="Customers"
         title="Users"
-        actions={<PrimaryButton onClick={openCreate}>New User</PrimaryButton>}
+        actions={
+          <>
+            <SecondaryButton onClick={() => setImportOpen(true)}>Import CSV</SecondaryButton>
+            <PrimaryButton onClick={openCreate}>New User</PrimaryButton>
+          </>
+        }
       />
+      <UsersImportModal open={importOpen} onClose={() => setImportOpen(false)} onImported={load} />
 
       {notice && (
         <div
@@ -233,6 +241,32 @@ export default function UsersAdminPage() {
             <div key="a" className="flex gap-2">
               <SecondaryButton onClick={() => openAssign(u)}>Package</SecondaryButton>
               <SecondaryButton onClick={() => { setSelected(u); setRole(u.role || "user"); }}>Role</SecondaryButton>
+              <SecondaryButton
+                onClick={async () => {
+                  if (!confirm(`Record that ${u.email} has consented to fingerprint storage (signed form)?`)) return;
+                  try {
+                    const r = await apiJson<{ message: string }>(`${API_BASE}/admin/users/${u._id}/consent`, "PUT", { biometric: true });
+                    setNotice({ tone: "ok", text: r.message });
+                  } catch (e) {
+                    setNotice({ tone: "warn", text: e instanceof Error ? e.message : "Could not record consent" });
+                  }
+                }}
+              >
+                Consent
+              </SecondaryButton>
+              <SecondaryButton
+                onClick={async () => {
+                  if (!confirm(`Sign ${u.email} out of every device?`)) return;
+                  try {
+                    const r = await apiJson<{ message: string }>(`${API_BASE}/admin/users/${u._id}/logout-all`, "POST");
+                    setNotice({ tone: "ok", text: r.message });
+                  } catch (e) {
+                    setNotice({ tone: "warn", text: e instanceof Error ? e.message : "Could not sign the user out" });
+                  }
+                }}
+              >
+                Sign out
+              </SecondaryButton>
               <DangerButton onClick={() => remove(u._id)}>Delete</DangerButton>
             </div>,
           ])}

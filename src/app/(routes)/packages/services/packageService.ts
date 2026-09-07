@@ -12,6 +12,11 @@ export interface Package {
   theme?: 'light' | 'dark';
   badge?: string;
   supportingText?: string;
+  kind?: 'membership' | 'session_pack' | 'day_pass' | 'trial' | 'pt_pack';
+  billing?: { mode: 'one_time' | 'recurring'; interval: 'day' | 'week' | 'month' | 'year'; intervalCount: number; trialDays: number };
+  durationDays?: number;
+  sessions?: number;
+  joiningFee?: number;
   isActive: boolean;
   order: number;
   createdAt: string;

@@ -38,6 +38,9 @@ export interface LoginPayload {
 export interface LoginResponse {
   message: string;
   token: string;
+  /** Set when a second step is required; no token is issued yet. */
+  requires2fa?: boolean;
+  challengeId?: string;
   data: {
     _id: string;
     firstName: string;
@@ -45,6 +48,18 @@ export interface LoginResponse {
     email: string;
     role: 'user' | 'admin' | 'moderator';
   };
+}
+
+/** Second sign-in step: exchanges the emailed code for the token. */
+export async function verifyTwoFactor(payload: { challengeId: string; code: string }): Promise<LoginResponse> {
+  const res = await fetch(`${API_BASE_URL}/user/login/2fa`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json?.message || json?.error || 'Could not verify the code');
+  return json;
 }
 
 export async function login(payload: LoginPayload): Promise<LoginResponse> {
