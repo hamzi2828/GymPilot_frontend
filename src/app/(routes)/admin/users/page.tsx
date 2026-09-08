@@ -29,6 +29,74 @@ interface User {
   tags?: string[];
   memberCode?: string | null;
   isActive?: boolean;
+  /** What the member types into the phone app. Their name plus three digits. */
+  username?: string | null;
+}
+
+// The gym reads this out to the member, so it needs to be easy to copy and,
+// when two members keep mixing theirs up, easy to replace.
+function UsernameCell({
+  user,
+  onRegenerated,
+  onNotice,
+}: {
+  user: User;
+  onRegenerated: () => void;
+  onNotice: (tone: "ok" | "warn", text: string) => void;
+}) {
+  const [copied, setCopied] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  if (!user.username) {
+    return <span className="text-xs text-neutral-400">not issued yet</span>;
+  }
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(user.username || "");
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      onNotice("warn", "Your browser would not let the page copy. Select the username and copy it by hand.");
+    }
+  };
+
+  const regenerate = async () => {
+    if (!confirm(`Give ${user.email} a new app username? The one they have now stops working straight away, so you will need to tell them.`)) return;
+    setBusy(true);
+    try {
+      const r = await apiJson<{ data: { username: string } }>(`${API_BASE}/admin/users/${user._id}/username`, "POST");
+      onNotice("ok", `New username for ${user.email}: ${r.data.username}`);
+      onRegenerated();
+    } catch (e) {
+      onNotice("warn", e instanceof Error ? e.message : "Could not issue a new username");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-1.5">
+      <code className="rounded bg-neutral-100 px-1.5 py-0.5 font-mono text-xs text-neutral-800">{user.username}</code>
+      <button
+        type="button"
+        onClick={copy}
+        title="Copy the username"
+        className="rounded px-1 py-0.5 text-[11px] font-medium text-neutral-500 hover:bg-neutral-100 hover:text-neutral-800"
+      >
+        {copied ? "copied" : "copy"}
+      </button>
+      <button
+        type="button"
+        onClick={regenerate}
+        disabled={busy}
+        title="Issue a new username"
+        className="rounded px-1 py-0.5 text-[11px] font-medium text-neutral-400 hover:bg-neutral-100 hover:text-neutral-800 disabled:opacity-50"
+      >
+        {busy ? "…" : "new"}
+      </button>
+    </div>
+  );
 }
 
 // Roles come from the Roles & Access collection rather than a hardcoded list,
@@ -129,20 +197,21 @@ export default function UsersAdminPage() {
     try {
       // The password is generated server-side and emailed — it is never sent
       // from or shown in the browser.
-      const res = await apiJson<{ message: string; emailed?: boolean; emailError?: string }>(
+      const res = await apiJson<{ message: string; emailed?: boolean; emailError?: string; data?: { username?: string } }>(
         `${API_BASE}/admin/users`,
         "POST",
         draft
       );
       setCreateOpen(false);
+      const appLogin = res.data?.username ? ` Their phone app username is ${res.data.username}.` : "";
       setNotice(
         res.emailed
-          ? { tone: "ok", text: `${draft.email} was created and their password emailed.` }
+          ? { tone: "ok", text: `${draft.email} was created and their password emailed.${appLogin}` }
           : {
               tone: "warn",
               text: `${draft.email} was created, but the password email failed${
                 res.emailError ? ` (${res.emailError})` : ""
-              }. Check the SMTP settings.`,
+              }. Check the SMTP settings.${appLogin}`,
             }
       );
       await load();
@@ -207,7 +276,7 @@ export default function UsersAdminPage() {
   const visible = list.filter((u) => {
     if (tagFilter && !(u.tags || []).includes(tagFilter)) return false;
     if (!q) return true;
-    return `${u.firstName || ""} ${u.lastName || ""} ${u.email} ${u.phone || ""} ${u.memberCode || ""}`.toLowerCase().includes(q);
+    return `${u.firstName || ""} ${u.lastName || ""} ${u.email} ${u.username || ""} ${u.phone || ""} ${u.memberCode || ""}`.toLowerCase().includes(q);
   });
 
   return (
@@ -245,7 +314,7 @@ export default function UsersAdminPage() {
 
       <div className="mb-5 flex flex-wrap items-end gap-3">
         <div className="w-72">
-          <TextField label="Search" value={query} onChange={setQuery} placeholder="Name, email, phone or member code" />
+          <TextField label="Search" value={query} onChange={setQuery} placeholder="Name, email, username, phone or member code" />
         </div>
         {allTags.length > 0 && (
           <div className="w-48">
@@ -259,7 +328,7 @@ export default function UsersAdminPage() {
         <Spinner />
       ) : (
         <Table
-          columns={["Name", "Email", "Role", "Status", "Joined", "Actions"]}
+          columns={["Name", "Email", "App username", "Role", "Status", "Joined", "Actions"]}
           rows={visible.map((u) => [
             <div key="n">
               <p className="font-medium text-neutral-900">{[u.firstName, u.lastName].filter(Boolean).join(" ") || "—"}</p>
@@ -272,6 +341,7 @@ export default function UsersAdminPage() {
               )}
             </div>,
             u.email,
+            <UsernameCell key="u" user={u} onRegenerated={load} onNotice={(tone, text) => setNotice({ tone, text })} />,
             <Badge key="r" color={u.role === "admin" ? "blue" : "neutral"}>{u.role || "user"}</Badge>,
             <Badge key="s" color={u.status === "active" ? "green" : "neutral"}>{u.status || "active"}</Badge>,
             u.createdAt ? new Date(u.createdAt).toLocaleDateString() : "—",
