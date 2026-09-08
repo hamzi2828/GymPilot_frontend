@@ -9,6 +9,7 @@ import {
   TermsCheckbox,
   CTAButton,
   FooterToggle,
+  DemoAccounts,
 } from './leftsSideComponents';
 
 type FormData = {
@@ -30,6 +31,8 @@ type LeftSideProps = {
   notice?: { tone: "ok" | "error"; text: string } | null;
   formData: FormData;
   handleInputChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  /** Fills the email + password fields from a demo-login button. */
+  fillCredentials: (email: string, password: string) => void;
   handleSubmit: () => void;
   updateMode: (mode: "signin" | "signup" | "forgot" | "reset") => void;
   toggleAuthMode: () => void;
@@ -56,6 +59,7 @@ export const LeftSide: React.FC<LeftSideProps> = ({
   notice = null,
   formData,
   handleInputChange,
+  fillCredentials,
   handleSubmit,
   updateMode,
   toggleAuthMode,
@@ -194,6 +198,11 @@ export const LeftSide: React.FC<LeftSideProps> = ({
           acceptTerms={formData.acceptTerms}
           handleInputChange={handleInputChange}
           termsError={termsError}
+        />
+
+        <DemoAccounts
+          show={!isSignUp && !isForgot && !isReset}
+          fillCredentials={fillCredentials}
         />
 
         <CTAButton

@@ -7,3 +7,4 @@ export { SignInUtilities } from './SignInUtilities';
 export { TermsCheckbox } from './TermsCheckbox';
 export { CTAButton } from './CTAButton';
 export { FooterToggle } from './FooterToggle';
+export { DemoAccounts } from './DemoAccounts';
