@@ -23,6 +23,7 @@ import {
 import { API_BASE, apiGet, apiJson, apiForm, absoluteUrl } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
 import { LoadError } from "../_ops/lists";
+import { directUploadIfLarge } from "../_ops/directUpload";
 
 interface Testimonial {
   _id: string;
@@ -116,7 +117,12 @@ export default function TestimonialsAdminPage() {
       });
       fd.append("rating", String(form.rating ?? 5));
       fd.append("isActive", String(!!form.isActive));
-      if (img) fd.append("image", img);
+      if (img) {
+        // Too large for the API: already in storage, so only its URL is sent.
+        const uploaded = await directUploadIfLarge("testimonial", img);
+        if (uploaded) fd.append("uploadedImageUrl", uploaded);
+        else fd.append("image", img);
+      }
       if (editing) {
         await apiForm(`${TESTIMONIALS_API}/${editing._id}`, "PUT", fd);
       } else {

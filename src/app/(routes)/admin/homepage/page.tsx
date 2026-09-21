@@ -37,16 +37,28 @@ import {
 import { API_BASE, apiGet, apiJson, apiForm, absoluteUrl } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
 import { LoadError } from "../_ops/lists";
+import { directUploadIfLarge, uploadLimit, UploadRefused } from "../_ops/directUpload";
 
 const SECTIONS_API = `${API_BASE}/home-sections`;
 
 /** Keep in sync with GALLERY_MAX_PHOTOS in main/services/homeService.ts. */
 const GALLERY_MAX_PHOTOS = 12;
 
-// The API accepts videos far larger than this, but on Vercel a request body
-// over about 4.5 MB is refused before it reaches the API at all -- the upload
-// just fails. Anything bigger belongs on a video host, linked by URL.
-const MAX_VIDEO_UPLOAD_MB = 4;
+// On Vercel a request body over about 4.5 MB is refused before it reaches the
+// API, so files over the API's limit go straight to storage instead (see
+// _ops/directUpload.ts). Where the server has no storage for that, the API's
+// own limit is the most a file can be; a bigger video belongs on a video
+// host, linked by URL.
+
+/** Sends one homepage image and resolves to the URL to store. */
+async function uploadSectionImage(file: File): Promise<string | undefined> {
+  const direct = await directUploadIfLarge("homepage-image", file);
+  if (direct) return direct;
+  const fd = new FormData();
+  fd.append("image", file);
+  const r = await apiForm<{ data?: { url?: string } }>(`${SECTIONS_API}/upload`, "POST", fd);
+  return r.data?.url;
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -169,7 +181,7 @@ const SECTION_META: Record<string, SectionMeta> = {
             key: "url",
             label: "Video",
             type: "video",
-            hint: `Paste a YouTube/Vimeo link, a direct .mp4 URL, or upload a file of up to ${MAX_VIDEO_UPLOAD_MB} MB.`,
+            hint: "Paste a YouTube/Vimeo link or a direct .mp4 URL, or upload an MP4/WebM file.",
           },
           { key: "poster", label: "Poster image (shown before play)", type: "image" },
         ],
@@ -249,10 +261,8 @@ function ImageInput({ label, value, onChange }: { label: string; value: string; 
   const upload = async (file: File) => {
     setUploading(true);
     try {
-      const fd = new FormData();
-      fd.append("image", file);
-      const r = await apiForm<{ data?: { url?: string } }>(`${SECTIONS_API}/upload`, "POST", fd);
-      if (r.data?.url) onChange(r.data.url);
+      const url = await uploadSectionImage(file);
+      if (url) onChange(url);
     } catch (e) {
       alert(e instanceof Error ? e.message : "Upload failed");
     } finally {
@@ -316,24 +326,38 @@ function VideoInput({
 }) {
   const [uploading, setUploading] = useState(false);
   const [tooBig, setTooBig] = useState<string | null>(null);
+  // The most this server takes, direct uploads included; unknown until asked.
+  const [limitMb, setLimitMb] = useState<number | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    uploadLimit("homepage-video").then((bytes) => {
+      if (live && bytes) setLimitMb(Math.round(bytes / (1024 * 1024)));
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
 
   const upload = async (file: File) => {
-    if (file.size > MAX_VIDEO_UPLOAD_MB * 1024 * 1024) {
-      setTooBig(
-        `That video is ${(file.size / (1024 * 1024)).toFixed(1)} MB — uploads here stop at ${MAX_VIDEO_UPLOAD_MB} MB. ` +
-          "Put it on YouTube or Vimeo (or any video host) and paste the link above instead."
-      );
-      return;
-    }
     setTooBig(null);
     setUploading(true);
     try {
+      const direct = await directUploadIfLarge("homepage-video", file);
+      if (direct) {
+        onChange(direct);
+        return;
+      }
       const fd = new FormData();
       fd.append("video", file);
       const r = await apiForm<{ data?: { url?: string } }>(`${SECTIONS_API}/upload-video`, "POST", fd);
       if (r.data?.url) onChange(r.data.url);
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Video upload failed");
+      if (e instanceof UploadRefused) {
+        setTooBig(`${e.message} Or put it on YouTube or Vimeo (or any video host) and paste the link above instead.`);
+      } else {
+        alert(e instanceof Error ? e.message : "Video upload failed");
+      }
     } finally {
       setUploading(false);
     }
@@ -353,7 +377,7 @@ function VideoInput({
             setTooBig(null);
             onChange(e.target.value);
           }}
-          placeholder={`https://youtube.com/… or upload an mp4 (up to ${MAX_VIDEO_UPLOAD_MB} MB)`}
+          placeholder={`https://youtube.com/… or upload an mp4${limitMb ? ` (up to ${limitMb} MB)` : ""}`}
           className="flex-1 h-9 px-3 text-sm bg-white border border-neutral-200 rounded-lg focus:outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[color-mix(in_srgb,var(--accent)_25%,transparent)] transition-colors"
         />
         <label className="inline-flex items-center h-9 px-3 text-sm font-medium text-neutral-700 bg-white border border-neutral-200 rounded-lg hover:bg-neutral-50 cursor-pointer transition-colors">
@@ -608,10 +632,8 @@ function GalleryGroupsEditor({
     try {
       const urls: string[] = [];
       for (const file of files) {
-        const fd = new FormData();
-        fd.append("image", file);
-        const r = await apiForm<{ data?: { url?: string } }>(`${SECTIONS_API}/upload`, "POST", fd);
-        if (r.data?.url) urls.push(r.data.url);
+        const url = await uploadSectionImage(file);
+        if (url) urls.push(url);
       }
       addImages(i, urls);
     } catch (e) {

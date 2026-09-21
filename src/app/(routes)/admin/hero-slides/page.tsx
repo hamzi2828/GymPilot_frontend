@@ -18,6 +18,7 @@ import {
 import { API_BASE, apiGet, apiJson, apiForm, absoluteUrl } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
 import { LoadError } from "../_ops/lists";
+import { directUploadIfLarge } from "../_ops/directUpload";
 
 interface HeroSlide {
   _id: string;
@@ -84,7 +85,12 @@ export default function HeroSlidesAdminPage() {
         if (typeof v === "object") return;
         fd.append(k, String(v));
       });
-      if (img) fd.append("image", img);
+      if (img) {
+        // Too large for the API: already in storage, so only its URL is sent.
+        const uploaded = await directUploadIfLarge("hero-slide", img);
+        if (uploaded) fd.append("uploadedImageUrl", uploaded);
+        else fd.append("image", img);
+      }
       if (editing) {
         await apiForm(`${SLIDES_API}/${editing._id}`, "PUT", fd);
       } else {
