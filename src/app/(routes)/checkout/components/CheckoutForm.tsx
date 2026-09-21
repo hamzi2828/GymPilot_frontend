@@ -1,11 +1,16 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import "@fortawesome/fontawesome-free/css/all.css";
 import { checkoutService, type PaymentMethodKey, type ShippingAddress } from "../services/checkoutService";
 import { getCurrentUser } from "../../../../helper/helper";
 import { type Package } from "../../packages/services/packageService";
+import { COUNTRIES } from "@/data/countries";
+
+// Every country, alphabetically, stored by name as before. Four hardcoded
+// options meant most gyms' members could not pick their own.
+const COUNTRY_NAMES = COUNTRIES.map((c) => c.name).sort((a, b) => a.localeCompare(b));
 
 export interface OrderData {
   orderId: string;
@@ -29,6 +34,9 @@ interface CheckoutFormProps {
 const CheckoutForm: React.FC<CheckoutFormProps> = ({ packageData, onSubmitChange, paymentMethod = "stripe", couponCode }) => {
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // Synchronous twin of isSubmitting: two quick clicks both see the state as
+  // false before React re-renders, and each would create an order.
+  const submittingRef = useRef(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const isPackageCheckout = !!packageData;
@@ -71,16 +79,20 @@ const CheckoutForm: React.FC<CheckoutFormProps> = ({ packageData, onSubmitChange
       e.preventDefault();
     }
 
-    if (isSubmitting) return;
+    if (submittingRef.current) return;
 
+    submittingRef.current = true;
     setIsSubmitting(true);
     setErrors({});
+    // Set once the browser is on its way to Stripe or the bank-details page.
+    // The button then stays disabled: re-enabling it during the redirect let
+    // a second click create a second order and payment session.
+    let leaving = false;
 
     try {
       // Check if package exists (only for package checkout)
       if (isPackageCheckout && !packageData) {
         alert('Package not found. Please select a valid package.');
-        setIsSubmitting(false);
         return;
       }
 
@@ -97,7 +109,6 @@ const CheckoutForm: React.FC<CheckoutFormProps> = ({ packageData, onSubmitChange
         });
         setErrors(newErrors);
         alert('Please fix the form errors');
-        setIsSubmitting(false);
         return;
       }
 
@@ -107,17 +118,18 @@ const CheckoutForm: React.FC<CheckoutFormProps> = ({ packageData, onSubmitChange
             // Records the order and shows the bank details; staff confirm the
             // payment once it lands.
             const { order } = await checkoutService.createBankTransferOrder(packageData._id, shippingData, couponCode);
+            leaving = true;
             router.push(`/checkout/bank-transfer?order=${order._id}`);
             return;
           }
           // Card: redirects the browser to Stripe Checkout.
           await checkoutService.createPackageStripeCheckout(packageData._id, shippingData, couponCode);
+          leaving = true;
           return;
         } catch (error: unknown) {
           console.error('Checkout error:', error);
           const errorMessage = error instanceof Error ? error.message : 'Failed to initialize payment. Please try again.';
           alert(errorMessage);
-          setIsSubmitting(false);
         }
         return;
       }
@@ -125,9 +137,24 @@ const CheckoutForm: React.FC<CheckoutFormProps> = ({ packageData, onSubmitChange
       console.error('Order creation error:', error);
       alert('Failed to place order. Please try again.');
     } finally {
-      setIsSubmitting(false);
+      if (!leaving) {
+        submittingRef.current = false;
+        setIsSubmitting(false);
+      }
     }
-  }, [isSubmitting, isPackageCheckout, packageData, shippingData, paymentMethod, couponCode, router]);
+  }, [isPackageCheckout, packageData, shippingData, paymentMethod, couponCode, router]);
+
+  // Coming back from Stripe restores this page from the browser's cache with
+  // the button still locked; unlock it so the member can try again.
+  useEffect(() => {
+    const onShow = (e: PageTransitionEvent) => {
+      if (!e.persisted) return;
+      submittingRef.current = false;
+      setIsSubmitting(false);
+    };
+    window.addEventListener('pageshow', onShow);
+    return () => window.removeEventListener('pageshow', onShow);
+  }, []);
 
   // Expose submit handler to parent
   useEffect(() => {
@@ -189,10 +216,9 @@ const CheckoutForm: React.FC<CheckoutFormProps> = ({ packageData, onSubmitChange
                 required
               >
                 <option value="">Select your country</option>
-                <option value="Pakistan">Pakistan</option>
-                <option value="India">India</option>
-                <option value="United States">United States</option>
-                <option value="United Kingdom">United Kingdom</option>
+                {COUNTRY_NAMES.map((name) => (
+                  <option key={name} value={name}>{name}</option>
+                ))}
               </select>
               <i className="fas fa-chevron-down absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none" />
             </div>
@@ -252,7 +278,7 @@ const CheckoutForm: React.FC<CheckoutFormProps> = ({ packageData, onSubmitChange
             <label className="checkout-label block font-medium">Phone Number</label>
             <input
               type="tel"
-              placeholder="+92 987382 8967"
+              placeholder="Phone number, with country code"
               value={shippingData.phoneNumber}
               onChange={(e) => updateShippingData('phoneNumber', e.target.value)}
               className={`checkout-input w-full px-4 py-3 bg-white border rounded-lg shadow-sm input-accent transition-all duration-200 ${

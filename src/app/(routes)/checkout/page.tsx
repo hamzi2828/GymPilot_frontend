@@ -4,7 +4,7 @@ import React, { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import "@fortawesome/fontawesome-free/css/all.css";
-import CheckoutForm, { type OrderData } from "./components/CheckoutForm";
+import CheckoutForm from "./components/CheckoutForm";
 import OrderSummary from "./components/OrderSummary";
 import { isAuthenticated } from "../../../helper/helper";
 import { packageService, type Package } from "../packages/services/packageService";
@@ -24,8 +24,19 @@ const CheckoutPageContent = () => {
   // transfer when it has an account on file; the first available one is
   // preselected.
   const [methods, setMethods] = useState<PaymentMethods | null>(null);
+  // Set when the payment options could not be loaded, so the summary offers a
+  // retry instead of saying "Loading…" forever with Pay disabled.
+  const [methodsError, setMethodsError] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethodKey>("stripe");
   const [coupon, setCoupon] = useState<CouponPreview | null>(null);
+
+  const retryMethods = async () => {
+    setMethodsError(false);
+    const available = await checkoutService.getPaymentMethods().catch(() => null);
+    setMethods(available);
+    setMethodsError(!available);
+    if (available) setPaymentMethod(available.card ? "stripe" : "bank_transfer");
+  };
 
   const handleSubmitChange = (handler: () => void, submitting: boolean) => {
     setSubmitHandler(() => handler);
@@ -46,6 +57,7 @@ const CheckoutPageContent = () => {
           checkoutService.getPaymentMethods().catch(() => null),
         ]);
         setMethods(available);
+        setMethodsError(!available);
         if (available) setPaymentMethod(available.card ? "stripe" : "bank_transfer");
 
         if (packageId) {
@@ -69,10 +81,6 @@ const CheckoutPageContent = () => {
     };
     initCheckout();
   }, [router, packageId]);
-
-  const handleOrderCreate = (orderData: OrderData) => {
-    console.log("Order created:", orderData);
-  };
 
   if (loading) {
     return (
@@ -105,7 +113,6 @@ const CheckoutPageContent = () => {
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12">
             <CheckoutForm
-              onOrderCreate={handleOrderCreate}
               packageData={packageData}
               onSubmitChange={handleSubmitChange}
               paymentMethod={paymentMethod}
@@ -116,6 +123,8 @@ const CheckoutPageContent = () => {
               onSubmit={submitHandler || undefined}
               isSubmitting={isSubmitting}
               methods={methods}
+              methodsError={methodsError}
+              onRetryMethods={retryMethods}
               paymentMethod={paymentMethod}
               onPaymentMethodChange={setPaymentMethod}
               coupon={coupon}

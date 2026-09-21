@@ -4,12 +4,16 @@ import React, { useState } from "react";
 import Image from "next/image";
 import { type Package } from "../../packages/services/packageService";
 import { checkoutService, type CouponPreview, type PaymentMethodKey, type PaymentMethods } from "../services/checkoutService";
+import { parseAmount } from "@/helper/money";
 
 interface OrderSummaryProps {
   packageData?: Package | null;
   onSubmit?: () => void;
   isSubmitting?: boolean;
   methods: PaymentMethods | null;
+  /** The payment options failed to load; offer a retry. */
+  methodsError?: boolean;
+  onRetryMethods?: () => void;
   paymentMethod: PaymentMethodKey;
   onPaymentMethodChange: (method: PaymentMethodKey) => void;
   coupon: CouponPreview | null;
@@ -40,6 +44,8 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
   onSubmit,
   isSubmitting = false,
   methods,
+  methodsError = false,
+  onRetryMethods,
   paymentMethod,
   onPaymentMethodChange,
   coupon,
@@ -65,7 +71,10 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
   }
 
   const currency = packageData.currency;
-  const listPrice = parseFloat(packageData.price.replace(/[^\d.]/g, "")) || 0;
+  // Read the typed price exactly as the API does when it charges, so the
+  // total shown is the total paid. The old strip-and-parseFloat turned
+  // "Rs. 1,200" into 0.12.
+  const listPrice = parseAmount(packageData.price) ?? 0;
   const joiningFee = Number(packageData.joiningFee || 0);
   const discount = coupon ? coupon.discount : 0;
   const total = Math.max(0, listPrice + joiningFee - discount);
@@ -205,7 +214,16 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
         {/* Payment method */}
         <div className="pt-2 space-y-3">
           <h3 className="checkout-section-title text-lg font-bold">Payment</h3>
-          {!methods ? (
+          {!methods && methodsError ? (
+            <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+              We couldn&apos;t load the payment options.{" "}
+              {onRetryMethods && (
+                <button type="button" onClick={onRetryMethods} className="font-semibold underline">
+                  Try again
+                </button>
+              )}
+            </div>
+          ) : !methods ? (
             <p className="text-sm text-gray-500">Loading payment options…</p>
           ) : noMethods ? (
             <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">

@@ -4,9 +4,12 @@ import React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import "@fortawesome/fontawesome-free/css/all.css";
+import { useSiteSettings } from "@/components/ThemeProvider";
 
 export default function CheckoutCancelPage() {
   const router = useRouter();
+  // The gym's own number from Settings; the line is hidden when none is set.
+  const { mobileNumber } = useSiteSettings();
 
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center py-12 px-4">
@@ -79,13 +82,15 @@ export default function CheckoutCancelPage() {
                   <i className="fas fa-envelope mr-2"></i>
                   Contact support
                 </a>
-                <a
-                  href="tel:+1234567890"
-                  className="flex items-center text-sm text-accent hover:underline"
-                >
-                  <i className="fas fa-phone mr-2"></i>
-                  +1 (234) 567-890
-                </a>
+                {mobileNumber && (
+                  <a
+                    href={`tel:${mobileNumber.replace(/\s+/g, "")}`}
+                    className="flex items-center text-sm text-accent hover:underline"
+                  >
+                    <i className="fas fa-phone mr-2"></i>
+                    {mobileNumber}
+                  </a>
+                )}
               </div>
             </div>
 
