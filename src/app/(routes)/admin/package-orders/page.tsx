@@ -18,15 +18,12 @@ import {
   Card,
   EmptyState,
 } from "../_shared/ui";
-import { API_BASE, GYMFOLIO_API, apiGet, apiJson, authHeaders, absoluteUrl } from "../_shared/api";
+import { GYMFOLIO_API, apiGet, apiJson, authHeaders, absoluteUrl } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
+import { MemberPicker, type MemberOption } from "../_ops/MemberPicker";
+import { Pager, pageCount } from "../_ops/lists";
 
-interface Member {
-  _id: string;
-  firstName?: string;
-  lastName?: string;
-  email: string;
-}
+const PAGE_SIZE = 50;
 
 interface PackageOption {
   _id: string;
@@ -55,6 +52,8 @@ interface PackageOrder {
     method: string;
     paidAt?: string;
     stripeSubscriptionId?: string | null;
+    stripePaymentIntentId?: string | null;
+    stripeSessionId?: string | null;
     lastPaymentError?: string;
     proof?: { url?: string; note?: string; reference?: string; uploadedAt?: string; rejectionReason?: string };
   };
@@ -68,6 +67,7 @@ interface PackageOrder {
   };
   freeze?: { isFrozen: boolean; resumeAt?: string | null; totalFrozenDays?: number; reason?: string };
   cancellation?: { cancelledAt?: string | null; reason?: string; source?: string };
+  refund?: { amount?: number | null; reason?: string; at?: string | null; stripeRefundId?: string | null };
   sessions?: { total: number; used: number };
   invoice?: { number?: string | null };
   status: string;
@@ -111,6 +111,8 @@ export default function PackageOrdersAdminPage() {
 
   const [list, setList] = useState<PackageOrder[]>([]);
   const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pages, setPages] = useState(1);
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState({ search: "", status: "", paymentStatus: "", paymentMethod: "" });
   const [notice, setNotice] = useState<string | null>(null);
@@ -118,26 +120,29 @@ export default function PackageOrdersAdminPage() {
   const [busy, setBusy] = useState(false);
 
   const [selected, setSelected] = useState<PackageOrder | null>(null);
-  const [action, setAction] = useState<"" | "status" | "freeze" | "cancel" | "renew" | "change" | "reject">("");
+  const [action, setAction] = useState<"" | "status" | "freeze" | "cancel" | "renew" | "change" | "reject" | "refund">("");
   const [draft, setDraft] = useState<Record<string, string>>({});
 
   const [assignOpen, setAssignOpen] = useState(false);
-  const [members, setMembers] = useState<Member[]>([]);
+  const [assignMember, setAssignMember] = useState<MemberOption | null>(null);
   const [packages, setPackages] = useState<PackageOption[]>([]);
-  const emptyAssign = { userId: "", packageId: "", paymentMethod: "cash", markPaid: "yes", durationMonths: "", notes: "", couponCode: "", amount: "" };
+  const emptyAssign = { packageId: "", paymentMethod: "cash", markPaid: "yes", durationMonths: "", notes: "", couponCode: "", amount: "" };
   const [assignDraft, setAssignDraft] = useState(emptyAssign);
 
+  // Paged: a fixed limit of 200 used to cut the list off without saying so
+  // beyond a small "showing N of M".
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams({ limit: "200" });
+      const params = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE) });
       if (filters.search.trim()) params.set("search", filters.search.trim());
       if (filters.status) params.set("status", filters.status);
       if (filters.paymentStatus) params.set("paymentStatus", filters.paymentStatus);
       if (filters.paymentMethod) params.set("paymentMethod", filters.paymentMethod);
-      const r = await apiGet<{ data: PackageOrder[]; pagination?: { total: number } }>(`${GYMFOLIO_API}/package-orders?${params.toString()}`);
+      const r = await apiGet<{ data: PackageOrder[]; pagination?: { total?: number; pages?: number; limit?: number } }>(`${GYMFOLIO_API}/package-orders?${params.toString()}`);
       setList(r.data || []);
       setTotal(r.pagination?.total ?? (r.data || []).length);
+      setPages(pageCount(r.pagination));
     } catch (e) {
       setList([]);
       setTotal(0);
@@ -145,28 +150,35 @@ export default function PackageOrdersAdminPage() {
     } finally {
       setLoading(false);
     }
-  }, [filters]);
+  }, [filters, page]);
 
   useEffect(() => {
     const t = setTimeout(load, filters.search ? 250 : 0);
     return () => clearTimeout(t);
   }, [load, filters.search]);
 
+  // A new filter starts again from the first page.
+  const filterBy = (change: Partial<typeof filters>) => {
+    setPage(1);
+    setFilters({ ...filters, ...change });
+  };
+
+  // Members come from the picker's own search. Packages: the full list when
+  // this account has the Packages tab, else the ones on sale right now.
   const loadPickers = async () => {
     try {
-      const [u, p] = await Promise.all([
-        apiGet<{ data?: Member[]; users?: Member[] }>(`${API_BASE}/get/allUsers`),
-        apiGet<{ data?: PackageOption[] }>(`${GYMFOLIO_API}/packages`),
-      ]);
-      setMembers(u.data || u.users || []);
+      const p = await apiGet<{ data?: PackageOption[] }>(`${GYMFOLIO_API}/packages`).catch(() =>
+        apiGet<{ data?: PackageOption[] }>(`${GYMFOLIO_API}/packages/active`)
+      );
       setPackages(p.data || []);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not load members or packages.");
+      setError(e instanceof Error ? e.message : "Could not load packages.");
     }
   };
 
   const openAssign = async () => {
     setAssignDraft(emptyAssign);
+    setAssignMember(null);
     setError(null);
     setAssignOpen(true);
     await loadPickers();
@@ -191,9 +203,9 @@ export default function PackageOrdersAdminPage() {
 
   const assignPackage = () =>
     run("Package assigned.", async () => {
-      if (!assignDraft.userId || !assignDraft.packageId) throw new Error("Choose both a member and a package.");
+      if (!assignMember || !assignDraft.packageId) throw new Error("Choose both a member and a package.");
       const res = await apiJson<{ message: string }>(`${GYMFOLIO_API}/package-orders/assign`, "POST", {
-        userId: assignDraft.userId,
+        userId: assignMember.id,
         packageId: assignDraft.packageId,
         paymentMethod: assignDraft.paymentMethod,
         markPaid: assignDraft.markPaid === "yes",
@@ -209,11 +221,23 @@ export default function PackageOrdersAdminPage() {
   const openAction = async (o: PackageOrder, a: typeof action) => {
     setSelected(o);
     setAction(a);
-    setDraft({ status: o.status, days: "7", reason: "", immediate: "no", paymentMethod: "cash", markPaid: "yes", months: "", packageId: "" });
+    setDraft({ status: o.status, days: "7", reason: "", immediate: "no", paymentMethod: "cash", markPaid: "yes", months: "", packageId: "", amount: "" });
     if (a === "change" && !packages.length) await loadPickers();
   };
 
   const post = (o: PackageOrder, path: string, body?: unknown) => apiJson<{ message: string }>(`${GYMFOLIO_API}/package-orders/${o._id}/${path}`, "POST", body);
+
+  // Card payments go back through Stripe; cash, bank and desk-terminal ones
+  // are only recorded -- the money moves by hand. Either way the membership
+  // ends now, which is why this asks first.
+  const viaStripe = (o: PackageOrder) => o.payment.method === "stripe" || !!o.payment.stripePaymentIntentId || !!o.payment.stripeSessionId;
+  const refund = (o: PackageOrder) => {
+    const amount = draft.amount.trim();
+    const shown = amount ? money(Number(amount), o.payment.currency) : `the full ${money(o.payment.amount, o.payment.currency)}`;
+    const how = viaStripe(o) ? "It is sent back to the member's card through Stripe." : "Give the money back by hand; this only records it.";
+    if (!confirm(`Refund ${shown} on ${o.orderNumber}? ${how} The membership is cancelled straight away. This cannot be undone.`)) return;
+    run("Refunded.", () => post(o, "refund", { amount: amount || undefined, reason: draft.reason }));
+  };
 
   const invoiceUrl = (o: PackageOrder) => `${GYMFOLIO_API}/package-orders/${o._id}/invoice.pdf?download=1`;
   const openInvoice = async (o: PackageOrder) => {
@@ -253,11 +277,11 @@ export default function PackageOrdersAdminPage() {
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <input
           value={filters.search}
-          onChange={(e) => setFilters({ ...filters, search: e.target.value })}
+          onChange={(e) => filterBy({ search: e.target.value })}
           placeholder="Search order #, name, email…"
           className="h-9 w-64 rounded-lg border border-neutral-200 bg-white px-3 text-sm focus:border-neutral-400 focus:outline-none"
         />
-        <select value={filters.status} onChange={(e) => setFilters({ ...filters, status: e.target.value })} className={select}>
+        <select value={filters.status} onChange={(e) => filterBy({ status: e.target.value })} className={select}>
           <option value="">Any status</option>
           {["pending", "active", "frozen", "past_due", "expired", "cancelled"].map((s) => (
             <option key={s} value={s}>
@@ -265,7 +289,7 @@ export default function PackageOrdersAdminPage() {
             </option>
           ))}
         </select>
-        <select value={filters.paymentStatus} onChange={(e) => setFilters({ ...filters, paymentStatus: e.target.value })} className={select}>
+        <select value={filters.paymentStatus} onChange={(e) => filterBy({ paymentStatus: e.target.value })} className={select}>
           <option value="">Any payment</option>
           {["pending", "processing", "paid", "failed", "refunded"].map((s) => (
             <option key={s} value={s}>
@@ -273,7 +297,7 @@ export default function PackageOrdersAdminPage() {
             </option>
           ))}
         </select>
-        <select value={filters.paymentMethod} onChange={(e) => setFilters({ ...filters, paymentMethod: e.target.value })} className={select}>
+        <select value={filters.paymentMethod} onChange={(e) => filterBy({ paymentMethod: e.target.value })} className={select}>
           <option value="">Any method</option>
           {Object.entries(METHOD_LABELS).map(([k, v]) => (
             <option key={k} value={k}>
@@ -281,7 +305,7 @@ export default function PackageOrdersAdminPage() {
             </option>
           ))}
         </select>
-        {!loading && total > list.length && <span className="text-xs text-neutral-500">Showing {list.length} of {total}</span>}
+        {!loading && <span className="text-xs text-neutral-500">{total} order{total === 1 ? "" : "s"}</span>}
       </div>
 
       {loading ? (
@@ -338,7 +362,7 @@ export default function PackageOrdersAdminPage() {
                       {fmtDate(o.subscription?.startDate)} → {fmtDate(o.subscription?.endDate)}
                     </td>
                     <td className="px-4 py-3 align-top">
-                      <SecondaryButton onClick={() => openAction(o, "status")}>Manage</SecondaryButton>
+                      <SecondaryButton onClick={() => openAction(o, "status")}>{manage ? "Manage" : "View"}</SecondaryButton>
                     </td>
                   </tr>
                 ))}
@@ -348,16 +372,13 @@ export default function PackageOrdersAdminPage() {
         </Card>
       )}
 
+      <Pager page={page} pages={pages} total={total} onChange={setPage} disabled={loading} />
+
       {/* ---- Assign ---- */}
       <Modal open={assignOpen} onClose={() => setAssignOpen(false)} title="Assign Package to Member" size="md">
         <div className="space-y-4">
           <p className="text-sm text-neutral-500">Creates a membership without going through checkout — for payments taken in person or a comped package.</p>
-          <SelectField
-            label="Member"
-            value={assignDraft.userId}
-            onChange={(v) => setAssignDraft({ ...assignDraft, userId: v })}
-            options={members.map((m) => ({ value: m._id, label: `${[m.firstName, m.lastName].filter(Boolean).join(" ") || m.email} — ${m.email}` }))}
-          />
+          <MemberPicker label="Member" value={assignMember} onChange={setAssignMember} />
           <SelectField
             label="Package"
             value={assignDraft.packageId}
@@ -435,6 +456,17 @@ export default function PackageOrdersAdminPage() {
                   <p className="text-neutral-500">Stripe subscription</p>
                   <p className="font-mono text-xs text-neutral-700">{selected.payment.stripeSubscriptionId}</p>
                   {selected.subscription?.renewals?.length ? <p className="text-xs text-neutral-500">{selected.subscription.renewals.length} renewal(s)</p> : null}
+                </div>
+              )}
+              {selected.payment.status === "refunded" && selected.refund?.at && (
+                <div>
+                  <p className="text-neutral-500">Refunded</p>
+                  <p className="text-neutral-900">
+                    {money(selected.refund.amount ?? undefined, selected.payment.currency)} on {fmtDate(selected.refund.at)}
+                    {selected.refund.stripeRefundId ? " · to the card via Stripe" : " · by hand"}
+                    {selected.refund.reason ? ` — ${selected.refund.reason}` : ""}
+                  </p>
+                  {selected.refund.stripeRefundId && <p className="font-mono text-xs text-neutral-500">{selected.refund.stripeRefundId}</p>}
                 </div>
               )}
               {selected.cancellation?.cancelledAt && (
@@ -517,6 +549,31 @@ export default function PackageOrdersAdminPage() {
                   </SecondaryButton>
                 )}
                 {selected.status !== "cancelled" && selected.status !== "expired" && <DangerButton onClick={() => setAction("cancel")}>Cancel</DangerButton>}
+                {selected.payment.status === "paid" && <DangerButton onClick={() => setAction("refund")}>Refund</DangerButton>}
+              </div>
+            )}
+
+            {action === "refund" && (
+              <div className="grid gap-3 sm:grid-cols-2 rounded-lg border border-rose-200 p-4">
+                <TextField
+                  label={`Amount (${(selected.payment.currency || "").toUpperCase()}, blank = all of it)`}
+                  type="number"
+                  value={draft.amount}
+                  onChange={(v) => setDraft({ ...draft, amount: v })}
+                  placeholder={String(selected.payment.amount ?? "")}
+                />
+                <TextField label="Reason" value={draft.reason} onChange={(v) => setDraft({ ...draft, reason: v })} />
+                <p className="sm:col-span-2 text-xs text-neutral-500">
+                  {viaStripe(selected)
+                    ? "Paid by card: the refund is sent back through Stripe, and any subscription stops renewing."
+                    : "Paid by cash, bank transfer or the desk terminal: give the money back by hand — this records it."}{" "}
+                  The membership is cancelled straight away.
+                </p>
+                <div className="sm:col-span-2 flex justify-end">
+                  <DangerButton disabled={busy} onClick={() => refund(selected)}>
+                    {busy ? "Refunding…" : "Refund"}
+                  </DangerButton>
+                </div>
               </div>
             )}
 
