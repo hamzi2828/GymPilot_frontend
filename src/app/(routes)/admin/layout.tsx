@@ -24,6 +24,7 @@ const ROUTE_TABS: { prefix: string; tab: string }[] = [
   { prefix: "/admin/inventory", tab: "pos" },
   { prefix: "/admin/lockers", tab: "lockers" },
   { prefix: "/admin/attendance", tab: "attendance" },
+  { prefix: "/admin/fingerprints", tab: "attendance" },
   { prefix: "/admin/accounts", tab: "accounts" },
   { prefix: "/admin/staff", tab: "staff" },
   { prefix: "/admin/roles", tab: "roles" },

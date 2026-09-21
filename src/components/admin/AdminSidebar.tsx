@@ -33,6 +33,8 @@ import {
   FiShoppingCart,
   FiArchive,
 } from "react-icons/fi";
+// Feather has no fingerprint; this is the one entry drawn from another set.
+import { MdFingerprint } from "react-icons/md";
 
 interface MenuItem {
   name: string;
@@ -88,6 +90,10 @@ const sections: MenuSection[] = [
     heading: "Operations",
     items: [
       { name: "Attendance", path: "/admin/attendance", icon: <FiClock className={iconCls} />, tab: "attendance" },
+      // Same tab as Attendance: seeing who has a finger on file needs it at
+      // view, removing one needs it at manage (checked on the page and by
+      // the API).
+      { name: "Fingerprints", path: "/admin/fingerprints", icon: <MdFingerprint className={iconCls} />, tab: "attendance" },
       { name: "Accounts", path: "/admin/accounts", icon: <FiDollarSign className={iconCls} />, tab: "accounts" },
       { name: "Staff", path: "/admin/staff", icon: <FiBriefcase className={iconCls} />, tab: "staff" },
       { name: "Lockers", path: "/admin/lockers", icon: <FiArchive className={iconCls} />, tab: "lockers" },
