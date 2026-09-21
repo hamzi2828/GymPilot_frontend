@@ -31,6 +31,7 @@ interface TrainerOption {
   name: string;
 }
 
+const ALL = 500;
 const today = () => new Date().toISOString().slice(0, 10);
 const weekdayOf = (key: string) => {
   const [y, m, d] = key.split("-").map(Number);
@@ -63,10 +64,14 @@ export default function TimetableChangesPage() {
 
   useEffect(() => {
     load();
-    apiGet<{ data: ClassOption[] }>(`${GYMFOLIO_API}/gym-classes`)
+    // Explicit limits: both endpoints default to twenty, which quietly left
+    // later classes and trainers out of these dropdowns. Without the Trainers
+    // tab, the public list of active trainers stands in.
+    apiGet<{ data: ClassOption[] }>(`${GYMFOLIO_API}/gym-classes?limit=${ALL}`)
       .then((r) => setClasses(r.data || []))
       .catch(() => setClasses([]));
-    apiGet<{ data: TrainerOption[] }>(`${GYMFOLIO_API}/trainers`)
+    apiGet<{ data: TrainerOption[] }>(`${GYMFOLIO_API}/trainers?limit=${ALL}`)
+      .catch(() => apiGet<{ data: TrainerOption[] }>(`${GYMFOLIO_API}/trainers/active`))
       .then((r) => setTrainers(r.data || []))
       .catch(() => setTrainers([]));
   }, [load]);
