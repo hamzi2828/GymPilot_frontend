@@ -100,7 +100,7 @@ function AdminShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (loading || !canViewSettings) return;
     let cancelled = false;
-    getSubscription()
+    getSubscription({ usage: false })
       .then((res) => {
         if (!cancelled && res.ok && res.data) setSubscription(res.data);
       })

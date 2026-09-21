@@ -10,6 +10,14 @@ export const BILLING_API = `${API_BASE}/api/billing`;
 export type SubscriptionStatus = "trialing" | "active" | "past_due" | "expired" | "cancelled";
 export type BillingCycle = "monthly" | "yearly";
 
+/** How much of one plan limit the gym is using. `limit` null is unlimited. */
+export interface PlanUsage {
+  key: string;
+  label: string;
+  used: number;
+  limit: number | null;
+}
+
 export interface BillingSubscription {
   plan: {
     name: string;
@@ -27,6 +35,21 @@ export interface BillingSubscription {
   stripeConfigured: boolean;
   hasStripeSubscription: boolean;
   contactEmail: string;
+  /** One entry per plan limit; null (or missing, from an older API) when it could not be counted. */
+  usage?: PlanUsage[] | null;
+}
+
+/** A plan on sale, as the Billing tab's plan picker shows it. Limits of 0 are unlimited. */
+export interface BillingPlan {
+  slug: string;
+  name: string;
+  description: string;
+  price: { monthly: number; yearly: number; currency: string };
+  limits: { maxMembers: number; maxStaff: number; maxTrainers: number; maxClasses: number };
+  features: string[];
+  trialDays: number;
+  /** The gym's own plan. */
+  current: boolean;
 }
 
 /**
@@ -54,18 +77,42 @@ export async function billingRequest<T>(path: string, method: "GET" | "POST" = "
   return { ok: res.ok, status: res.status, code: json?.code, message: json?.message, data: json?.data };
 }
 
-export function getSubscription() {
-  return billingRequest<BillingSubscription>("/subscription");
+/** `usage: false` skips the plan-usage counts (the admin banner needs only the status). */
+export function getSubscription({ usage = true }: { usage?: boolean } = {}) {
+  return billingRequest<BillingSubscription>(usage ? "/subscription" : "/subscription?usage=0");
 }
 
-/** Starts a Stripe Checkout for the plan; `data.url` is where to send the owner. */
-export function startCheckout(billingCycle?: BillingCycle) {
-  return billingRequest<{ url: string }>("/checkout", "POST", billingCycle ? { billingCycle } : {});
+/**
+ * Starts a Stripe Checkout for the gym's plan, or for `planSlug` when the
+ * owner picked another; `data.url` is where to send the owner.
+ */
+export function startCheckout(billingCycle?: BillingCycle, planSlug?: string) {
+  return billingRequest<{ url: string }>("/checkout", "POST", {
+    ...(billingCycle ? { billingCycle } : {}),
+    ...(planSlug ? { planSlug } : {}),
+  });
 }
 
-/** The Stripe customer portal: card, invoices, cancellation. */
+/** The Stripe customer portal: card, invoices, cancellation. Not plan changes -- see changePlan. */
 export function openPortal() {
   return billingRequest<{ url: string }>("/portal", "POST");
+}
+
+/** The plans on sale, the gym's own marked `current`. */
+export function getPlans() {
+  return billingRequest<BillingPlan[]>("/plans");
+}
+
+/**
+ * Moves a gym Stripe already bills to another plan or cycle, prorated. 409
+ * NO_STRIPE_SUBSCRIPTION means it must subscribe through startCheckout instead.
+ */
+export function changePlan(planSlug: string, billingCycle?: BillingCycle) {
+  return billingRequest<{ plan: { name: string; slug: string }; billingCycle: BillingCycle; amount: number; currency: string }>(
+    "/change-plan",
+    "POST",
+    { planSlug, ...(billingCycle ? { billingCycle } : {}) }
+  );
 }
 
 export const STATUS_LABELS: Record<SubscriptionStatus, string> = {
