@@ -1,9 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { FiDownload, FiRefreshCw, FiSearch, FiX } from "react-icons/fi";
+import { FiDownload, FiRefreshCw, FiSearch, FiSettings, FiX } from "react-icons/fi";
 import { PageHeader, Card, Modal, SecondaryButton, Spinner, EmptyState, Select2 } from "../_shared/ui";
 import { ATTENDANCE_API, apiGet } from "../_shared/api";
+import { usePermissions } from "@/components/admin/PermissionsProvider";
+import {
+  DeskSettingsModal,
+  EditTimesModal,
+  VoidVisitModal,
+  type CorrectionFields,
+} from "./CorrectionModals";
 
 // ---------------------------------------------------------------------------
 // Shapes, exactly as /api/attendance returns them.
@@ -23,7 +30,9 @@ interface PunchBy {
   location?: string;
 }
 
-interface AttendanceRecord {
+// The correction fields (voided / edited, see CorrectionModals) are optional:
+// a row reads the same without them.
+interface AttendanceRecord extends CorrectionFields {
   id: string;
   person_type: "member" | "staff";
   person_id: string;
@@ -32,6 +41,9 @@ interface AttendanceRecord {
   shift_date: string;
   day_name: string;
   date_label: string;
+  // Raw instants, used only to pre-fill a correction in the gym's clock.
+  check_in_at?: string | null;
+  check_out_at?: string | null;
   check_in_time: string | null;
   check_out_time: string | null;
   still_in: boolean;
@@ -87,6 +99,8 @@ interface Pagination {
 }
 
 interface RecordsResponse {
+  // The gym's IANA zone: the clock a correction is typed in.
+  timezone?: string;
   range: RangeInfo;
   summary: Summary;
   pagination: Pagination;
@@ -99,6 +113,10 @@ interface Membership {
   package_name: string;
   end_label: string | null;
   days_left: number | null;
+  // The desk's verdict key (membership_active, membership_cancelled, ...),
+  // which is what the pill is coloured by when the server sends it.
+  verdict?: string;
+  sessions_left?: number | null;
 }
 
 interface PersonRow {
@@ -226,6 +244,18 @@ function statusTone(status: string) {
   return STATUS_TONE[status] || "neutral";
 }
 
+// A roster membership's verdict key: the server's own when it sends one, so
+// "Cancelled · 5 days left" is amber and "Frozen" blue exactly as at the desk;
+// otherwise the old three-way reading of active / expired / none.
+function membershipStatusKey(membership: Membership | null): string {
+  if (!membership) return "membership_none";
+  if (membership.verdict) return membership.verdict;
+  if (membership.status === "active") {
+    return membership.days_left !== null && membership.days_left <= 7 ? "membership_expiring" : "membership_active";
+  }
+  return membership.status === "expired" ? "membership_expired" : "membership_none";
+}
+
 // ---------------------------------------------------------------------------
 // Date keys
 //
@@ -286,9 +316,45 @@ function DeparturePill({ record }: { record: AttendanceRecord }) {
 }
 
 // A visit nobody checked out of: no time out and no duration, said plainly
-// rather than left looking like someone is still inside.
-function NoCheckOut() {
-  return <span className="text-[12px] font-medium text-neutral-400">No check-out</span>;
+// rather than left looking like someone is still inside. With a way to fix it
+// for an account that may: a staff visit without one pays no hours.
+function NoCheckOut({ onFix }: { onFix?: () => void }) {
+  if (!onFix) return <span className="text-[12px] font-medium text-neutral-400">No check-out</span>;
+  return (
+    <button
+      type="button"
+      onClick={onFix}
+      title="Set the check-out time"
+      className="rounded-md bg-amber-50 px-1.5 py-0.5 text-[12px] font-medium text-amber-800 ring-1 ring-inset ring-amber-600/20 hover:bg-amber-100"
+    >
+      No check-out · set
+    </button>
+  );
+}
+
+// Corrections the office made, on the row they were made to.
+function CorrectionMarks({ record }: { record: AttendanceRecord }) {
+  const last = record.last_correction;
+  const who = last ? [last.by_name, last.at_label].filter(Boolean).join(", ") : "";
+  if (record.voided) {
+    return (
+      <span
+        title={[record.void_reason, who].filter(Boolean).join(" — ")}
+        className="inline-flex items-center rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-medium text-rose-700 ring-1 ring-inset ring-rose-600/15"
+      >
+        Voided
+      </span>
+    );
+  }
+  if (!record.edited) return null;
+  return (
+    <span
+      title={last && last.action === "edit" ? [last.note, who].filter(Boolean).join(" — ") : "Times corrected by the office"}
+      className="inline-flex items-center rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] font-medium text-neutral-600 ring-1 ring-inset ring-neutral-500/15"
+    >
+      Edited
+    </span>
+  );
 }
 
 function TypePill({ type }: { type: "member" | "staff" }) {
@@ -401,6 +467,17 @@ export default function AttendanceAdminPage() {
   const [detail, setDetail] = useState<PersonDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
 
+  // Corrections: only for an account that may manage attendance. The server
+  // checks the same permission; this only keeps the buttons away from
+  // everyone else.
+  const { can } = usePermissions();
+  const canManage = can("attendance", "manage");
+  const [timezone, setTimezone] = useState<string | undefined>(undefined);
+  const [editing, setEditing] = useState<AttendanceRecord | null>(null);
+  const [voiding, setVoiding] = useState<AttendanceRecord | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+
   // Typing filters the table without a button, but not on every keystroke.
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
@@ -438,6 +515,7 @@ export default function AttendanceAdminPage() {
         setSummary(res.summary);
         setPagination(res.pagination);
         setRange(res.range);
+        setTimezone(res.timezone);
         if (res.range) {
           setToday(res.range.today);
           if (!from) setFrom(res.range.from);
@@ -468,6 +546,21 @@ export default function AttendanceAdminPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // A correction saved: close whatever asked for it, say so, and re-read the
+  // page -- the totals above the table change with it.
+  const corrected = (message: string) => {
+    setEditing(null);
+    setVoiding(null);
+    setSettingsOpen(false);
+    setNotice(message);
+    load();
+  };
+
+  const showMissed = (missedOnly: boolean) => {
+    setPresence(missedOnly ? "missed" : "all");
+    setPage(1);
+  };
 
   const openDetail = async (person: { type: string; id: string; name: string }) => {
     setDetailFor(person);
@@ -537,7 +630,7 @@ export default function AttendanceAdminPage() {
           if (!res.records?.length || !res.pagination || p >= res.pagination.pages) break;
         }
 
-        header = ["Date", "Day", "Type", "Name", "Code", "Check in", "Check out", "Duration", "Status", "Departure", "Checked in by", "Device"];
+        header = ["Date", "Day", "Type", "Name", "Code", "Check in", "Check out", "Duration", "Status", "Departure", "Checked in by", "Device", "Correction"];
         lines = all.map((r) => [
           r.date_label,
           r.day_name,
@@ -551,6 +644,7 @@ export default function AttendanceAdminPage() {
           r.departure_label || "",
           r.check_in_by?.name || "",
           r.check_in_by?.device || "",
+          r.voided ? `Voided: ${r.void_reason || ""}` : r.edited ? "Times edited" : "",
         ]);
       } else {
         const all: PersonRow[] = [];
@@ -605,6 +699,11 @@ export default function AttendanceAdminPage() {
         title="Attendance"
         actions={
           <>
+            {canManage && (
+              <SecondaryButton onClick={() => setSettingsOpen(true)}>
+                <FiSettings className="mr-1.5 h-4 w-4" /> Desk settings
+              </SecondaryButton>
+            )}
             <SecondaryButton
               onClick={exportCsv}
               disabled={loading || exporting || (tab === "log" ? !records.length : !people.length)}
@@ -819,6 +918,37 @@ export default function AttendanceAdminPage() {
         </div>
       )}
 
+      {/* ---- Visits with no check-out: one click to the list that needs fixing ---- */}
+      {tab === "log" && summary && (presence === "missed" || !!summary.no_check_out) && (
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-3">
+          <p className="text-[13px] text-amber-900">
+            {presence === "missed"
+              ? "Showing only visits that ended with no check-out."
+              : `${summary.no_check_out} visit${summary.no_check_out === 1 ? "" : "s"} in this range ended with no check-out.`}{" "}
+            <span className="text-amber-800/80">
+              A staff visit without one pays no hours
+              {canManage ? " — set the time from the row." : " until someone with manage access sets the time."}
+            </span>
+          </p>
+          <button
+            type="button"
+            onClick={() => showMissed(presence !== "missed")}
+            className="h-8 rounded-lg border border-amber-300 bg-white px-3 text-[13px] font-medium text-amber-900 hover:bg-amber-50"
+          >
+            {presence === "missed" ? "Show all visits" : "Show them"}
+          </button>
+        </div>
+      )}
+
+      {notice && (
+        <div className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-emerald-200 bg-white px-4 py-3 text-sm text-emerald-700">
+          <span>{notice}</span>
+          <button type="button" onClick={() => setNotice(null)} aria-label="Dismiss" className="text-emerald-600 hover:text-emerald-800">
+            <FiX className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
       {tab === "people" && counts && (
         <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
           <Stat label="On the roster" value={counts.roster} hint="members and staff" />
@@ -859,7 +989,12 @@ export default function AttendanceAdminPage() {
       {loading ? (
         <Spinner />
       ) : tab === "log" ? (
-        <LogTable records={records} onOpen={openDetail} />
+        <LogTable
+          records={records}
+          onOpen={openDetail}
+          onEdit={canManage ? setEditing : undefined}
+          onVoid={canManage ? setVoiding : undefined}
+        />
       ) : (
         <PeopleTable people={people} onOpen={openDetail} />
       )}
@@ -910,6 +1045,20 @@ export default function AttendanceAdminPage() {
           setDetail(null);
         }}
       />
+
+      {editing && (
+        <EditTimesModal
+          key={editing.id}
+          record={editing}
+          timezone={timezone}
+          onClose={() => setEditing(null)}
+          onSaved={corrected}
+        />
+      )}
+      {voiding && (
+        <VoidVisitModal key={voiding.id} record={voiding} onClose={() => setVoiding(null)} onVoided={corrected} />
+      )}
+      {settingsOpen && <DeskSettingsModal onClose={() => setSettingsOpen(false)} onSaved={corrected} />}
     </div>
   );
 }
@@ -918,12 +1067,17 @@ export default function AttendanceAdminPage() {
 // Punch log
 // ---------------------------------------------------------------------------
 
+// onEdit / onVoid are given only to an account that may manage attendance.
 function LogTable({
   records,
   onOpen,
+  onEdit,
+  onVoid,
 }: {
   records: AttendanceRecord[];
   onOpen: (person: { type: string; id: string; name: string }) => void;
+  onEdit?: (record: AttendanceRecord) => void;
+  onVoid?: (record: AttendanceRecord) => void;
 }) {
   if (!records.length) {
     return (
@@ -951,72 +1105,105 @@ function LogTable({
             </tr>
           </thead>
           <tbody>
-            {records.map((record) => (
-              <tr key={record.id} className="border-b border-neutral-100 transition-colors last:border-b-0 hover:bg-neutral-50">
-                <td className="px-5 py-3 align-middle">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium text-neutral-900">{record.person_name}</span>
-                    <TypePill type={record.person_type} />
-                  </div>
-                  <div className="mt-0.5 text-[11px] text-neutral-400">
-                    {record.person_code || "no code"}
-                    {record.person_type === "member" && record.membership.package_name
-                      ? ` · ${record.membership.package_name}`
-                      : ""}
-                    {record.person_type === "staff" && record.schedule.has_schedule
-                      ? ` · rostered ${record.schedule.label}`
-                      : ""}
-                  </div>
-                </td>
-
-                <td className="whitespace-nowrap px-5 py-3 align-middle">
-                  <div className="text-neutral-800">{record.date_label}</div>
-                  <div className="text-[11px] text-neutral-400">{record.day_name}</div>
-                </td>
-
-                <td className="whitespace-nowrap px-5 py-3 align-middle font-medium text-neutral-800">
-                  {record.check_in_time || "—"}
-                </td>
-
-                <td className="whitespace-nowrap px-5 py-3 align-middle">
-                  {record.still_in ? (
-                    <StillIn />
-                  ) : record.no_check_out ? (
-                    <NoCheckOut />
-                  ) : (
-                    <span className="font-medium text-neutral-800">{record.check_out_time || "—"}</span>
-                  )}
-                </td>
-
-                <td className="whitespace-nowrap px-5 py-3 align-middle text-neutral-700">
-                  {record.worked_label || <span className="text-neutral-400">—</span>}
-                </td>
-
-                <td className="px-5 py-3 align-middle">
-                  <div className="flex flex-wrap items-center gap-1">
-                    <StatusPill status={record.status} label={record.status_label} />
-                    <DeparturePill record={record} />
-                  </div>
-                </td>
-
-                <td className="px-5 py-3 align-middle">
-                  <div className="text-[12px] text-neutral-700">{record.check_in_by?.name || "—"}</div>
-                  <div className="text-[11px] text-neutral-400">
-                    {[record.check_in_by?.device, record.check_in_by?.method].filter(Boolean).join(" · ") || "—"}
-                  </div>
-                </td>
-
-                <td className="whitespace-nowrap px-5 py-3 text-right align-middle">
-                  <button
-                    type="button"
-                    onClick={() => onOpen({ type: record.person_type, id: record.person_id, name: record.person_name })}
-                    className="text-[12px] font-semibold text-neutral-500 hover:text-[var(--accent)]"
-                  >
-                    History
-                  </button>
-                </td>
-              </tr>
-            ))}
+            {records.map((record) => {
+              // A voided visit is shown for the record, greyed, and is done with:
+              // nothing more to correct on it.
+              const correctable = !record.voided;
+              return (
+                <tr
+                  key={record.id}
+                  className={`border-b border-neutral-100 transition-colors last:border-b-0 hover:bg-neutral-50 ${
+                    record.voided ? "opacity-60" : ""
+                  }`}
+                >
+                  <td className="px-5 py-3 align-middle">
+                    <div className="flex items-center gap-2">
+                      <span className={`font-medium text-neutral-900 ${record.voided ? "line-through" : ""}`}>
+                        {record.person_name}
+                      </span>
+                      <TypePill type={record.person_type} />
+                      <CorrectionMarks record={record} />
+                    </div>
+                    <div className="mt-0.5 text-[11px] text-neutral-400">
+                      {record.person_code || "no code"}
+                      {record.person_type === "member" && record.membership.package_name
+                        ? ` · ${record.membership.package_name}`
+                        : ""}
+                      {record.person_type === "staff" && record.schedule.has_schedule
+                        ? ` · rostered ${record.schedule.label}`
+                        : ""}
+                    </div>
+                  </td>
+  
+                  <td className="whitespace-nowrap px-5 py-3 align-middle">
+                    <div className="text-neutral-800">{record.date_label}</div>
+                    <div className="text-[11px] text-neutral-400">{record.day_name}</div>
+                  </td>
+  
+                  <td className="whitespace-nowrap px-5 py-3 align-middle font-medium text-neutral-800">
+                    {record.check_in_time || "—"}
+                  </td>
+  
+                  <td className="whitespace-nowrap px-5 py-3 align-middle">
+                    {record.still_in ? (
+                      <StillIn />
+                    ) : record.no_check_out ? (
+                      <NoCheckOut onFix={onEdit && correctable ? () => onEdit(record) : undefined} />
+                    ) : (
+                      <span className="font-medium text-neutral-800">{record.check_out_time || "—"}</span>
+                    )}
+                  </td>
+  
+                  <td className="whitespace-nowrap px-5 py-3 align-middle text-neutral-700">
+                    {record.worked_label || <span className="text-neutral-400">—</span>}
+                  </td>
+  
+                  <td className="px-5 py-3 align-middle">
+                    <div className="flex flex-wrap items-center gap-1">
+                      <StatusPill status={record.status} label={record.status_label} />
+                      <DeparturePill record={record} />
+                    </div>
+                  </td>
+  
+                  <td className="px-5 py-3 align-middle">
+                    <div className="text-[12px] text-neutral-700">{record.check_in_by?.name || "—"}</div>
+                    <div className="text-[11px] text-neutral-400">
+                      {[record.check_in_by?.device, record.check_in_by?.method].filter(Boolean).join(" · ") || "—"}
+                    </div>
+                  </td>
+  
+                  <td className="whitespace-nowrap px-5 py-3 text-right align-middle">
+                    <div className="flex items-center justify-end gap-3">
+                      {onEdit && correctable && (
+                        <button
+                          type="button"
+                          onClick={() => onEdit(record)}
+                          className="text-[12px] font-semibold text-neutral-500 hover:text-[var(--accent)]"
+                        >
+                          Edit times
+                        </button>
+                      )}
+                      {onVoid && correctable && (
+                        <button
+                          type="button"
+                          onClick={() => onVoid(record)}
+                          className="text-[12px] font-semibold text-neutral-500 hover:text-rose-600"
+                        >
+                          Void
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => onOpen({ type: record.person_type, id: record.person_id, name: record.person_name })}
+                        className="text-[12px] font-semibold text-neutral-500 hover:text-[var(--accent)]"
+                      >
+                        History
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -1079,15 +1266,7 @@ function PeopleTable({
                   {person.person_type === "member" ? (
                     <>
                       <StatusPill
-                        status={
-                          person.membership?.status === "active"
-                            ? person.membership.days_left !== null && person.membership.days_left <= 7
-                              ? "membership_expiring"
-                              : "membership_active"
-                            : person.membership?.status === "expired"
-                            ? "membership_expired"
-                            : "membership_none"
-                        }
+                        status={membershipStatusKey(person.membership)}
                         label={person.membership?.label || "No package on file"}
                       />
                       {person.membership?.package_name && (
@@ -1221,15 +1400,7 @@ function PersonModal({
             <div className="text-right">
               {detail.person.membership && (
                 <StatusPill
-                  status={
-                    detail.person.membership.status === "active"
-                      ? detail.person.membership.days_left !== null && detail.person.membership.days_left <= 7
-                        ? "membership_expiring"
-                        : "membership_active"
-                      : detail.person.membership.status === "expired"
-                      ? "membership_expired"
-                      : "membership_none"
-                  }
+                  status={membershipStatusKey(detail.person.membership)}
                   label={detail.person.membership.label}
                 />
               )}
@@ -1284,6 +1455,7 @@ function PersonModal({
                         )}
                       </div>
                       <div className="flex flex-wrap items-center gap-1">
+                        <CorrectionMarks record={record} />
                         <StatusPill status={record.status} label={record.status_label} />
                         <DeparturePill record={record} />
                       </div>
