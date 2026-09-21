@@ -1,23 +1,28 @@
 "use client";
 import React, { useState, FormEvent } from 'react';
 import Link from 'next/link';
+import axios from 'axios';
 import { ArrowRight } from 'lucide-react';
-import { registrationService } from '../../packages/services/registrationService';
 import { ContactContent, DEFAULT_CONTACT } from '../services/homeService';
 import { AccentText, Reveal } from './SectionHeading';
 
+// The gym's enquiry form. It lands in Admin -> Leads as a website lead (or a
+// note on the lead already open for the same email or phone), where the
+// front desk works it until the person joins. The gym is picked from the
+// page's Origin, as for every browser request.
+const ENQUIRY_URL = `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/leads/enquiry`;
+
 interface FormData {
-  username: string;
+  name: string;
   phone: string;
   email: string;
+  website: string; // honeypot: a person never fills this
 }
 
+const emptyForm: FormData = { name: '', phone: '', email: '', website: '' };
+
 const ContactSection = ({ content = DEFAULT_CONTACT }: { content?: ContactContent }) => {
-  const [formData, setFormData] = useState<FormData>({
-    username: '',
-    phone: '',
-    email: ''
-  });
+  const [formData, setFormData] = useState<FormData>(emptyForm);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
@@ -38,7 +43,7 @@ const ContactSection = ({ content = DEFAULT_CONTACT }: { content?: ContactConten
     setErrorMessage('');
 
     // Simple validation
-    if (!formData.username || !formData.phone || !formData.email) {
+    if (!formData.name.trim() || !formData.phone.trim() || !formData.email.trim()) {
       setErrorMessage('Please fill in all fields');
       return;
     }
@@ -46,20 +51,30 @@ const ContactSection = ({ content = DEFAULT_CONTACT }: { content?: ContactConten
     setIsSubmitting(true);
 
     try {
-      await registrationService.submitRegistration({
-        ...formData,
-        platform: 'gymfolio'
-      });
+      const response = await axios.post<{ success: boolean; message?: string }>(
+        ENQUIRY_URL,
+        {
+          name: formData.name.trim(),
+          phone: formData.phone.trim(),
+          email: formData.email.trim(),
+          // Which page it was sent from, so staff see what they were reading.
+          page: window.location.pathname,
+          website: formData.website
+        },
+        { timeout: 15000 }
+      );
 
-      setSuccessMessage('Thank you! Your registration has been submitted successfully. We will contact you soon.');
-      setFormData({
-        username: '',
-        phone: '',
-        email: ''
-      });
+      setSuccessMessage(response.data?.message || 'Thank you! We have your details and will be in touch soon.');
+      setFormData(emptyForm);
     } catch (error) {
-      console.error('Registration submission error:', error);
-      setErrorMessage(error instanceof Error ? error.message : 'Failed to submit registration. Please try again.');
+      console.error('Enquiry submission error:', error);
+      const serverMessage = axios.isAxiosError(error) ? (error.response?.data as { message?: string } | undefined)?.message : undefined;
+      setErrorMessage(
+        serverMessage ||
+          (axios.isAxiosError(error) && !error.response
+            ? 'Could not reach us just now. Please check your connection and try again.'
+            : 'Could not send your details. Please try again.')
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -116,24 +131,21 @@ const ContactSection = ({ content = DEFAULT_CONTACT }: { content?: ContactConten
                 </header>
 
                 <div className="space-y-4">
-                  {/* Name Field. Sent as `username` because that is the field
-                      the registrations API requires; staff see it as "Name"
-                      under Admin -> Registrations. Nobody visiting a gym's
-                      site has a username to give. */}
+                  {/* Name Field */}
                   <div className="gymfolio8-form-field">
                     <label
-                      htmlFor="username"
+                      htmlFor="name"
                       className="block gymfolio8-form-text gymfolio8-font-poppins font-medium text-sm leading-6 mb-1.5"
                     >
                       Your name
                     </label>
                     <input
                       type="text"
-                      id="username"
-                      name="username"
+                      id="name"
+                      name="name"
                       autoComplete="name"
                       placeholder="Full name"
-                      value={formData.username}
+                      value={formData.name}
                       onChange={handleInputChange}
                       onFocus={handleInputFocus}
                       onBlur={handleInputBlur}
@@ -187,6 +199,9 @@ const ContactSection = ({ content = DEFAULT_CONTACT }: { content?: ContactConten
                       required
                     />
                   </div>
+
+                  {/* Honeypot: real people never see or fill this. */}
+                  <input tabIndex={-1} autoComplete="off" value={formData.website} onChange={handleInputChange} className="hidden" aria-hidden="true" name="website" />
                 </div>
 
                 {/* Success Message */}
