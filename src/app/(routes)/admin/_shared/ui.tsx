@@ -2,6 +2,8 @@
 
 import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import Link from "next/link";
+import { BILLING_PATH } from "./api";
 
 export function PageHeader({
   title,
@@ -551,6 +553,62 @@ export function EmptyState({ title, hint }: { title: string; hint?: string }) {
       <p className="text-sm font-medium text-neutral-700">{title}</p>
       {hint && <p className="mt-1 text-xs text-neutral-500">{hint}</p>}
     </div>
+  );
+}
+
+// What a list shows when it could not be loaded. Kept apart from EmptyState on
+// purpose: "No users yet" over a failed request tells the gym its data is gone.
+export function ErrorState({ message, onRetry }: { message: string; onRetry?: () => void }) {
+  return (
+    <div role="alert" className="border border-rose-200 bg-rose-50/40 rounded-lg p-10 text-center">
+      <p className="text-sm font-medium text-rose-800">{message}</p>
+      {onRetry && (
+        <div className="mt-4 flex justify-center">
+          <SecondaryButton onClick={onRetry}>Try again</SecondaryButton>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Previous / Next under a server-paged list. Renders nothing for one page.
+export function Pager({
+  page,
+  pages,
+  total,
+  onChange,
+}: {
+  page: number;
+  pages: number;
+  total?: number;
+  onChange: (page: number) => void;
+}) {
+  if (pages <= 1) return null;
+  return (
+    <div className="mt-4 flex items-center justify-between text-xs text-neutral-500">
+      <span>
+        Page {page} of {pages}
+        {typeof total === "number" ? ` · ${total} in total` : ""}
+      </span>
+      <div className="flex gap-2">
+        <SecondaryButton onClick={() => onChange(page - 1)} disabled={page <= 1}>
+          Previous
+        </SecondaryButton>
+        <SecondaryButton onClick={() => onChange(page + 1)} disabled={page >= pages}>
+          Next
+        </SecondaryButton>
+      </div>
+    </div>
+  );
+}
+
+// Shown beside a PLAN_LIMIT_REACHED refusal (see isPlanLimitError in api.ts):
+// the message says where to go, this takes them there.
+export function UpgradePlanLink() {
+  return (
+    <Link href={BILLING_PATH} className="ml-1 font-semibold underline underline-offset-2">
+      Go to Billing
+    </Link>
   );
 }
 
