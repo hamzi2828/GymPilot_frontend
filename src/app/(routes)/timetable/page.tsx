@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   getTimetable,
   bookSession,
@@ -10,6 +10,7 @@ import {
   type ClassSession,
 } from "../classes/services/bookingService";
 import { isAuthenticated } from "@/helper/helper";
+import { localDateKey } from "@/helper/date";
 import { useLanguage } from "@/i18n/LanguageProvider";
 
 // Seven days at a time. A month of sessions in one scroll is unreadable, and
@@ -23,7 +24,35 @@ const addDays = (key: string, n: number) => {
   return dt.toISOString().slice(0, 10);
 };
 
-const todayKey = () => new Date().toISOString().slice(0, 10);
+// The visitor's own date, not UTC's: late in the evening east of Greenwich
+// (or early morning west of it) the UTC date is a different day, and the week
+// would open on it.
+const todayKey = () => localDateKey();
+
+// A class page links here as /timetable?class=<id> to show that class only.
+const isObjectId = (value: string | null): value is string => !!value && /^[a-f\d]{24}$/i.test(value);
+
+/**
+ * Sends the visitor to a page of this site in the whole browser window.
+ *
+ * Inside the embed (an <iframe> on another website) signing in cannot happen
+ * in the frame -- it is a few hundred pixels tall and the session would stay
+ * behind in it -- so the top window goes instead. If the host page forbids
+ * that, a new tab does.
+ */
+function openInTopWindow(path: string) {
+  const url = new URL(path, window.location.origin).toString();
+  try {
+    if (window.top && window.top !== window.self) {
+      window.top.location.href = url;
+      return;
+    }
+  } catch {
+    window.open(url, "_blank", "noopener");
+    return;
+  }
+  window.location.href = url;
+}
 
 const dayLabel = (key: string) => {
   const [y, m, d] = key.split("-").map(Number);
@@ -36,21 +65,31 @@ const dayLabel = (key: string) => {
   });
 };
 
-export default function TimetablePage() {
+function TimetableContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const rawClass = searchParams.get("class");
+  const classId = isObjectId(rawClass) ? rawClass : null;
   const [from, setFrom] = useState(todayKey());
   const [sessions, setSessions] = useState<ClassSession[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
+  // Framed on another website (/embed/timetable): links to the member area
+  // open in the whole window rather than inside the frame.
+  const [embedded, setEmbedded] = useState(false);
   const { t } = useLanguage();
+
+  useEffect(() => {
+    setEmbedded(window.top !== window.self);
+  }, []);
 
   const to = useMemo(() => addDays(from, DAYS_SHOWN - 1), [from]);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await getTimetable({ from, to });
+      const res = await getTimetable({ from, to, classId: classId || undefined });
       setSessions(res.data || []);
     } catch (e) {
       setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not load the timetable" });
@@ -58,7 +97,7 @@ export default function TimetablePage() {
     } finally {
       setLoading(false);
     }
-  }, [from, to]);
+  }, [from, to, classId]);
 
   useEffect(() => {
     load();
@@ -78,7 +117,10 @@ export default function TimetablePage() {
 
   const onBook = async (s: ClassSession) => {
     if (!isAuthenticated()) {
-      router.push(`/authentication?redirect=${encodeURIComponent("/timetable")}`);
+      const back = classId ? `/timetable?class=${classId}` : "/timetable";
+      const signIn = `/authentication?redirect=${encodeURIComponent(back)}`;
+      if (window.top !== window.self) openInTopWindow(signIn);
+      else router.push(signIn);
       return;
     }
     setBusy(sessionKey(s));
@@ -130,6 +172,14 @@ export default function TimetablePage() {
           Pick a session and reserve your place. If a class is full you can join the
           waiting list — you are moved up automatically when someone cancels.
         </p>
+        {classId && (
+          <p className="mt-3 text-sm text-neutral-600">
+            Showing one class only.{" "}
+            <Link href="/timetable" className="font-semibold underline underline-offset-4 text-neutral-800">
+              Show all classes
+            </Link>
+          </p>
+        )}
       </header>
 
       {notice && (
@@ -173,6 +223,7 @@ export default function TimetablePage() {
         </button>
         <Link
           href="/user-detail?tab=bookings"
+          target={embedded ? "_top" : undefined}
           className="ml-auto text-sm font-semibold underline underline-offset-4 text-neutral-700"
         >
           {t("tt.myBookings")}
@@ -297,5 +348,14 @@ export default function TimetablePage() {
         </div>
       )}
     </main>
+  );
+}
+
+// useSearchParams (the ?class= filter) needs a Suspense boundary above it.
+export default function TimetablePage() {
+  return (
+    <Suspense fallback={<main className="pt-24 pb-20 px-4 sm:px-8 lg:px-20 bg-white min-h-screen" />}>
+      <TimetableContent />
+    </Suspense>
   );
 }
