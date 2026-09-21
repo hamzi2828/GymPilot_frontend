@@ -14,6 +14,20 @@ import { usePermissions } from "@/components/admin/PermissionsProvider";
 
 const STEPS = ["Your gym", "Money & time", "First package", "Getting paid", "Your team", "Done"] as const;
 
+// What the gym's Stripe webhook endpoint must send. Without the endpoint
+// card sales stay off (the API refuses them): renewals, abandoned checkouts
+// and cancellations only ever reach us this way. Same list as Settings → Stripe.
+const STRIPE_WEBHOOK_EVENTS = [
+  "checkout.session.completed",
+  "checkout.session.expired",
+  "invoice.paid",
+  "invoice.payment_failed",
+  "customer.subscription.updated",
+  "customer.subscription.deleted",
+  "payment_intent.succeeded",
+  "payment_intent.payment_failed",
+];
+
 const COMMON_TIMEZONES = ["UTC", "Europe/London", "Europe/Paris", "Asia/Dubai", "Asia/Riyadh", "Asia/Karachi", "Asia/Kolkata", "Asia/Singapore", "Australia/Sydney", "Africa/Lagos", "Africa/Johannesburg", "America/New_York", "America/Chicago", "America/Los_Angeles", "America/Toronto"];
 
 interface SettingsShape {
@@ -24,7 +38,7 @@ interface SettingsShape {
   currency?: string;
   taxRate?: number;
   ianaTimezone?: string;
-  stripe?: { enabled?: boolean; publishableKey?: string; secretKey?: string; webhookSecret?: string; secretKeySet?: boolean };
+  stripe?: { enabled?: boolean; publishableKey?: string; secretKey?: string; webhookSecret?: string; secretKeySet?: boolean; webhookSecretSet?: boolean };
   stripeWebhookUrl?: string;
   setupCompletedAt?: string | null;
 }
@@ -123,6 +137,9 @@ export default function SetupWizardPage() {
     run(async () => {
       if (payment.useStripe) {
         if (!payment.publishableKey.trim() || (!payment.secretKey.trim() && !settings.stripe?.secretKeySet)) throw new Error("Enter your Stripe publishable and secret keys");
+        if (!payment.webhookSecret.trim() && !settings.stripe?.webhookSecretSet) {
+          throw new Error("Add the webhook in Stripe and paste its signing secret (whsec_…). Card payments stay off without it — or skip this step and finish it later under Settings → Stripe.");
+        }
         await apiJson(`${API_BASE}/settings`, "PUT", { stripe: { enabled: true, publishableKey: payment.publishableKey, ...(payment.secretKey ? { secretKey: payment.secretKey } : {}), ...(payment.webhookSecret ? { webhookSecret: payment.webhookSecret } : {}) } });
       }
       if (payment.useBank) {
@@ -238,8 +255,33 @@ export default function SetupWizardPage() {
                 <div className="mt-3 grid gap-3">
                   <TextField label="Publishable key" value={payment.publishableKey} onChange={(v) => setPayment({ ...payment, publishableKey: v })} placeholder="pk_live_…" />
                   <TextField label={settings.stripe?.secretKeySet ? "Secret key (saved — type to replace)" : "Secret key"} type="password" value={payment.secretKey} onChange={(v) => setPayment({ ...payment, secretKey: v })} placeholder="sk_live_…" />
-                  <TextField label="Webhook signing secret (for automatic renewals)" type="password" value={payment.webhookSecret} onChange={(v) => setPayment({ ...payment, webhookSecret: v })} placeholder="whsec_…" />
-                  {settings.stripeWebhookUrl && <p className="text-xs text-neutral-500">Add this webhook URL in Stripe: <span className="font-mono">{settings.stripeWebhookUrl}</span></p>}
+                  <div className="rounded-lg bg-neutral-50 p-3 text-xs text-neutral-600">
+                    <p className="font-semibold text-neutral-800">Connect the webhook (required for card payments)</p>
+                    <ol className="mt-1 list-decimal space-y-1 pl-4">
+                      <li>
+                        In Stripe, open Developers → Webhooks and add an endpoint
+                        {settings.stripeWebhookUrl ? (
+                          <>
+                            {" "}at <span className="break-all font-mono text-neutral-800">{settings.stripeWebhookUrl}</span>
+                          </>
+                        ) : null}
+                        .
+                      </li>
+                      <li>
+                        Select these events: <span className="font-mono text-neutral-800">{STRIPE_WEBHOOK_EVENTS.join(", ")}</span>.
+                      </li>
+                      <li>Copy the endpoint&apos;s signing secret and paste it below.</li>
+                    </ol>
+                    <p className="mt-2">Without it your members cannot pay by card: renewals, abandoned checkouts and cancellations only reach us through the webhook.</p>
+                  </div>
+                  <TextField
+                    label={settings.stripe?.webhookSecretSet ? "Webhook signing secret (saved — type to replace)" : "Webhook signing secret"}
+                    required={!settings.stripe?.webhookSecretSet}
+                    type="password"
+                    value={payment.webhookSecret}
+                    onChange={(v) => setPayment({ ...payment, webhookSecret: v })}
+                    placeholder="whsec_…"
+                  />
                 </div>
               )}
             </div>

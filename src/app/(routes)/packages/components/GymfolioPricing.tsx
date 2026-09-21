@@ -2,6 +2,15 @@
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { packageService, Package } from "../services/packageService";
+import { parseAmount } from "@/helper/money";
+
+// A package with nothing to charge (price 0, or a price like "Free" that is
+// not a number) cannot go through card or bank checkout -- the API refuses
+// both -- so it is joined at the desk instead.
+function joinedAtTheDesk(plan: Package) {
+  const price = parseAmount(plan.price);
+  return price === null || price <= 0;
+}
 
 const CheckIcon = () => (
   <svg
@@ -231,14 +240,25 @@ const GymfolioPricing: React.FC = () => {
                   isDark ? "bg-[#181b20]" : "bg-white",
                 ].join(" ")}
               >
-                <Link
-                  href={`/checkout?packageId=${plan._id}`}
-                  className="GymfolioPricing-cta inline-flex w-full items-center justify-center gap-2 rounded-full bg-[#ff6b2c] px-6 py-3 font-semibold text-black shadow-[4px_4px_12px_rgba(0,132,255,0.25)] transition-transform hover:scale-[1.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black"
-                  aria-label={`Get started with ${plan.name} plan`}
-                >
-                  Get Started
-                  <ArrowRightIcon />
-                </Link>
+                {joinedAtTheDesk(plan) ? (
+                  <Link
+                    href="/contact-us"
+                    className="GymfolioPricing-cta inline-flex w-full items-center justify-center gap-2 rounded-full bg-[#ff6b2c] px-6 py-3 font-semibold text-black shadow-[4px_4px_12px_rgba(0,132,255,0.25)] transition-transform hover:scale-[1.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black"
+                    aria-label={`Ask at the front desk about the ${plan.name} plan`}
+                  >
+                    Ask at the front desk
+                    <ArrowRightIcon />
+                  </Link>
+                ) : (
+                  <Link
+                    href={`/checkout?packageId=${plan._id}`}
+                    className="GymfolioPricing-cta inline-flex w-full items-center justify-center gap-2 rounded-full bg-[#ff6b2c] px-6 py-3 font-semibold text-black shadow-[4px_4px_12px_rgba(0,132,255,0.25)] transition-transform hover:scale-[1.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black"
+                    aria-label={`Get started with ${plan.name} plan`}
+                  >
+                    Get Started
+                    <ArrowRightIcon />
+                  </Link>
+                )}
               </footer>
 
               {/* Popular badge for dark (Pro) */}

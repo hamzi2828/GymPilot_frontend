@@ -197,6 +197,15 @@ const DAY_MS = 86400000;
 
 /* ----------------------- membership self-service ----------------------- */
 
+// Why a card membership cannot be frozen, in words for the member: the
+// server's own message is written for the gym's staff (it points at Stripe).
+// Any other refusal is shown as the server words it.
+const FREEZE_REFUSED: Record<string, string> = {
+  FREEZE_PAYMENT_OUTSTANDING: "Your last card payment didn't go through — update your card below before freezing.",
+  FREEZE_STRIPE_PAUSED: "Your membership can't be frozen online right now. Please ask at reception.",
+  FREEZE_STRIPE_UNSUPPORTED: "Your membership can't be frozen online right now. Please ask at reception.",
+};
+
 async function membershipPost(orderId: string, action: string, body?: unknown): Promise<{ message: string; url?: string }> {
   if (!API_BASE_URL) throw new Error("Missing NEXT_PUBLIC_BACKEND_URL");
   const res = await fetch(`${API_BASE_URL}/api/gymfolio/package-orders/${orderId}/${action}`, {
@@ -205,7 +214,10 @@ async function membershipPost(orderId: string, action: string, body?: unknown): 
     body: body ? JSON.stringify(body) : undefined,
   });
   const json = await res.json().catch(() => ({}));
-  if (!res.ok || json?.success === false) throw new Error(json?.message || "Request failed");
+  if (!res.ok || json?.success === false) {
+    const refused = typeof json?.code === "string" ? FREEZE_REFUSED[json.code] : undefined;
+    throw new Error(refused || json?.message || "Request failed");
+  }
   return json;
 }
 

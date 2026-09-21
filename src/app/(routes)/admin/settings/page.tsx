@@ -19,7 +19,7 @@ import {
   Select2,
 } from "../_shared/ui";
 import { countryOptions, currencyOptions, countryByCode } from "@/data/countries";
-import { API_BASE, apiGet, apiJson, authHeaders } from "../_shared/api";
+import { API_BASE, GYMFOLIO_API, apiGet, apiJson, authHeaders } from "../_shared/api";
 import { THEMES, DEFAULT_THEME_KEY } from "@/theme/themes";
 import { setActiveTheme } from "@/components/ThemeProvider";
 import MessagingSettings, { type MessagingConfig } from "./MessagingSettings";
@@ -113,6 +113,27 @@ interface Bank {
 }
 
 const SETTINGS_API = `${API_BASE}/settings`;
+
+// What the gym's Stripe webhook endpoint must send. Card sales stay off until
+// its signing secret is saved: renewals, abandoned checkouts and
+// cancellations only ever reach us this way. Same list as the setup wizard.
+const STRIPE_WEBHOOK_EVENTS = [
+  "checkout.session.completed",
+  "checkout.session.expired",
+  "invoice.paid",
+  "invoice.payment_failed",
+  "customer.subscription.updated",
+  "customer.subscription.deleted",
+  "payment_intent.succeeded",
+  "payment_intent.payment_failed",
+];
+
+// Why the API says card is off (GET /payment/methods), in the admin's terms.
+const CARD_OFF: Record<string, string> = {
+  STRIPE_NOT_CONFIGURED: "Card payments are off on your website: enter the secret key, switch on “Enable Stripe payments” and save.",
+  STRIPE_WEBHOOK_NOT_CONFIGURED:
+    "Card payments are off on your website: the webhook signing secret is missing. Add the endpoint below in Stripe and paste its signing secret.",
+};
 
 // Built once: ~120 countries and ~170 currencies, named by the browser.
 const COUNTRY_OPTIONS = countryOptions();
@@ -227,6 +248,21 @@ function SettingsAdminPageInner() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<{ tone: "ok" | "warn" | "error"; text: string } | null>(null);
+
+  // Stripe tab: whether members can pay by card right now, as the API
+  // decides it (so a default gym's environment keys count too).
+  const [cardStatus, setCardStatus] = useState<{ card: boolean; code: string | null } | null>(null);
+  const loadCardStatus = useCallback(async () => {
+    try {
+      const r = await apiGet<{ data?: { card?: boolean; cardUnavailable?: { code?: string | null } | null } }>(`${GYMFOLIO_API}/payment/methods`);
+      setCardStatus({ card: !!r.data?.card, code: r.data?.cardUnavailable?.code || null });
+    } catch {
+      setCardStatus(null);
+    }
+  }, []);
+  useEffect(() => {
+    if (tab === "stripe") loadCardStatus();
+  }, [tab, loadCardStatus]);
 
   // Banks
   const [banks, setBanks] = useState<Bank[]>([]);
@@ -872,6 +908,18 @@ function SettingsAdminPageInner() {
             hint="Stored securely on the server. Saved secrets are shown masked — leave a masked field untouched to keep the existing value."
           />
 
+          {cardStatus && (
+            <div
+              className={`mb-5 rounded-lg border px-4 py-3 text-sm ${
+                cardStatus.card ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-amber-200 bg-amber-50 text-amber-900"
+              }`}
+            >
+              {cardStatus.card
+                ? "Card payments are live on your website."
+                : CARD_OFF[cardStatus.code || ""] || "Card payments are off on your website."}
+            </div>
+          )}
+
           <div className="mb-5">
             <Toggle
               label="Enable Stripe payments"
@@ -900,28 +948,32 @@ function SettingsAdminPageInner() {
             </div>
             <div>
               <TextField
-                label="Webhook Signing Secret"
+                label="Webhook Signing Secret (required for card payments)"
+                required
                 value={stripe.webhookSecret}
                 onChange={(v) => setStripe({ webhookSecret: v })}
                 placeholder="whsec_..."
               />
-              {stripe.webhookSecretSet && (
+              {stripe.webhookSecretSet ? (
                 <p className="text-xs text-neutral-500 mt-1">A webhook secret is saved. Type a new one to replace it.</p>
+              ) : (
+                !stripe.webhookSecret?.trim() &&
+                !cardStatus?.card && (
+                  <p className="text-xs text-amber-700 mt-1">Card payments stay off until this is saved.</p>
+                )
               )}
             </div>
           </div>
 
-          {settings.stripeWebhookUrl && (
-            <div className="mt-5 rounded-lg border border-neutral-200 bg-neutral-50 p-4">
-              <p className="text-xs font-semibold text-neutral-700">Your webhook endpoint</p>
-              <p className="mt-1 break-all font-mono text-xs text-neutral-800">{settings.stripeWebhookUrl}</p>
-              <p className="mt-2 text-xs text-neutral-500">
-                In your Stripe dashboard add this URL under Developers → Webhooks with the events{" "}
-                <span className="font-mono">checkout.session.completed, invoice.paid, invoice.payment_failed, customer.subscription.updated, customer.subscription.deleted, payment_intent.succeeded, payment_intent.payment_failed</span>
-                , then paste its signing secret above. Recurring packages, card updates and automatic renewals depend on it.
-              </p>
-            </div>
-          )}
+          <div className="mt-5 rounded-lg border border-neutral-200 bg-neutral-50 p-4">
+            <p className="text-xs font-semibold text-neutral-700">Your webhook endpoint</p>
+            {settings.stripeWebhookUrl && <p className="mt-1 break-all font-mono text-xs text-neutral-800">{settings.stripeWebhookUrl}</p>}
+            <p className="mt-2 text-xs text-neutral-500">
+              In your Stripe dashboard add {settings.stripeWebhookUrl ? "this URL" : "your webhook URL"} under Developers → Webhooks with the events{" "}
+              <span className="font-mono">{STRIPE_WEBHOOK_EVENTS.join(", ")}</span>, then paste its signing secret above. Card payments stay off
+              until it is saved: renewals, abandoned checkouts and cancellations only reach your members&apos; records through it.
+            </p>
+          </div>
 
           <p className="mt-5 text-xs text-neutral-500 leading-relaxed">
             Only the publishable key is ever sent to the browser. The secret and webhook values stay
@@ -929,7 +981,15 @@ function SettingsAdminPageInner() {
           </p>
 
           <div className="flex justify-end mt-6">
-            <PrimaryButton onClick={save} disabled={saving}>{saving ? "Saving..." : "Save Stripe Settings"}</PrimaryButton>
+            <PrimaryButton
+              onClick={async () => {
+                await save();
+                loadCardStatus();
+              }}
+              disabled={saving}
+            >
+              {saving ? "Saving..." : "Save Stripe Settings"}
+            </PrimaryButton>
           </div>
         </Card>
       )}

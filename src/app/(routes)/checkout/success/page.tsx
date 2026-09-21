@@ -134,20 +134,19 @@ function SuccessContent() {
             <div className="bg-accent-soft rounded-lg p-4 mb-6">
               <h3 className="font-semibold text-gray-900 mb-2">What happens next?</h3>
               <ul className="text-sm text-gray-600 space-y-1">
-                <li>• You will receive a confirmation email shortly</li>
-                <li>• Your subscription is now active</li>
-                <li>• You can access all the features included in your package</li>
-                <li>• Our team will contact you to schedule your sessions</li>
+                <li>• A confirmation email with your receipt is on its way</li>
+                <li>• Your start and end dates are in your account — a renewal bought early starts when your current term ends</li>
+                <li>• Book classes and manage your membership from your account, or sign in to the member app with the same email</li>
               </ul>
             </div>
 
             {/* Action Buttons */}
             <div className="flex flex-col sm:flex-row gap-3">
               <Link
-                href="/packages"
+                href="/user-detail?tab=history"
                 className="flex-1 btn-accent text-center rounded-lg px-4 py-3"
               >
-                View All Packages
+                My account
               </Link>
               <Link
                 href="/"

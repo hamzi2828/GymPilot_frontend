@@ -96,7 +96,11 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
   };
 
   const noMethods = methods && !methods.card && !methods.bankTransfer;
-  const canPay = !noMethods && (paymentMethod === "stripe" ? !!methods?.card : !!methods?.bankTransfer);
+  // Nothing to charge: the API refuses a free package at checkout, so it is
+  // joined at the desk (the packages page links there instead of here).
+  const free = !(listPrice > 0);
+  const canPay = !free && !noMethods && (paymentMethod === "stripe" ? !!methods?.card : !!methods?.bankTransfer);
+  const cardReason = methods && !methods.card ? methods.cardUnavailable?.reason || "" : "";
 
   const MethodOption = ({ value, title, hint, disabled, right }: { value: PaymentMethodKey; title: string; hint: string; disabled?: boolean; right?: React.ReactNode }) => {
     const active = paymentMethod === value;
@@ -214,7 +218,14 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
         {/* Payment method */}
         <div className="pt-2 space-y-3">
           <h3 className="checkout-section-title text-lg font-bold">Payment</h3>
-          {!methods && methodsError ? (
+          {free ? (
+            <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+              There is nothing to pay online for this package. Ask at the front desk and they will set it up for you.{" "}
+              <a href="/contact-us" className="font-semibold underline">
+                Contact us
+              </a>
+            </div>
+          ) : !methods && methodsError ? (
             <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
               We couldn&apos;t load the payment options.{" "}
               {onRetryMethods && (
@@ -227,10 +238,12 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
             <p className="text-sm text-gray-500">Loading payment options…</p>
           ) : noMethods ? (
             <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
-              Online payment is not set up yet. Please pay at reception and we will activate your membership on the spot.
+              {cardReason ? `${cardReason} ` : "Online payment is not set up yet. "}
+              Please pay at reception and we will activate your membership on the spot.
             </div>
           ) : (
             <>
+              {cardReason && <p className="text-sm text-gray-600">{cardReason} You can pay by bank transfer instead.</p>}
               {methods.card && (
                 <MethodOption
                   value="stripe"

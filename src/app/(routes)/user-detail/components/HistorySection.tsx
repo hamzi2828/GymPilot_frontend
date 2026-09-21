@@ -62,24 +62,63 @@ function Fact({ label, value, accent = false }: { label: string; value: React.Re
   );
 }
 
+const DAY_MS = 86400000;
+
+function hasEnded(entry: MembershipOrder, now: number) {
+  return !!entry.endDate && new Date(entry.endDate).getTime() < now;
+}
+
+/** Paid and in date, but its term has not begun yet -- a renewal bought early. */
+function startsLater(entry: MembershipOrder, now: number) {
+  return entry.isActive && !!entry.startDate && new Date(entry.startDate).getTime() > now;
+}
+
+/**
+ * A card checkout that was never paid: the member left the payment page and
+ * the session expired (the order is then closed), or an old one still open
+ * long after Stripe stopped accepting it. Not a package they ever had.
+ */
+function abandonedCheckout(entry: MembershipOrder, now: number) {
+  if (entry.paymentMethod !== "stripe" || ["paid", "refunded", "processing"].includes(entry.paymentStatus)) return false;
+  if (entry.status === "cancelled") return true;
+  return entry.status === "pending" && !!entry.purchasedAt && now - new Date(entry.purchasedAt).getTime() > DAY_MS;
+}
+
+/**
+ * What an order's stored status means today. A paid term past its end has
+ * run out even before the expiry sweep marks it; one bought early has not
+ * started -- and the term running now must never be called expired.
+ */
+function shownStatus(entry: MembershipOrder, now: number) {
+  if (entry.paymentStatus === "paid" && entry.status === "active") {
+    if (hasEnded(entry, now)) return "expired";
+    if (startsLater(entry, now)) return "upcoming";
+  }
+  return entry.status;
+}
+
 function StatusPill({ entry }: { entry: MembershipOrder }) {
   const map: Record<string, string> = {
     active: "bg-green-50 text-green-700 ring-green-600/20",
+    upcoming: "bg-sky-50 text-sky-700 ring-sky-600/20",
     frozen: "bg-sky-50 text-sky-700 ring-sky-600/20",
     past_due: "bg-amber-50 text-amber-800 ring-amber-600/20",
     pending: "bg-amber-50 text-amber-800 ring-amber-600/20",
     expired: "bg-gray-100 text-gray-600 ring-gray-500/20",
     cancelled: "bg-red-50 text-red-700 ring-red-600/20",
   };
+  const status = shownStatus(entry, Date.now());
   const label =
-    entry.status === "past_due"
+    status === "upcoming"
+      ? `Starts ${dateLabel(entry.startDate)}`
+      : status === "past_due"
       ? "Payment overdue"
-      : entry.status === "pending"
+      : status === "pending"
       ? entry.paymentStatus === "processing"
         ? "Awaiting confirmation"
         : "Awaiting payment"
-      : entry.status.charAt(0).toUpperCase() + entry.status.slice(1);
-  return <span className={`rounded-full px-3 py-1 text-xs font-semibold ring-1 ring-inset ${map[entry.status] || map.expired}`}>{label}</span>;
+      : status.charAt(0).toUpperCase() + status.slice(1);
+  return <span className={`rounded-full px-3 py-1 text-xs font-semibold ring-1 ring-inset ${map[status] || map.expired}`}>{label}</span>;
 }
 
 export interface HistorySectionProps {
@@ -127,10 +166,22 @@ export const HistorySection: React.FC<HistorySectionProps> = ({
     );
   }
 
-  const current = memberships.find((entry) => entry.isActive || entry.status === "frozen" || entry.status === "past_due") || null;
-  const pending = memberships.filter((entry) => entry.status === "pending" && entry.paymentStatus !== "failed");
+  const now = Date.now();
+  // The term running today comes first. The list is newest first, so after
+  // an early renewal the NEW order (starting when this one ends) comes
+  // before it -- and used to be shown as current while the running term
+  // was listed as expired.
+  const current =
+    memberships.find((entry) => entry.isActive && !startsLater(entry, now)) ||
+    memberships.find((entry) => entry.status === "frozen" || entry.status === "past_due") ||
+    memberships.find((entry) => startsLater(entry, now)) ||
+    null;
+  const upNext = memberships.filter((entry) => entry !== current && startsLater(entry, now));
+  const pending = memberships.filter((entry) => entry.status === "pending" && entry.paymentStatus !== "failed" && !abandonedCheckout(entry, now));
   const progress = current ? termProgress(current.startDate, current.endDate) : null;
-  const past = memberships.filter((entry) => entry !== current && !pending.includes(entry));
+  const past = memberships.filter(
+    (entry) => entry !== current && !pending.includes(entry) && !upNext.includes(entry) && !abandonedCheckout(entry, now)
+  );
 
   const run = async (key: string, fn: () => Promise<string | void>) => {
     setBusy(key);
@@ -171,7 +222,7 @@ export const HistorySection: React.FC<HistorySectionProps> = ({
                       ? entry.paymentStatus === "processing"
                         ? "We have your transfer details and are confirming the payment."
                         : `Send ${money(entry.amount, entry.currency)} by bank transfer to activate this membership.`
-                      : "This order has not been paid yet."}
+                      : "Your card payment has not gone through. If you left the payment page, you can start again from Packages."}
                   </p>
                   <p className="text-xs text-gray-500">#{entry.orderNumber}</p>
                 </div>
@@ -215,6 +266,11 @@ export const HistorySection: React.FC<HistorySectionProps> = ({
               </div>
             </div>
 
+            {upNext.map((next) => (
+              <p key={next.id} className="mt-4 rounded-xl bg-sky-50 px-4 py-3 text-sm text-sky-900">
+                Next: {next.packageName} starts on {dateLabel(next.startDate)} and runs until {dateLabel(next.endDate)}.
+              </p>
+            ))}
             {current.status === "frozen" && (
               <p className="mt-4 rounded-xl bg-sky-50 px-4 py-3 text-sm text-sky-900">
                 Frozen until {dateLabel(current.freezeResumeAt)}. The days you are away are added to the end of your membership.
@@ -321,7 +377,7 @@ export const HistorySection: React.FC<HistorySectionProps> = ({
               </button>
             )}
 
-            {current.daysLeft !== null && current.daysLeft <= 7 && !current.recurring && current.status === "active" && (
+            {current.daysLeft !== null && current.daysLeft <= 7 && !current.recurring && current.status === "active" && upNext.length === 0 && (
               <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-amber-50 px-4 py-3">
                 <p className="text-sm text-amber-900">
                   Your membership ends in {current.daysLeft} day{current.daysLeft === 1 ? "" : "s"}. Renew now and the new term starts when this one ends.
@@ -336,7 +392,7 @@ export const HistorySection: React.FC<HistorySectionProps> = ({
           <div className="rounded-2xl border-2 border-dashed border-gray-300 bg-white p-8 text-center">
             <h3 className="text-lg font-bold text-gray-900">No active membership</h3>
             <p className="mt-1 text-sm text-gray-500">
-              {memberships.length ? "Your last package has run out. Pick one up to get back in." : "You have not bought a package yet."}
+              {past.length ? "Your last package has run out. Pick one up to get back in." : "You have not bought a package yet."}
             </p>
             <Link href="/packages" className="mt-5 inline-block rounded-lg bg-primary px-5 py-3 text-sm font-semibold text-black hover:opacity-90">
               See packages
@@ -348,7 +404,7 @@ export const HistorySection: React.FC<HistorySectionProps> = ({
       {/* ---- What they have bought before ---- */}
       {past.length > 0 && (
         <section>
-          <h2 className="mb-4 text-xl font-bold text-black sm:text-2xl">Previous packages</h2>
+          <h2 className="mb-4 text-xl font-bold text-black sm:text-2xl">Package history</h2>
           <div className="overflow-hidden rounded-2xl border-2 border-gray-200 bg-white">
             <div className="overflow-x-auto">
               <table className="w-full">
@@ -370,9 +426,11 @@ export const HistorySection: React.FC<HistorySectionProps> = ({
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-700">{dateLabel(entry.startDate)}</td>
                       <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-700">{dateLabel(entry.endDate)}</td>
-                      <td className="whitespace-nowrap px-4 py-3 text-sm font-semibold text-black">{money(entry.amount, entry.currency)}</td>
+                      <td className="whitespace-nowrap px-4 py-3 text-sm font-semibold text-black">
+                        {entry.paymentStatus === "paid" || entry.paymentStatus === "refunded" ? money(entry.amount, entry.currency) : "Not paid"}
+                      </td>
                       <td className="px-4 py-3">
-                        <StatusPill entry={{ ...entry, status: entry.paymentStatus === "paid" && entry.status === "active" ? "expired" : entry.status }} />
+                        <StatusPill entry={entry} />
                       </td>
                       <td className="px-4 py-3 text-right">
                         {entry.invoiceNumber && (

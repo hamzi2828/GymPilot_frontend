@@ -36,6 +36,8 @@ export interface BankAccount {
 
 export interface PaymentMethods {
   card: boolean;
+  /** Why card is off, when it is (e.g. the gym has not finished connecting Stripe). */
+  cardUnavailable?: { code: string | null; reason: string } | null;
   bankTransfer: boolean;
   banks: BankAccount[];
   currency: string;
