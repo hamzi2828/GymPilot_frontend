@@ -5,7 +5,7 @@
 // printed.
 
 import { useCallback, useEffect, useState } from "react";
-import { PageHeader, Card, PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, TextArea, Badge, Spinner, Table } from "../../_shared/ui";
+import { PageHeader, Card, PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, TextArea, SelectField, Badge, Spinner, Table, ErrorState } from "../../_shared/ui";
 import { API_BASE, apiGet, apiJson, authHeaders } from "../../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
 
@@ -42,6 +42,16 @@ const today = () => new Date().toISOString().slice(0, 10);
 const monthStart = (key: string) => `${key.slice(0, 7)}-01`;
 const TONE: Record<Payslip["status"], "neutral" | "blue" | "green" | "rose"> = { draft: "neutral", issued: "blue", paid: "green", void: "rose" };
 const fmt = (n: number, c: string) => `${c} ${Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+// The methods hrController.setPayslipStatus accepts; anything else is filed
+// as a bank transfer.
+const PAYMENT_METHODS = [
+  { value: "bank_transfer", label: "Bank transfer" },
+  { value: "cash", label: "Cash" },
+  { value: "card", label: "Card" },
+  { value: "cheque", label: "Cheque" },
+  { value: "online", label: "Online" },
+  { value: "other", label: "Other" },
+];
 
 export default function PayslipsPage() {
   const { can } = usePermissions();
@@ -50,18 +60,22 @@ export default function PayslipsPage() {
   const [to, setTo] = useState(today());
   const [rows, setRows] = useState<Payslip[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadErr, setLoadErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
   const [editing, setEditing] = useState<Payslip | null>(null);
   const [draft, setDraft] = useState<{ earnings: Line[]; deductions: Line[]; notes: string }>({ earnings: [], deductions: [], notes: "" });
+  const [paying, setPaying] = useState<Payslip | null>(null);
+  const [payDraft, setPayDraft] = useState({ paymentMethod: "bank_transfer", paidOn: today(), reference: "" });
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const r = await apiGet<{ data: Payslip[] }>(`${API_BASE}/staff/payslips?from=${from}&to=${to}`);
       setRows(r.data || []);
+      setLoadErr(null);
     } catch (e) {
-      setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not load payslips" });
+      setLoadErr(e instanceof Error ? e.message : "Could not load payslips");
     } finally {
       setLoading(false);
     }
@@ -86,20 +100,37 @@ export default function PayslipsPage() {
     }
   };
 
-  const act = async (p: Payslip, action: "issue" | "pay" | "void") => {
-    let body: Record<string, unknown> = {};
-    if (action === "pay") {
-      const reference = prompt("Payment reference (optional):");
-      if (reference === null) return;
-      body = { reference, paymentMethod: "bank_transfer" };
-    } else if (action === "void" && !confirm(`Void ${p.number}?`)) return;
+  const act = async (p: Payslip, action: "issue" | "pay" | "void", body: Record<string, unknown> = {}) => {
+    if (action === "void" && !confirm(`Void ${p.number}?`)) return false;
     try {
       const r = await apiJson<{ message: string }>(`${API_BASE}/staff/payslips/${p.id}/${action}`, "POST", body);
       setNotice({ tone: "ok", text: r.message });
       await load();
+      return true;
     } catch (e) {
       setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not update" });
+      return false;
     }
+  };
+
+  // Paying files the wage under Accounts → Expenses with this method, so it
+  // is asked for rather than assumed.
+  const openPay = (p: Payslip) => {
+    setPaying(p);
+    setNotice(null);
+    setPayDraft({ paymentMethod: "bank_transfer", paidOn: today(), reference: "" });
+  };
+
+  const confirmPay = async () => {
+    if (!paying) return;
+    setBusy(true);
+    const done = await act(paying, "pay", {
+      paymentMethod: payDraft.paymentMethod,
+      paidOn: payDraft.paidOn || undefined,
+      reference: payDraft.reference.trim(),
+    });
+    setBusy(false);
+    if (done) setPaying(null);
   };
 
   const openPdf = async (p: Payslip) => {
@@ -171,6 +202,8 @@ export default function PayslipsPage() {
       </Card>
       {loading ? (
         <Spinner />
+      ) : loadErr ? (
+        <ErrorState message={loadErr} onRetry={load} />
       ) : (
         <Table
           columns={["Payslip", "Staff", "Base", "PT", "Deductions", "Net", "Status", ""]}
@@ -201,13 +234,31 @@ export default function PayslipsPage() {
               <SecondaryButton onClick={() => openPdf(p)}>PDF</SecondaryButton>
               {editable && p.status !== "paid" && p.status !== "void" && <SecondaryButton onClick={() => openEdit(p)}>Edit</SecondaryButton>}
               {editable && p.status === "draft" && <SecondaryButton onClick={() => act(p, "issue")}>Issue</SecondaryButton>}
-              {editable && (p.status === "draft" || p.status === "issued") && <PrimaryButton onClick={() => act(p, "pay")}>Mark paid</PrimaryButton>}
+              {editable && (p.status === "draft" || p.status === "issued") && <PrimaryButton onClick={() => openPay(p)}>Mark paid</PrimaryButton>}
               {editable && p.status !== "paid" && p.status !== "void" && <DangerButton onClick={() => act(p, "void")}>Void</DangerButton>}
             </div>,
           ])}
           empty="No payslips for this period yet. Draft them from the button above."
         />
       )}
+
+      <Modal open={!!paying} onClose={() => setPaying(null)} title={paying ? `Pay ${paying.number} · ${paying.staff_name}` : ""} size="sm">
+        {paying && (
+          <div className="space-y-4">
+            <p className="text-sm text-neutral-600">
+              Net pay <strong>{fmt(paying.net, paying.currency)}</strong>. Recording it files the wage under Accounts → Expenses.
+            </p>
+            <SelectField label="Paid by" value={payDraft.paymentMethod} allowClear={false} onChange={(v) => setPayDraft({ ...payDraft, paymentMethod: v })} options={PAYMENT_METHODS} />
+            <TextField label="Paid on" type="date" value={payDraft.paidOn} onChange={(v) => setPayDraft({ ...payDraft, paidOn: v })} />
+            <TextField label="Payment reference (optional)" value={payDraft.reference} onChange={(v) => setPayDraft({ ...payDraft, reference: v })} placeholder="Bank ref, cheque number…" />
+            {notice?.tone === "error" && <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{notice.text}</p>}
+            <div className="flex justify-end gap-2">
+              <SecondaryButton onClick={() => setPaying(null)} disabled={busy}>Cancel</SecondaryButton>
+              <PrimaryButton onClick={confirmPay} disabled={busy}>{busy ? "Saving…" : "Mark paid"}</PrimaryButton>
+            </div>
+          </div>
+        )}
+      </Modal>
 
       <Modal open={!!editing} onClose={() => setEditing(null)} title={editing ? `${editing.number} · ${editing.staff_name}` : ""} size="lg">
         {editing && (

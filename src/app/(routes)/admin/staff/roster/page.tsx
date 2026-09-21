@@ -6,7 +6,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { PageHeader, Card, SecondaryButton, Spinner } from "../../_shared/ui";
+import { PageHeader, Card, SecondaryButton, Spinner, ErrorState } from "../../_shared/ui";
 import { API_BASE, apiGet } from "../../_shared/api";
 
 interface Day {
@@ -38,6 +38,7 @@ export default function RosterPage() {
     try {
       const r = await apiGet<{ data: Day[] }>(`${API_BASE}/staff/roster?from=${from}&to=${addDays(from, 6)}`);
       setDays(r.data || []);
+      setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load the roster");
     } finally {
@@ -65,9 +66,10 @@ export default function RosterPage() {
       <p className="mb-4 text-sm text-neutral-600">
         Week of {from}. Shifts come from each person&apos;s record under <Link href="/admin/staff" className="underline">Staff</Link>; approved <Link href="/admin/staff/leave" className="underline">leave</Link> is shown in its place.
       </p>
-      {error && <p className="mb-4 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
       {loading ? (
         <Spinner />
+      ) : error ? (
+        <ErrorState message={error} onRetry={load} />
       ) : (
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-7">
           {days.map((day) => (

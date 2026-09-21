@@ -5,7 +5,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { FiPlus } from "react-icons/fi";
-import { PageHeader, PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, TextArea, SelectField, Toggle, Badge, Spinner, Table } from "../../_shared/ui";
+import { PageHeader, PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, TextArea, SelectField, Toggle, Badge, Spinner, Table, ErrorState } from "../../_shared/ui";
 import { API_BASE, apiGet, apiJson } from "../../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
 
@@ -44,6 +44,7 @@ export default function LeavePage() {
   const [staff, setStaff] = useState<StaffOption[]>([]);
   const [status, setStatus] = useState("");
   const [loading, setLoading] = useState(true);
+  const [loadErr, setLoadErr] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -54,8 +55,9 @@ export default function LeavePage() {
     try {
       const r = await apiGet<{ data: Leave[] }>(`${API_BASE}/staff/leave${status ? `?status=${status}` : ""}`);
       setRows(r.data || []);
+      setLoadErr(null);
     } catch (e) {
-      setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not load leave" });
+      setLoadErr(e instanceof Error ? e.message : "Could not load leave");
     } finally {
       setLoading(false);
     }
@@ -72,7 +74,13 @@ export default function LeavePage() {
   }, []);
 
   const decide = async (l: Leave, next: "approved" | "rejected" | "pending") => {
-    const note = next === "rejected" ? prompt("Reason (optional):") || "" : "";
+    let note = "";
+    if (next === "rejected") {
+      // Cancel on the prompt means "not now", not "reject without a reason".
+      const reason = prompt("Reason (optional):");
+      if (reason === null) return;
+      note = reason;
+    }
     try {
       await apiJson(`${API_BASE}/staff/leave/${l.id}`, "PATCH", { status: next, note });
       await load();
@@ -81,9 +89,12 @@ export default function LeavePage() {
     }
   };
 
+  // Sent on its own, `unpaid` changes only that: the decision, its note and
+  // who made it stay as they were. Withdrawn leave is left alone.
   const toggleUnpaid = async (l: Leave) => {
+    if (l.status === "cancelled") return;
     try {
-      await apiJson(`${API_BASE}/staff/leave/${l.id}`, "PATCH", { status: l.status === "cancelled" ? "pending" : l.status, unpaid: !l.unpaid });
+      await apiJson(`${API_BASE}/staff/leave/${l.id}`, "PATCH", { unpaid: !l.unpaid });
       await load();
     } catch (e) {
       setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not update" });
@@ -123,6 +134,8 @@ export default function LeavePage() {
       </div>
       {loading ? (
         <Spinner />
+      ) : loadErr ? (
+        <ErrorState message={loadErr} onRetry={load} />
       ) : (
         <Table
           columns={["Who", "Type", "Dates", "Reason", "Status", ""]}
