@@ -75,12 +75,23 @@ export interface JwtBasePayload {
     return token ? { Authorization: `Bearer ${token}` } : {};
   }
 
+  // The cookies live as long as the token itself (7 days, or 30 with "Remember
+  // me"). As session cookies they vanished when the browser closed while the
+  // token stayed in localStorage, so the middleware sent a still-signed-in
+  // member back to the sign-in page.
+  function cookieLifetime(token: string | null): string {
+    const exp = token ? decodeJwt<JwtBasePayload>(token)?.exp : undefined;
+    if (!exp) return '';
+    const seconds = Math.floor(exp - Date.now() / 1000);
+    return seconds > 0 ? `; max-age=${seconds}` : '';
+  }
+
   // Set token in localStorage and cookie so middleware can read it
   export function setToken(token: string) {
     if (typeof window === 'undefined') return;
     localStorage.setItem(TOKEN_KEY, token);
     try {
-      document.cookie = `${TOKEN_KEY}=${encodeURIComponent(token)}; path=/; samesite=lax`;
+      document.cookie = `${TOKEN_KEY}=${encodeURIComponent(token)}; path=/; samesite=lax${cookieLifetime(token)}`;
     } catch {}
   }
 
@@ -120,7 +131,8 @@ export interface JwtBasePayload {
     if (typeof window === 'undefined') return;
     localStorage.setItem(ROLE_KEY, role);
     try {
-      document.cookie = `${ROLE_KEY}=${encodeURIComponent(role)}; path=/; samesite=lax`;
+      // Same lifetime as the token set just before it (see cookieLifetime).
+      document.cookie = `${ROLE_KEY}=${encodeURIComponent(role)}; path=/; samesite=lax${cookieLifetime(getAuthToken())}`;
     } catch {}
   }
 

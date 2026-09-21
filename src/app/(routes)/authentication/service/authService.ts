@@ -8,8 +8,6 @@ export interface SignUpPayload {
 }
 
 export async function signUp(payload: SignUpPayload) {
-    console.log("payload", payload);
-
   const res = await fetch(`${API_BASE_URL}/user/signup`, {
     method: "POST",
     headers: {
@@ -33,6 +31,8 @@ export async function signUp(payload: SignUpPayload) {
 export interface LoginPayload {
   email: string;
   password: string;
+  /** "Remember me": the API issues a 30-day session instead of 7 days. */
+  remember?: boolean;
 }
 
 export interface LoginResponse {

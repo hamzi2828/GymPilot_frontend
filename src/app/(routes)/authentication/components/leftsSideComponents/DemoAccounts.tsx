@@ -9,26 +9,34 @@ interface DemoAccountsProps {
   fillCredentials: (email: string, password: string) => void;
 }
 
-// Demo logins for reviewers. The credentials match the accounts seeded into the
-// dev database:
+// Demo logins are for reviewers on a dev/staging build only. Every gym's real
+// sign-in page renders this component, so it stays hidden unless the build sets
+// NEXT_PUBLIC_SHOW_DEMO_LOGINS=true. next.config.ts always defines the flag, so
+// in a normal build this is a constant `false` and the minifier drops the
+// credentials below from the bundle entirely.
+export const SHOW_DEMO_LOGINS = process.env.NEXT_PUBLIC_SHOW_DEMO_LOGINS === 'true';
+
+// The credentials match the accounts seeded into the dev database:
 //   - admin@gymwear.com / admin123      (Seeder/createAdmin.js)
 //   - ...@gympilot.test / Gym@12345     (Seeder/createAttendance.js members)
-const DEMO = [
-  {
-    key: 'admin',
-    label: 'Admin',
-    caption: 'admin@gymwear.com',
-    email: 'admin@gymwear.com',
-    password: 'admin123',
-  },
-  {
-    key: 'user',
-    label: 'Member',
-    caption: 'ayesha.khan@gympilot.test',
-    email: 'ayesha.khan@gympilot.test',
-    password: 'Gym@12345',
-  },
-] as const;
+const DEMO = SHOW_DEMO_LOGINS
+  ? [
+      {
+        key: 'admin',
+        label: 'Admin',
+        caption: 'admin@gymwear.com',
+        email: 'admin@gymwear.com',
+        password: 'admin123',
+      },
+      {
+        key: 'user',
+        label: 'Member',
+        caption: 'ayesha.khan@gympilot.test',
+        email: 'ayesha.khan@gympilot.test',
+        password: 'Gym@12345',
+      },
+    ]
+  : [];
 
 // The super admin signs in on the platform panel, which lives in its own app
 // (GymPilot_frontendAdmin) against the platform API, so its card is a plain
@@ -40,7 +48,7 @@ const cardClass =
   'group flex flex-col items-start rounded-2xl border-2 border-gray-200 bg-white/80 px-4 py-3 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-[#ff6b2c] hover:shadow-md';
 
 export const DemoAccounts: React.FC<DemoAccountsProps> = ({ show, fillCredentials }) => {
-  if (!show) return null;
+  if (!SHOW_DEMO_LOGINS || !show) return null;
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-3">

@@ -251,7 +251,11 @@ const AuthPage: React.FC = () => {
       }
 
       // Sign In flow
-      const res = await login({ email: formData.email, password: formData.password });
+      const res = await login({
+        email: formData.email,
+        password: formData.password,
+        remember: formData.rememberMe,
+      });
       if (res.requires2fa && res.challengeId) {
         // Password accepted; the emailed code comes next.
         setTwoFactor({ challengeId: res.challengeId, message: res.message });
