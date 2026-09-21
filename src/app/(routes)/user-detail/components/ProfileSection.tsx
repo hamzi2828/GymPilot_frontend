@@ -2,14 +2,17 @@
 
 import React, { Dispatch, SetStateAction, useEffect, useMemo, useState } from "react";
 import { getUserDetailForProfile } from "../service/userDetailService";
+import { toDateInputValue } from "@/helper/date";
 
 export interface UserProfileShape {
   firstName: string;
   lastName: string;
   email: string;
   phone: string;
-  dateOfBirth: string; // YYYY-MM-DD
+  dateOfBirth: string; // YYYY-MM-DD, or "" when not on file
   gender: "male" | "female" | "other";
+  /** Issued by the gym for the phone app; not editable here. */
+  username?: string;
 }
 
 export interface ProfileSectionProps<T extends UserProfileShape> {
@@ -56,14 +59,6 @@ const Field = ({
   </div>
 );
 
-// Ensure a safe YYYY-MM-DD string for <input type="date" />
-function toDateInput(d?: string | null): string {
-  if (!d) return new Date().toISOString().split("T")[0];
-  if (/^\d{4}-\d{2}-\d{2}$/.test(d)) return d;
-  const iso = new Date(d).toISOString();
-  return iso.split("T")[0];
-}
-
 export function ProfileSection<T extends UserProfileShape>({
   userProfile,
   isEditing,
@@ -91,7 +86,7 @@ export function ProfileSection<T extends UserProfileShape>({
           setUserProfile((prev) => {
             if (!prev) return payload as T;
             const merged = { ...prev, ...payload } as T;
-            merged.dateOfBirth = toDateInput(payload.dateOfBirth ?? prev.dateOfBirth);
+            merged.dateOfBirth = toDateInputValue(payload.dateOfBirth ?? prev.dateOfBirth);
             merged.gender = (payload.gender ?? prev.gender ?? "other") as T["gender"];
             merged.phone = payload.phone ?? prev.phone ?? "";
             return merged;
@@ -113,7 +108,9 @@ export function ProfileSection<T extends UserProfileShape>({
   const dobDisplay = useMemo(() => {
     if (!userProfile?.dateOfBirth) return '';
     try {
-      return new Date(userProfile.dateOfBirth).toLocaleDateString();
+      // A date-only value parses as midnight UTC; read it back in UTC too, or
+      // members west of Greenwich see the day before their birthday.
+      return new Date(userProfile.dateOfBirth).toLocaleDateString(undefined, { timeZone: "UTC" });
     } catch {
       return userProfile.dateOfBirth;
     }
@@ -136,7 +133,9 @@ export function ProfileSection<T extends UserProfileShape>({
       lastName: userProfile.lastName,
       email: userProfile.email ?? "",
       phone: userProfile.phone ?? "",
-      dateOfBirth: toDateInput(userProfile.dateOfBirth),
+      // Blank stays blank (the API stores it as "no birthday"); defaulting to
+      // today here used to save a fake birthday on any unrelated edit.
+      dateOfBirth: toDateInputValue(userProfile.dateOfBirth),
       gender: userProfile.gender ?? "other",
     } as Pick<T, "firstName" | "lastName" | "email" | "phone" | "dateOfBirth" | "gender">);
 
@@ -198,7 +197,7 @@ export function ProfileSection<T extends UserProfileShape>({
         {/* Date of Birth */}
         <Field
           label="Date of Birth"
-          value={isEditing ? toDateInput(userProfile?.dateOfBirth) : dobDisplay}
+          value={isEditing ? toDateInputValue(userProfile?.dateOfBirth) : dobDisplay}
           editing={isEditing}
           onChange={(v) => setUserProfile((prev) => (prev ? { ...prev, dateOfBirth: v } : null) as T)}
           type={isEditing ? "date" : "text"}
@@ -225,6 +224,18 @@ export function ProfileSection<T extends UserProfileShape>({
             </div>
           )}
         </div>
+
+        {/* The gym issues this for the phone app. Read-only: staff reissue it
+            from the admin panel if it ever needs to change. */}
+        {userProfile?.username && (
+          <div>
+            <label className="block text-sm font-semibold text-gray-900 mb-2">App Username</label>
+            <div className="w-full border-2 border-gray-100 rounded-lg px-4 py-3 bg-gray-50 text-gray-900 font-mono">
+              {userProfile.username}
+            </div>
+            <p className="mt-1 text-xs text-gray-500">Use this to sign in to the app.</p>
+          </div>
+        )}
       </div>
 
       {isEditing && (

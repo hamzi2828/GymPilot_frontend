@@ -5,6 +5,7 @@
 
 import React, { useCallback, useEffect, useState } from "react";
 import { getAuthHeader } from "@/helper/helper";
+import { localDateKey } from "@/helper/date";
 
 const API_BASE = process.env.NEXT_PUBLIC_BACKEND_URL || "";
 
@@ -23,7 +24,8 @@ async function call(path: string, method: string, body?: unknown) {
   return json;
 }
 
-const today = () => new Date().toISOString().slice(0, 10);
+// Local date: a leave request "from today" should mean the member's today.
+const today = () => localDateKey();
 const input = "w-full border-2 border-gray-200 rounded-lg px-4 py-3 focus:outline-none focus:border-primary";
 const btn = "rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50";
 const STATUS: Record<string, string> = { pending: "bg-amber-50 text-amber-800", approved: "bg-green-50 text-green-800", rejected: "bg-red-50 text-red-700", cancelled: "bg-gray-100 text-gray-600" };

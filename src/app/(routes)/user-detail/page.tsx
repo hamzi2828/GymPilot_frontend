@@ -23,6 +23,7 @@ import {
   getMyAttendance,
 } from "./service/userDetailService";
 import { getCurrentUser, UserPayload } from "@/helper/helper";
+import { localDateKey, toDateInputValue } from "@/helper/date";
 
 import {
   UserProfile,
@@ -67,14 +68,6 @@ const UserProfilePageContent: React.FC = () => {
   const showToast = (msg: string, type: "success" | "error" | "info" = "success") => {
     setToast({ show: true, msg, type });
     setTimeout(() => setToast({ show: false, msg: "", type }), 2500);
-  };
-
-  // Safely coerce incoming date to YYYY-MM-DD
-  const toDateInput = (d?: string | null) => {
-    if (!d) return new Date().toISOString().slice(0, 10);
-    if (/^\d{4}-\d{2}-\d{2}$/.test(d)) return d;
-    const iso = new Date(d).toISOString();
-    return iso.slice(0, 10);
   };
 
   // Packages and visits are fetched together -- the History tab is one story
@@ -143,9 +136,11 @@ const UserProfilePageContent: React.FC = () => {
             lastName: "",
             email: currentUser.email ?? "",
             phone: "",
-            dateOfBirth: toDateInput(),
+            // No birthday on file stays blank; see toDateInputValue.
+            dateOfBirth: "",
             gender: "other",
-            profileImage: "/default-avatar.png",
+            // Blank shows the member's initial rather than a stock picture.
+            profileImage: "",
             joinedDate: new Date().toISOString(),
             totalOrders: 0,
             totalSpent: 0,
@@ -161,7 +156,7 @@ const UserProfilePageContent: React.FC = () => {
           lastName: pl.lastName ?? base.lastName,
           phone: pl.phone ?? base.phone,
           gender: (pl.gender as UserProfile["gender"]) ?? base.gender,
-          dateOfBirth: toDateInput(pl.dateOfBirth ?? base.dateOfBirth),
+          dateOfBirth: toDateInputValue(pl.dateOfBirth ?? base.dateOfBirth),
           profileImage: pl.avatarUrl ?? pl.profileImage ?? base.profileImage,
           joinedDate: pl.joinedDate ?? base.joinedDate,
           totalOrders: pl.totalOrders ?? base.totalOrders,
@@ -204,8 +199,8 @@ const UserProfilePageContent: React.FC = () => {
       phone: "",
       dateOfBirth: "",
       gender: "other",
-      profileImage: "/images/gym1.svg",
-      joinedDate: new Date().toISOString().slice(0, 10),
+      profileImage: "",
+      joinedDate: localDateKey(),
       totalOrders: 0,
       totalSpent: 0,
       loyaltyPoints: 0,

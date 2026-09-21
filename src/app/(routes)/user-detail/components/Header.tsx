@@ -13,11 +13,20 @@ export interface HeaderProps {
   };
 }
 
+const API_BASE = (process.env.NEXT_PUBLIC_BACKEND_URL || "").replace(/\/+$/, "");
+
+// Photos kept on the API's own disk come back as "/uploads/...", a path on the
+// API host rather than on this website, so they are resolved against it --
+// the same way blog and trainer images are.
+function resolveAvatar(src: string): string {
+  return src.startsWith("/uploads/") ? `${API_BASE}${src}` : src;
+}
+
 export const Header: React.FC<HeaderProps> = ({ userProfile }) => {
   const initial = (userProfile.firstName?.[0] || userProfile.email?.[0] || "?").toUpperCase();
   const [imgError, setImgError] = useState(false);
   const [imgLoaded, setImgLoaded] = useState(false);
-  const imageSrc = useMemo(() => userProfile.profileImage?.trim() || "", [userProfile.profileImage]);
+  const imageSrc = useMemo(() => resolveAvatar(userProfile.profileImage?.trim() || ""), [userProfile.profileImage]);
   const hasValidImage = useMemo(() => {
     if (!imageSrc) return false;
     const lowered = imageSrc.toLowerCase();

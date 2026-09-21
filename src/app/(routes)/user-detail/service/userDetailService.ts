@@ -28,6 +28,8 @@ export interface UserProfile {
   totalOrders: number;
   totalSpent: number;
   loyaltyPoints: number;
+  /** The phone-app sign-in name the API issues every account. */
+  username?: string;
 }
 export interface UpdateUserPayload {
   firstName: string;
@@ -287,7 +289,6 @@ export async function getMembershipHistory(): Promise<MembershipOrder[]> {
       const freeze = (order.freeze as Record<string, unknown>) || {};
       const sessions = (order.sessions as Record<string, unknown>) || {};
       const invoice = (order.invoice as Record<string, unknown>) || {};
-      const billing = (pkg.billing as Record<string, unknown>) || {};
 
       const endDate = subscription.endDate ? String(subscription.endDate) : null;
       const end = endDate ? new Date(endDate).getTime() : null;
@@ -313,7 +314,10 @@ export async function getMembershipHistory(): Promise<MembershipOrder[]> {
           !!end &&
           end >= now,
         daysLeft: end ? Math.ceil((end - now) / DAY_MS) : null,
-        recurring: billing.mode === "recurring" || !!payment.stripeSubscriptionId,
+        // Only a Stripe subscription renews by itself. A "recurring" package
+        // paid by bank transfer or cash still has to be renewed by hand, and
+        // showing it as auto-renewing hid "Renew now" until it lapsed.
+        recurring: !!payment.stripeSubscriptionId,
         manageable: !!payment.stripeCustomerId,
         cancelAtPeriodEnd: !!subscription.cancelAtPeriodEnd,
         freezeResumeAt: freeze.resumeAt ? String(freeze.resumeAt) : null,

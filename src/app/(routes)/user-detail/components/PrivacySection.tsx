@@ -7,6 +7,7 @@
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getAuthHeader, removeToken } from "@/helper/helper";
+import { localDateKey } from "@/helper/date";
 
 const API_BASE = process.env.NEXT_PUBLIC_BACKEND_URL || "";
 
@@ -115,7 +116,7 @@ export const PrivacySection: React.FC<{ twoFactorEnabled?: boolean; biometricCon
                   const url = URL.createObjectURL(blob);
                   const a = document.createElement("a");
                   a.href = url;
-                  a.download = `my-data-${new Date().toISOString().slice(0, 10)}.json`;
+                  a.download = `my-data-${localDateKey()}.json`;
                   a.click();
                   setTimeout(() => URL.revokeObjectURL(url), 10000);
                   return "Your data is downloading.";

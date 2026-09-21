@@ -6,6 +6,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { getPtTrainers, getPtAvailability, bookPtSession, getMyPtSessions, cancelPtSession, type PtTrainer, type PtRules, type PtSlot, type PtSession, type PtPack } from "../../classes/services/ptService";
+import { localDateKey } from "@/helper/date";
 
 const dayLabel = (key: string) => {
   const [y, m, d] = key.split("-").map(Number);
@@ -15,7 +16,8 @@ const addDays = (key: string, n: number) => {
   const [y, m, d] = key.split("-").map(Number);
   return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
 };
-const today = () => new Date().toISOString().slice(0, 10);
+// The member's own date, not UTC's, or the week can open on the wrong day.
+const today = () => localDateKey();
 
 const STATUS_STYLE: Record<PtSession["status"], string> = {
   scheduled: "bg-emerald-50 text-emerald-700 border-emerald-200",
