@@ -15,9 +15,11 @@ import {
   Toggle,
   Spinner,
   EmptyState,
+  ErrorState,
+  UpgradePlanLink,
   Select2,
 } from "../_shared/ui";
-import { API_BASE, apiGet, apiJson } from "../_shared/api";
+import { API_BASE, apiGet, apiJson, isPlanLimitError } from "../_shared/api";
 import { currencyOptions } from "@/data/countries";
 
 const CURRENCY_OPTIONS = currencyOptions();
@@ -87,13 +89,16 @@ interface StaffMember {
   attendance_location: string;
 }
 
+// From /roles/options: active roles only, readable by any staff account.
+// Roles with `is_staff: false` (members) are left out; an older API that
+// doesn't send the flag falls back to leaving out the reserved member slug.
 interface Role {
-  id: string;
   name: string;
   slug: string;
-  is_staff: boolean;
-  is_active: boolean;
+  is_staff?: boolean;
 }
+
+const MEMBER_SLUG = "user";
 
 interface StaffResponse {
   month_label: string;
@@ -268,6 +273,7 @@ export default function StaffAdminPage() {
   const [q, setQ] = useState("");
 
   const [loading, setLoading] = useState(true);
+  const [loadErr, setLoadErr] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -277,6 +283,7 @@ export default function StaffAdminPage() {
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [saving, setSaving] = useState(false);
   const [formErr, setFormErr] = useState<string | null>(null);
+  const [formLimit, setFormLimit] = useState(false);
 
   useEffect(() => {
     const timer = setTimeout(() => setQ(search.trim()), 350);
@@ -307,9 +314,11 @@ export default function StaffAdminPage() {
       setCounts(res.counts);
       setDepartments(res.departments || []);
       setMonthLabel(res.month_label || "");
+      setLoadErr(null);
       setErr(null);
     } catch (e) {
-      setErr(e instanceof Error ? e.message : "Could not load staff");
+      // Shown in place of the table, not as "No staff yet".
+      setLoadErr(e instanceof Error ? e.message : "Could not load staff");
       setStaff([]);
     } finally {
       setLoading(false);
@@ -321,9 +330,17 @@ export default function StaffAdminPage() {
   }, [load]);
 
   // Roles are needed for the picker; a failure here is not fatal to the list.
+  // /roles/options rather than /roles: registering staff needs the Staff tab,
+  // not the Roles tab as well.
   useEffect(() => {
-    apiGet<{ roles: Role[] }>(`${API_BASE}/roles`)
-      .then((res) => setRoles((res.roles || []).filter((role) => role.is_staff && role.is_active)))
+    apiGet<{ data?: Role[] }>(`${API_BASE}/roles/options`)
+      .then((res) =>
+        setRoles(
+          (res.data || []).filter((role) =>
+            role.is_staff === undefined ? role.slug !== MEMBER_SLUG : role.is_staff
+          )
+        )
+      )
       .catch(() => setRoles([]));
   }, []);
 
@@ -339,6 +356,7 @@ export default function StaffAdminPage() {
     setDraft({ ...emptyDraft });
     setShifts([]);
     setFormErr(null);
+    setFormLimit(false);
     setOpen(true);
   };
 
@@ -375,6 +393,7 @@ export default function StaffAdminPage() {
     });
     setShifts(member.schedule || []);
     setFormErr(null);
+    setFormLimit(false);
     setOpen(true);
   };
 
@@ -433,6 +452,7 @@ export default function StaffAdminPage() {
 
     setSaving(true);
     setFormErr(null);
+    setFormLimit(false);
     try {
       if (editing) {
         await apiJson(`${API_BASE}/staff/${editing.id}`, "PUT", payload());
@@ -449,6 +469,7 @@ export default function StaffAdminPage() {
       await load();
     } catch (e) {
       setFormErr(e instanceof Error ? e.message : "Could not save this staff member");
+      setFormLimit(isPlanLimitError(e));
     } finally {
       setSaving(false);
     }
@@ -596,6 +617,8 @@ export default function StaffAdminPage() {
 
       {loading ? (
         <Spinner />
+      ) : loadErr ? (
+        <ErrorState message={loadErr} onRetry={load} />
       ) : !staff.length ? (
         <EmptyState
           title="No staff yet"
@@ -993,7 +1016,10 @@ export default function StaffAdminPage() {
           </section>
 
           {formErr && (
-            <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">{formErr}</p>
+            <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
+              {formErr}
+              {formLimit && <UpgradePlanLink />}
+            </p>
           )}
 
           <div className="flex justify-end gap-2 pt-1">

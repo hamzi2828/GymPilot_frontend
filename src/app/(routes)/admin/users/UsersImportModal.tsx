@@ -5,7 +5,7 @@
 
 import { useState } from "react";
 import { Modal, PrimaryButton, SecondaryButton } from "../_shared/ui";
-import { API_BASE, authHeaders } from "../_shared/api";
+import { API_BASE, apiForm } from "../_shared/api";
 
 interface Report {
   total: number;
@@ -34,9 +34,9 @@ export default function UsersImportModal({ open, onClose, onImported }: { open: 
       const form = new FormData();
       form.append("file", file);
       form.append("dryRun", dryRun ? "1" : "0");
-      const res = await fetch(`${API_BASE}/admin/users/import`, { method: "POST", headers: authHeaders(), body: form });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json?.message || "Import failed");
+      // Through the shared helper so an oversized file or a plan limit comes
+      // back as a sentence rather than a parse error.
+      const json = await apiForm<{ data: Report }>(`${API_BASE}/admin/users/import`, "POST", form);
       setReport(json.data);
       if (!dryRun) onImported();
     } catch (e) {

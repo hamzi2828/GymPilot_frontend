@@ -12,8 +12,11 @@ import {
   Badge,
   Spinner,
   Table,
+  ErrorState,
+  UpgradePlanLink,
 } from "../_shared/ui";
-import { API_BASE, GYMFOLIO_API, apiGet, apiJson } from "../_shared/api";
+import { API_BASE, GYMFOLIO_API, apiGet, apiJson, isPlanLimitError } from "../_shared/api";
+import { usePermissions } from "@/components/admin/PermissionsProvider";
 import UsersImportModal from "./UsersImportModal";
 import MemberProfileModal from "./MemberProfileModal";
 
@@ -22,8 +25,8 @@ interface User {
   firstName?: string;
   lastName?: string;
   email: string;
-  role?: "user" | "admin" | "moderator";
-  status?: "active" | "inactive" | "blocked";
+  // A role slug; roles are documents now, so any string a gym has created.
+  role?: string;
   createdAt?: string;
   phone?: string | null;
   tags?: string[];
@@ -37,10 +40,12 @@ interface User {
 // when two members keep mixing theirs up, easy to replace.
 function UsernameCell({
   user,
+  canManage,
   onRegenerated,
   onNotice,
 }: {
   user: User;
+  canManage: boolean;
   onRegenerated: () => void;
   onNotice: (tone: "ok" | "warn", text: string) => void;
 }) {
@@ -86,15 +91,17 @@ function UsernameCell({
       >
         {copied ? "copied" : "copy"}
       </button>
-      <button
-        type="button"
-        onClick={regenerate}
-        disabled={busy}
-        title="Issue a new username"
-        className="rounded px-1 py-0.5 text-[11px] font-medium text-neutral-400 hover:bg-neutral-100 hover:text-neutral-800 disabled:opacity-50"
-      >
-        {busy ? "…" : "new"}
-      </button>
+      {canManage && (
+        <button
+          type="button"
+          onClick={regenerate}
+          disabled={busy}
+          title="Issue a new username"
+          className="rounded px-1 py-0.5 text-[11px] font-medium text-neutral-400 hover:bg-neutral-100 hover:text-neutral-800 disabled:opacity-50"
+        >
+          {busy ? "…" : "new"}
+        </button>
+      )}
     </div>
   );
 }
@@ -103,11 +110,13 @@ function UsernameCell({
 // so a role invented there is immediately assignable here. Promoting someone
 // to a staff role also gives them payroll and a roster -- edit those on the
 // Staff tab.
+//
+// Read from /roles/options (active roles, any staff account) rather than
+// /roles, which needs the Roles tab and would leave a receptionist who may
+// edit users with an empty picker.
 interface RoleOption {
   slug: string;
   name: string;
-  is_staff: boolean;
-  is_active: boolean;
 }
 
 interface PackageOption {
@@ -119,8 +128,15 @@ interface PackageOption {
 }
 
 export default function UsersAdminPage() {
+  const { can } = usePermissions();
+  // Every write on this page is gated on users:manage by the backend; the
+  // package assignment is a package-orders write.
+  const canManage = can("users", "manage");
+  const canAssign = can("package-orders", "manage");
+
   const [list, setList] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadErr, setLoadErr] = useState<string | null>(null);
   const [selected, setSelected] = useState<User | null>(null);
   const [role, setRole] = useState("");
   const [roles, setRoles] = useState<RoleOption[]>([]);
@@ -133,6 +149,7 @@ export default function UsersAdminPage() {
   const [tagFilter, setTagFilter] = useState("");
   const [creating, setCreating] = useState(false);
   const [createErr, setCreateErr] = useState<string | null>(null);
+  const [createLimit, setCreateLimit] = useState(false);
   const [notice, setNotice] = useState<{ tone: "ok" | "warn"; text: string } | null>(null);
   const emptyDraft = { firstName: "", lastName: "", email: "", phone: "", role: "user" };
   const [draft, setDraft] = useState(emptyDraft);
@@ -184,6 +201,7 @@ export default function UsersAdminPage() {
   const openCreate = () => {
     setDraft(emptyDraft);
     setCreateErr(null);
+    setCreateLimit(false);
     setCreateOpen(true);
   };
 
@@ -194,6 +212,7 @@ export default function UsersAdminPage() {
     }
     setCreating(true);
     setCreateErr(null);
+    setCreateLimit(false);
     try {
       // The password is generated server-side and emailed — it is never sent
       // from or shown in the browser.
@@ -217,6 +236,7 @@ export default function UsersAdminPage() {
       await load();
     } catch (e) {
       setCreateErr(e instanceof Error ? e.message : "Could not create the user.");
+      setCreateLimit(isPlanLimitError(e));
     } finally {
       setCreating(false);
     }
@@ -227,8 +247,11 @@ export default function UsersAdminPage() {
     try {
       const r = await apiGet<{ data?: User[]; users?: User[] }>(`${API_BASE}/get/allUsers`);
       setList(r.data || r.users || []);
-    } catch {
-      setList([]);
+      setLoadErr(null);
+    } catch (e) {
+      // Kept apart from an empty list: "No users yet" over a failed request
+      // reads as the members having gone.
+      setLoadErr(e instanceof Error ? e.message : "Could not load users.");
     } finally {
       setLoading(false);
     }
@@ -237,18 +260,32 @@ export default function UsersAdminPage() {
   useEffect(() => { load(); }, []);
 
   useEffect(() => {
-    apiGet<{ roles: RoleOption[] }>(`${API_BASE}/roles`)
-      .then((r) => setRoles((r.roles || []).filter((entry) => entry.is_active)))
+    apiGet<{ data?: RoleOption[] }>(`${API_BASE}/roles/options`)
+      .then((r) => setRoles(r.data || []))
       // A failure here is not fatal: the list still renders, only the role
-      // picker is empty, and this admin may simply not hold the Roles tab.
+      // picker is empty.
       .catch(() => setRoles([]));
   }, []);
 
   const roleOptions = roles.map((entry) => ({
     value: entry.slug,
     label: entry.name,
-    hint: entry.is_staff ? `${entry.slug} · staff` : entry.slug,
+    hint: entry.slug,
   }));
+  const roleNames = new Map(roles.map((entry) => [entry.slug, entry.name]));
+
+  // Deactivating signs the account out and keeps it out until reactivated;
+  // the backend refuses switching yourself or the last administrator off.
+  const setActive = async (u: User, isActive: boolean) => {
+    if (!isActive && !confirm(`Deactivate ${u.email}? They are signed out and cannot sign in until reactivated.`)) return;
+    try {
+      const r = await apiJson<{ message: string }>(`${API_BASE}/update/status/${u._id}`, "PUT", { isActive });
+      setNotice({ tone: "ok", text: r.message || (isActive ? "Account reactivated." : "Account deactivated.") });
+      await load();
+    } catch (e) {
+      setNotice({ tone: "warn", text: e instanceof Error ? e.message : "Could not change the status" });
+    }
+  };
 
   const saveRole = async () => {
     if (!selected || !role) return;
@@ -285,10 +322,12 @@ export default function UsersAdminPage() {
         eyebrow="Customers"
         title="Users"
         actions={
-          <>
-            <SecondaryButton onClick={() => setImportOpen(true)}>Import CSV</SecondaryButton>
-            <PrimaryButton onClick={openCreate}>New User</PrimaryButton>
-          </>
+          canManage ? (
+            <>
+              <SecondaryButton onClick={() => setImportOpen(true)}>Import CSV</SecondaryButton>
+              <PrimaryButton onClick={openCreate}>New User</PrimaryButton>
+            </>
+          ) : undefined
         }
       />
       <UsersImportModal open={importOpen} onClose={() => setImportOpen(false)} onImported={load} />
@@ -326,6 +365,8 @@ export default function UsersAdminPage() {
 
       {loading ? (
         <Spinner />
+      ) : loadErr ? (
+        <ErrorState message={loadErr} onRetry={load} />
       ) : (
         <Table
           columns={["Name", "Email", "App username", "Role", "Status", "Joined", "Actions"]}
@@ -341,41 +382,52 @@ export default function UsersAdminPage() {
               )}
             </div>,
             u.email,
-            <UsernameCell key="u" user={u} onRegenerated={load} onNotice={(tone, text) => setNotice({ tone, text })} />,
-            <Badge key="r" color={u.role === "admin" ? "blue" : "neutral"}>{u.role || "user"}</Badge>,
-            <Badge key="s" color={u.status === "active" ? "green" : "neutral"}>{u.status || "active"}</Badge>,
+            <UsernameCell key="u" user={u} canManage={canManage} onRegenerated={load} onNotice={(tone, text) => setNotice({ tone, text })} />,
+            <Badge key="r" color={u.role === "admin" ? "blue" : "neutral"}>{roleNames.get(u.role || "user") || u.role || "user"}</Badge>,
+            // `isActive` is what the account model stores and what sign-in
+            // checks; an account from before the field is active.
+            <Badge key="s" color={u.isActive === false ? "rose" : "green"}>{u.isActive === false ? "inactive" : "active"}</Badge>,
             u.createdAt ? new Date(u.createdAt).toLocaleDateString() : "—",
             <div key="a" className="flex gap-2">
               <SecondaryButton onClick={() => setProfileFor(u)}>Profile</SecondaryButton>
-              <SecondaryButton onClick={() => openAssign(u)}>Package</SecondaryButton>
-              <SecondaryButton onClick={() => { setSelected(u); setRole(u.role || "user"); }}>Role</SecondaryButton>
-              <SecondaryButton
-                onClick={async () => {
-                  if (!confirm(`Record that ${u.email} has consented to fingerprint storage (signed form)?`)) return;
-                  try {
-                    const r = await apiJson<{ message: string }>(`${API_BASE}/admin/users/${u._id}/consent`, "PUT", { biometric: true });
-                    setNotice({ tone: "ok", text: r.message });
-                  } catch (e) {
-                    setNotice({ tone: "warn", text: e instanceof Error ? e.message : "Could not record consent" });
-                  }
-                }}
-              >
-                Consent
-              </SecondaryButton>
-              <SecondaryButton
-                onClick={async () => {
-                  if (!confirm(`Sign ${u.email} out of every device?`)) return;
-                  try {
-                    const r = await apiJson<{ message: string }>(`${API_BASE}/admin/users/${u._id}/logout-all`, "POST");
-                    setNotice({ tone: "ok", text: r.message });
-                  } catch (e) {
-                    setNotice({ tone: "warn", text: e instanceof Error ? e.message : "Could not sign the user out" });
-                  }
-                }}
-              >
-                Sign out
-              </SecondaryButton>
-              <DangerButton onClick={() => remove(u._id)}>Delete</DangerButton>
+              {canAssign && <SecondaryButton onClick={() => openAssign(u)}>Package</SecondaryButton>}
+              {canManage && (
+                <>
+                  <SecondaryButton onClick={() => { setSelected(u); setRole(u.role || "user"); }}>Role</SecondaryButton>
+                  <SecondaryButton
+                    onClick={async () => {
+                      if (!confirm(`Record that ${u.email} has consented to fingerprint storage (signed form)?`)) return;
+                      try {
+                        const r = await apiJson<{ message: string }>(`${API_BASE}/admin/users/${u._id}/consent`, "PUT", { biometric: true });
+                        setNotice({ tone: "ok", text: r.message });
+                      } catch (e) {
+                        setNotice({ tone: "warn", text: e instanceof Error ? e.message : "Could not record consent" });
+                      }
+                    }}
+                  >
+                    Consent
+                  </SecondaryButton>
+                  <SecondaryButton
+                    onClick={async () => {
+                      if (!confirm(`Sign ${u.email} out of every device?`)) return;
+                      try {
+                        const r = await apiJson<{ message: string }>(`${API_BASE}/admin/users/${u._id}/logout-all`, "POST");
+                        setNotice({ tone: "ok", text: r.message });
+                      } catch (e) {
+                        setNotice({ tone: "warn", text: e instanceof Error ? e.message : "Could not sign the user out" });
+                      }
+                    }}
+                  >
+                    Sign out
+                  </SecondaryButton>
+                  {u.isActive === false ? (
+                    <SecondaryButton onClick={() => setActive(u, true)}>Activate</SecondaryButton>
+                  ) : (
+                    <SecondaryButton onClick={() => setActive(u, false)}>Deactivate</SecondaryButton>
+                  )}
+                  <DangerButton onClick={() => remove(u._id)}>Delete</DangerButton>
+                </>
+              )}
             </div>,
           ])}
           empty="No users yet."
@@ -403,7 +455,10 @@ export default function UsersAdminPage() {
           />
 
           {createErr && (
-            <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{createErr}</p>
+            <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+              {createErr}
+              {createLimit && <UpgradePlanLink />}
+            </p>
           )}
 
           <div className="flex justify-end gap-2 pt-2">
