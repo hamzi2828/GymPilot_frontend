@@ -4,6 +4,8 @@
 // "How Do I Shop?" — so a gym could not correct a single word without a
 // developer. They are now editable under Admin → Pages.
 
+import { serverTenantFetch } from "@/helper/tenant.server";
+
 const API_BASE = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:4000";
 
 export type ContentSlug = "faqs" | "privacy-policy" | "terms";
@@ -41,10 +43,13 @@ export interface ContentPage {
  *
  * Returns null rather than throwing when the page is missing or the API is
  * down, so the route can render its own fallback instead of a 500.
+ *
+ * Sent with the visitor's domain so the API answers with THIS gym's page, and
+ * so the cache below is kept per gym rather than shared by every site.
  */
 export async function getContentPage(slug: ContentSlug): Promise<ContentPage | null> {
   try {
-    const res = await fetch(`${API_BASE}/content/${slug}`, {
+    const res = await serverTenantFetch(`${API_BASE}/content/${slug}`, {
       // Revalidated rather than cached forever: an admin editing the terms
       // should see the change without a redeploy, but every visitor should not
       // cost a database read.

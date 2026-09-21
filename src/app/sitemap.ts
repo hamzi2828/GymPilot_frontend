@@ -35,7 +35,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   const [classes, blogs] = await Promise.all([
     fetchList<{ _id: string; updatedAt?: string }>("/api/gymfolio/gym-classes/active"),
-    fetchList<{ slug: string; updatedAt?: string }>("/blogs"),
+    // The API pages blogs 10 at a time by default; a sitemap wants all of them.
+    fetchList<{ slug: string; updatedAt?: string }>("/blogs?status=published&limit=1000"),
   ]);
 
   return [
