@@ -285,47 +285,6 @@ export const DEFAULT_SECTIONS: HomeSection[] = [
   { key: "blogs", enabled: true, order: 9, content: DEFAULT_BLOGS as unknown as Record<string, unknown> },
 ];
 
-/**
- * Shown when no testimonials have been added yet, so the section demonstrates
- * itself instead of rendering empty. Replaced by real reviews the moment the
- * admin adds one.
- */
-export const FALLBACK_TESTIMONIALS: Testimonial[] = [
-  {
-    _id: "fallback-t1",
-    name: "Sarah M.",
-    role: "Member for 2 years",
-    quote:
-      "I walked in never having touched a barbell. Two years later I deadlift double my bodyweight and actually look forward to 6am sessions. The coaches never let you drift.",
-    rating: 5,
-    imageUrl: "",
-    isActive: true,
-    order: 1,
-  },
-  {
-    _id: "fallback-t2",
-    name: "James K.",
-    role: "Competitive athlete",
-    quote:
-      "The programming here is the real thing — periodised, tracked and adjusted every block. My sprint times dropped within one season of moving my strength work here.",
-    rating: 5,
-    imageUrl: "",
-    isActive: true,
-    order: 2,
-  },
-  {
-    _id: "fallback-t3",
-    name: "Priya R.",
-    role: "Lost 18kg with us",
-    quote:
-      "No judgement, no gimmicks. A coach sat down with me, built a plan I could keep, and checked in every month. It is the first gym that ever felt like mine.",
-    rating: 5,
-    imageUrl: "",
-    isActive: true,
-    order: 3,
-  },
-];
-
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------

@@ -29,6 +29,8 @@ export interface GymClass {
   isActive: boolean;
   isFeatured?: boolean;
   price?: number;
+  /** ISO code the class is priced in (set per class in admin). */
+  currency?: string;
   rating?: number;
   reviewsCount?: number;
   enrolledCount?: number;
@@ -222,8 +224,10 @@ export const gymClassService = {
   /**
    * Format price for display
    */
-  formatPrice(price?: number): string {
+  formatPrice(price?: number, currency?: string): string {
     if (!price) return 'Free';
-    return `PKR ${price.toLocaleString()}`;
+    // The class's own currency, not a hardcoded one: gyms charge in their own.
+    const code = (currency || '').trim().toUpperCase();
+    return code ? `${code} ${price.toLocaleString()}` : price.toLocaleString();
   }
 };

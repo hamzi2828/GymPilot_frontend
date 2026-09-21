@@ -22,11 +22,13 @@ interface HeroSectionProps {
 
 const HeroSection: React.FC<HeroSectionProps> = ({
   title,
-  backgroundImage = "/images/gym-blog-detail-hero.svg",
+  // A post without a cover photo gets the site's stock hero rather than a
+  // missing file.
+  backgroundImage = "/images/hero.webp",
   author,
-  readingTime = "12 min read",
-  publishDate = "Dec 15, 2024",
-  views = 1250,
+  readingTime,
+  publishDate,
+  views = 0,
   category
 }) => {
   return (
@@ -89,15 +91,19 @@ const HeroSection: React.FC<HeroSectionProps> = ({
             </div>
           )}
 
-          <div className="flex items-center gap-2">
-            <i className="far fa-clock gym-blog-custom-text-green"></i>
-            <span>{readingTime}</span>
-          </div>
+          {readingTime && (
+            <div className="flex items-center gap-2">
+              <i className="far fa-clock gym-blog-custom-text-green"></i>
+              <span>{readingTime}</span>
+            </div>
+          )}
 
-          <div className="flex items-center gap-2">
-            <i className="far fa-calendar gym-blog-custom-text-green"></i>
-            <span>{publishDate}</span>
-          </div>
+          {publishDate && (
+            <div className="flex items-center gap-2">
+              <i className="far fa-calendar gym-blog-custom-text-green"></i>
+              <span>{publishDate}</span>
+            </div>
+          )}
 
           <div className="flex items-center gap-2">
             <i className="far fa-eye gym-blog-custom-text-green"></i>

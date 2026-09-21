@@ -17,7 +17,8 @@ const GymTrainersSection: React.FC<GymTrainersSectionProps> = ({ onTrainerClick 
     try {
       setLoading(true);
       setError(null);
-      const data = await trainerService.getActiveTrainers();
+      // The whole team, not the homepage's handful of featured coaches.
+      const data = await trainerService.getAllActiveTrainers();
       setTrainers(data);
       // Set the first trainer as default selected
       if (data.length > 0 && onTrainerClick) {

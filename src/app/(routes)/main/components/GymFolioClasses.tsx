@@ -191,7 +191,7 @@ const GymFolioClasses = ({ content = DEFAULT_CLASSES }: { content?: SectionHeade
                         className="gymfolio4-card-image"
                         style={{
                           backgroundImage: `url('${
-                            classItem.thumbnail || "/images/class-placeholder.jpg"
+                            classItem.thumbnail || "/images/class-placeholder.svg"
                           }')`,
                         }}
                       ></div>

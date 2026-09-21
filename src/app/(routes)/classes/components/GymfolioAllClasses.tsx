@@ -116,7 +116,7 @@ const GymfolioAllClasses: React.FC<GymfolioAllClassesProps> = ({ onClassClick })
                   {/* Image */}
                   <div className="absolute inset-0">
                     <Image
-                      src={item.thumbnail || '/images/class-placeholder.jpg'}
+                      src={item.thumbnail || '/images/class-placeholder.svg'}
                       alt={`${item.name} class preview`}
                       fill
                       sizes="(min-width:1024px) 25vw, (min-width:640px) 50vw, 100vw"

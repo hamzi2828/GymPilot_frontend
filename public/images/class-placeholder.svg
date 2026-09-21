@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="800" viewBox="0 0 600 800" role="img" aria-label="Class photo coming soon">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3f3f46"/>
+      <stop offset="1" stop-color="#18181b"/>
+    </linearGradient>
+  </defs>
+  <rect width="600" height="800" fill="url(#bg)"/>
+  <g fill="#a1a1aa" opacity="0.55" transform="translate(300 400)">
+    <rect x="-110" y="-10" width="220" height="20" rx="6"/>
+    <rect x="-150" y="-55" width="28" height="110" rx="8"/>
+    <rect x="-118" y="-40" width="22" height="80" rx="6"/>
+    <rect x="122" y="-55" width="28" height="110" rx="8"/>
+    <rect x="96" y="-40" width="22" height="80" rx="6"/>
+  </g>
+</svg>

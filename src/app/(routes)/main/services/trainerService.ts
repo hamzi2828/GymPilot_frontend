@@ -41,11 +41,16 @@ export const trainerService = {
   /**
    * Get active trainers for the homepage
    * @param limit - Number of trainers to fetch (default: 4)
+   * @param featuredOnly - Only trainers marked featured (default: true)
    */
-  async getActiveTrainers(limit: number = 4): Promise<Trainer[]> {
+  async getActiveTrainers(limit: number = 4, featuredOnly: boolean = true): Promise<Trainer[]> {
     try {
+      const params = new URLSearchParams();
+      if (limit > 0) params.set('limit', String(limit));
+      if (featuredOnly) params.set('isFeatured', 'true');
+      const qs = params.toString();
       const response = await axios.get<TrainersResponse>(
-        `${API_BASE_URL}/api/gymfolio/trainers/active?limit=${limit}&isFeatured=true`
+        `${API_BASE_URL}/api/gymfolio/trainers/active${qs ? `?${qs}` : ''}`
       );
 
       if (!response.data.success || !response.data.data) {
@@ -73,6 +78,13 @@ export const trainerService = {
       }
       throw error;
     }
+  },
+
+  /**
+   * Every active trainer, featured or not -- the full team on /trainers.
+   */
+  async getAllActiveTrainers(): Promise<Trainer[]> {
+    return this.getActiveTrainers(0, false);
   },
 
   /**

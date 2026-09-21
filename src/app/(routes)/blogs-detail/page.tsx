@@ -66,50 +66,6 @@ const BlogDetailContent = () => {
     );
   }
 
-
-
-  const workoutOverview = {
-    duration: "60-75 minutes",
-    difficulty: "Intermediate",
-    equipment: "Barbell, Dumbbells, Cable Machine",
-    targetMuscles: ["Chest", "Shoulders", "Triceps"]
-  };
-
-  // const exercises = [
-  //   {
-  //     name: "Barbell Bench Press",
-  //     image: "/images/gym-2.svg",
-  //     sets: "4 sets",
-  //     reps: "6-8 reps",
-  //     rest: "3-4 min",
-  //     tips: "Keep your feet planted, core tight, and control the descent. Drive through your feet on the press."
-  //   },
-  //   {
-  //     name: "Overhead Press",
-  //     image: "/images/gym-3.svg",
-  //     sets: "4 sets",
-  //     reps: "8-10 reps",
-  //     rest: "2-3 min",
-  //     tips: "Keep your core braced and avoid arching your back. Press the bar in a straight line overhead."
-  //   },
-  //   {
-  //     name: "Incline Dumbbell Press",
-  //     image: "/images/gym-4.svg",
-  //     sets: "3 sets",
-  //     reps: "10-12 reps",
-  //     rest: "2-3 min",
-  //     tips: "Set the bench to 30-45 degrees. Focus on squeezing your chest at the top of the movement."
-  //   },
-  //   {
-  //     name: "Dips",
-  //     image: "/images/gym-5.svg",
-  //     sets: "3 sets",
-  //     reps: "8-12 reps",
-  //     rest: "2 min",
-  //     tips: "Lean slightly forward to target the chest more. Keep your elbows close to your body."
-  //   }
-  // ];
-
   return (
     <div className="min-h-screen gym-blog-custom-bg-dark text-white">
       {/* Hero Section */}
@@ -117,7 +73,13 @@ const BlogDetailContent = () => {
         title={blogData.title}
         backgroundImage={blogData.image || "/images/hero.webp"}
         category={blogData.categoryId || { name: "Article" }}
-        author={blogData.author || { name: "Unknown", avatar: "/images/gym-1.svg" }}
+        // No author on file shows no byline, rather than "By Unknown". The
+        // resolved avatarUrl, not the raw /uploads path, which lives on the API.
+        author={
+          blogData.author
+            ? { name: blogData.author.name, avatar: blogData.author.avatarUrl || blogData.author.avatar }
+            : undefined
+        }
         readingTime={blogDetailService.estimateReadingTime(blogData.content)}
         publishDate={blogDetailService.formatPublishDate(blogData.createdAt)}
         views={blogData.views}
@@ -129,12 +91,7 @@ const BlogDetailContent = () => {
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-12">
             {/* Article Content */}
             <div className="lg:col-span-3">
-              <MainContent
-                content={blogData.content}
-                workoutOverview={workoutOverview}
-              />
-
-              {/* About the Author Section */}
+              <MainContent content={blogData.content} />
             </div>
 
             {/* Sidebar */}

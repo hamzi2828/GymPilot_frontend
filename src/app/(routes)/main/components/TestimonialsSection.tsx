@@ -4,7 +4,6 @@ import React, { useEffect, useState } from "react";
 import Image from "next/image";
 import {
   DEFAULT_TESTIMONIALS_HEADER,
-  FALLBACK_TESTIMONIALS,
   SectionHeaderContent,
   Testimonial,
   homeService,
@@ -55,10 +54,10 @@ const TestimonialsSection = ({
     (async () => {
       try {
         const data = await homeService.getTestimonials();
-        if (!cancelled) setTestimonials(data.length ? data : FALLBACK_TESTIMONIALS);
+        if (!cancelled) setTestimonials(data);
       } catch {
-        // Section still demonstrates itself when the API is unreachable.
-        if (!cancelled) setTestimonials(FALLBACK_TESTIMONIALS);
+        // No reviews to show; the section hides itself below.
+        if (!cancelled) setTestimonials([]);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -67,6 +66,11 @@ const TestimonialsSection = ({
       cancelled = true;
     };
   }, []);
+
+  // Only real, attributable reviews. With none added yet the section is left
+  // out -- it used to fill itself with invented members' quotes, on every
+  // gym's homepage.
+  if (!loading && testimonials.length === 0) return null;
 
   return (
     <section className="section surface-dark home-dark-section home-testimonials relative overflow-hidden">

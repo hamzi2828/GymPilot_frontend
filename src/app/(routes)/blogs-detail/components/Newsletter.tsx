@@ -137,7 +137,7 @@ const Newsletter: React.FC<NewsletterProps> = ({
         )}
 
         <p className="text-gray-400 text-sm">
-          Join 10,000+ fitness enthusiasts. Unsubscribe anytime.
+          No spam. Unsubscribe anytime.
         </p>
       </form>
     </div>

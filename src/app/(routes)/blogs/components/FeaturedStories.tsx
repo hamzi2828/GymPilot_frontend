@@ -15,11 +15,6 @@ const FeaturedStories: React.FC = () => {
       try {
         setIsLoading(true);
         const data = await heroSectionService.getFeaturedCategoriesWithSixBlogs();
-        console.log('Featured Categories with 6 Blogs Each - Response:', data);
-        console.log('Total Featured Categories:', data.length);
-        data.forEach((category, index) => {
-          console.log(`Category ${index + 1}: ${category.name} - ${category.blogs?.length || 0} blogs`);
-        });
         setFeaturedCategories(data);
       } catch (error) {
         console.error('Error fetching featured categories:', error);

@@ -116,19 +116,23 @@ const ContactSection = ({ content = DEFAULT_CONTACT }: { content?: ContactConten
                 </header>
 
                 <div className="space-y-4">
-                  {/* Username Field */}
+                  {/* Name Field. Sent as `username` because that is the field
+                      the registrations API requires; staff see it as "Name"
+                      under Admin -> Registrations. Nobody visiting a gym's
+                      site has a username to give. */}
                   <div className="gymfolio8-form-field">
                     <label
                       htmlFor="username"
                       className="block gymfolio8-form-text gymfolio8-font-poppins font-medium text-sm leading-6 mb-1.5"
                     >
-                      Username
+                      Your name
                     </label>
                     <input
                       type="text"
                       id="username"
                       name="username"
-                      placeholder="Username"
+                      autoComplete="name"
+                      placeholder="Full name"
                       value={formData.username}
                       onChange={handleInputChange}
                       onFocus={handleInputFocus}
@@ -150,7 +154,8 @@ const ContactSection = ({ content = DEFAULT_CONTACT }: { content?: ContactConten
                       type="tel"
                       id="phone"
                       name="phone"
-                      placeholder="+1 (555) 000-0000"
+                      autoComplete="tel"
+                      placeholder="Phone number"
                       value={formData.phone}
                       onChange={handleInputChange}
                       onFocus={handleInputFocus}
@@ -172,7 +177,8 @@ const ContactSection = ({ content = DEFAULT_CONTACT }: { content?: ContactConten
                       type="email"
                       id="email"
                       name="email"
-                      placeholder="bac124@mail.com"
+                      autoComplete="email"
+                      placeholder="you@example.com"
                       value={formData.email}
                       onChange={handleInputChange}
                       onFocus={handleInputFocus}

@@ -1,6 +1,8 @@
 "use client";
 import React, { useState } from "react";
-import { GymClass } from "../../main/services/gymClassService";
+import Link from "next/link";
+import { GymClass, gymClassService } from "../../main/services/gymClassService";
+import { useSiteSettings } from "@/components/ThemeProvider";
 
 interface GymClassDetailSectionProps {
   gymClass: GymClass;
@@ -8,6 +10,12 @@ interface GymClassDetailSectionProps {
 
 const GymClassDetailSection: React.FC<GymClassDetailSectionProps> = ({ gymClass }) => {
   const [isVideoPlaying, setIsVideoPlaying] = useState(false);
+  // The gym's own hours from Settings; the card is hidden until they are set.
+  const { openingHours } = useSiteSettings();
+  // The class's own video, when the gym uploaded one. Relative upload paths
+  // live on the API host.
+  const videoUrl = gymClassService.getAbsoluteImageUrl(gymClass.videoUrl);
+  const posterUrl = gymClassService.getAbsoluteImageUrl(gymClass.videoPoster) || gymClass.thumbnail || undefined;
 
   const handleVideoToggle = () => {
     const video = document.getElementById('gymVideo') as HTMLVideoElement;
@@ -71,7 +79,10 @@ const GymClassDetailSection: React.FC<GymClassDetailSectionProps> = ({ gymClass 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-16">
           {/* Left Content Area */}
           <main className="lg:col-span-8 space-y-8 lg:space-y-16">
-            {/* Video Section */}
+            {/* Video Section -- the class's own video only. With none, the
+                class photo stands in; with neither, nothing is shown (this
+                used to play a stock sample clip on every gym's site). */}
+            {videoUrl ? (
             <div
               className="video-bg rounded-lg h-80 md:h-96 lg:h-[584px] flex items-center justify-center relative overflow-hidden cursor-pointer hover:shadow-xl transition-all duration-300 transform hover:scale-[1.02]"
               onClick={handleVideoToggle}
@@ -79,21 +90,20 @@ const GymClassDetailSection: React.FC<GymClassDetailSectionProps> = ({ gymClass 
               <video
                 id="gymVideo"
                 className="absolute inset-0 w-full h-full object-cover"
-                poster={gymClass.thumbnail || "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?ixlib=rb-4.0.3&auto=format&fit=crop&w=1200&q=80"}
+                poster={posterUrl}
                 preload="metadata"
                 muted
+                playsInline
                 onEnded={handleVideoEnded}
               >
-                <source
-                  src="https://sample-videos.com/zip/10/mp4/SampleVideo_1280x720_1mb.mp4"
-                  type="video/mp4"
-                />
+                <source src={videoUrl} />
                 Your browser does not support the video tag.
               </video>
 
               <button
+                type="button"
                 className="play-button w-16 h-16 md:w-20 md:h-20 rounded-full flex items-center justify-center z-10 hover:bg-white transition-all duration-200 hover:scale-110 hover:shadow-lg"
-                aria-label="Play video"
+                aria-label={isVideoPlaying ? "Pause video" : "Play video"}
               >
                 {isVideoPlaying ? (
                   <i className="fas fa-pause text-black text-xl md:text-2xl"></i>
@@ -102,6 +112,15 @@ const GymClassDetailSection: React.FC<GymClassDetailSectionProps> = ({ gymClass 
                 )}
               </button>
             </div>
+            ) : gymClass.thumbnail ? (
+              <div className="video-bg rounded-lg h-80 md:h-96 lg:h-[584px] relative overflow-hidden">
+                <img
+                  src={gymClass.thumbnail}
+                  alt={`${gymClass.name} class`}
+                  className="absolute inset-0 w-full h-full object-cover"
+                />
+              </div>
+            ) : null}
 
             {/* Class Info */}
             <article className="space-y-8 hover:bg-white hover:bg-opacity-30 p-6 rounded-lg transition-all duration-300">
@@ -182,7 +201,7 @@ const GymClassDetailSection: React.FC<GymClassDetailSectionProps> = ({ gymClass 
                   <div className="space-y-2">
                     <p className="poppins-medium text-xs text-[#85868b] uppercase">Price</p>
                     <p className="montserrat-bold text-lg text-black">
-                      {gymClass.price === 0 ? 'Free' : `PKR ${gymClass.price}`}
+                      {gymClassService.formatPrice(gymClass.price, gymClass.currency)}
                     </p>
                   </div>
                 )}
@@ -196,7 +215,32 @@ const GymClassDetailSection: React.FC<GymClassDetailSectionProps> = ({ gymClass 
             role="complementary"
             aria-label="Gym information sidebar"
           >
-            {/* Opening Hours Card */}
+            {/* Book Card -- the booking flow is the timetable, filtered to
+                this class. Signing in happens there when needed. */}
+            <section
+              className="info-card rounded-3xl border border-white border-opacity-30 p-6 w-full"
+              aria-labelledby="book-class-title"
+            >
+              <h3
+                id="book-class-title"
+                className="montserrat-bold text-2xl lg:text-3xl leading-tight tracking-tight gym-green mb-3"
+              >
+                Book this class
+              </h3>
+              <p className="poppins-regular text-sm leading-relaxed text-white/80 mb-5">
+                Pick a session on the timetable and reserve your place.
+              </p>
+              <Link
+                href={`/timetable?class=${gymClass._id}`}
+                className="block w-full rounded-lg bg-white px-4 py-3 text-center text-sm font-bold text-black hover:bg-gray-100 transition-colors"
+              >
+                See sessions &amp; book
+              </Link>
+            </section>
+
+            {/* Opening Hours Card -- the gym's hours from Settings. These were
+                hardcoded, so every gym showed the same times. */}
+            {openingHours.length > 0 && (
             <section
               className="info-card rounded-3xl border border-white border-opacity-30 p-6 w-full hover:border-opacity-50 hover:shadow-2xl transition-all duration-300 transform hover:scale-105 hover:bg-opacity-95"
               aria-labelledby="opening-hours-title"
@@ -210,89 +254,36 @@ const GymClassDetailSection: React.FC<GymClassDetailSectionProps> = ({ gymClass 
                 </h3>
               </header>
 
-              <dl className="space-y-4">
-                <div className="flex items-center justify-between hover:bg-white hover:bg-opacity-10 p-3 rounded-lg transition-all duration-200 cursor-pointer">
-                  <dt className="poppins-medium text-sm leading-relaxed text-white">
-                    Monday - Friday
-                  </dt>
-                  <i
-                    className="fas fa-arrow-right text-white text-sm hover:translate-x-1 transition-transform duration-200"
-                    aria-hidden="true"
-                  ></i>
-                  <dd className="poppins-medium text-sm leading-relaxed text-white">
-                    7:00 am to 10:00 pm
-                  </dd>
-                </div>
-
-                <hr className="border-white border-opacity-20" />
-
-                <div className="flex items-center justify-between hover:bg-white hover:bg-opacity-10 p-3 rounded-lg transition-all duration-200 cursor-pointer">
-                  <dt className="poppins-medium text-sm leading-relaxed text-white">
-                    Saturday - Sunday
-                  </dt>
-                  <i
-                    className="fas fa-arrow-right text-white text-sm hover:translate-x-1 transition-transform duration-200"
-                    aria-hidden="true"
-                  ></i>
-                  <dd className="poppins-medium text-sm leading-relaxed text-white">
-                    8:00 am to 9:00 pm
-                  </dd>
-                </div>
+              <dl className="space-y-1 mt-4">
+                {openingHours.map((h) => (
+                  <div
+                    key={h.day}
+                    className="flex items-center justify-between gap-4 p-3 rounded-lg hover:bg-white hover:bg-opacity-10 transition-all duration-200"
+                  >
+                    <dt className="poppins-medium text-sm leading-relaxed text-white">{h.day}</dt>
+                    <dd className="poppins-medium text-sm leading-relaxed text-white">
+                      {h.closed ? "Closed" : `${h.open} – ${h.close}`}
+                    </dd>
+                  </div>
+                ))}
               </dl>
             </section>
+            )}
 
-            {/* Download Brochure Card */}
-            <section
-              className="info-card rounded-3xl border border-white border-opacity-30 p-6 w-full hover:border-opacity-50 hover:shadow-2xl transition-all duration-300 transform hover:scale-105 hover:bg-opacity-95"
-              aria-labelledby="brochure-title"
-            >
-              <header className="space-y-6">
-                <h3
-                  id="brochure-title"
-                  className="montserrat-bold text-2xl lg:text-3xl leading-tight tracking-tight gym-green hover:text-green-400 transition-colors duration-300"
-                >
-                  Download Brochure
-                </h3>
-              </header>
+            {/* No brochure card: there are no brochure files to link to, and
+                three "#" links that did nothing were worse than none. */}
 
-              <nav aria-label="Brochure downloads">
-                <ul className="space-y-4" role="list">
-                  {[
-                    { label: "Brochure PDF version", href: "#" },
-                    { label: "Membership Guide PDF", href: "#" },
-                    { label: "Class Schedule PDF", href: "#" }
-                  ].map((item, index) => (
-                    <React.Fragment key={index}>
-                      <li>
-                        <a
-                          href={item.href}
-                          className="flex items-center gap-4 cursor-pointer hover:bg-white hover:bg-opacity-10 p-3 rounded-lg transition-all duration-200 transform hover:translate-x-2 hover:shadow-md"
-                          aria-label={`Download ${item.label.toLowerCase()}`}
-                        >
-                          <i
-                            className="fas fa-folder text-white text-base flex-shrink-0 hover:text-green-400 transition-colors duration-200"
-                            aria-hidden="true"
-                          ></i>
-                          <span className="poppins-medium text-sm leading-relaxed text-white flex-1 hover:text-green-100 transition-colors duration-200">
-                            {item.label}
-                          </span>
-                        </a>
-                      </li>
-                      {index < 2 && <li><hr className="border-white border-opacity-20" /></li>}
-                    </React.Fragment>
-                  ))}
-                </ul>
-              </nav>
-            </section>
-
-            {/* Additional Image */}
+            {/* Additional Image -- from the class's own gallery, not a stock
+                photo that every gym's site would share. */}
+            {gymClass.gallery?.[0] && (
             <figure className="video-bg rounded-lg h-64 md:h-80 lg:h-[646px] flex items-center justify-center overflow-hidden hover:shadow-xl transition-all duration-300 transform hover:scale-[1.02]">
               <img
-                src="https://images.unsplash.com/photo-1583454110551-21f2fa2afe61?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80"
-                alt="Modern gym equipment and training area with professional weights and exercise machines"
+                src={gymClass.gallery[0]}
+                alt={`${gymClass.name} class`}
                 className="w-full h-full object-cover hover:scale-110 transition-transform duration-500"
               />
             </figure>
+            )}
           </aside>
         </div>
 
