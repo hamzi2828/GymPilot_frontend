@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   PageHeader,
   Modal,
@@ -15,7 +16,7 @@ import {
   ErrorState,
   UpgradePlanLink,
 } from "../_shared/ui";
-import { API_BASE, GYMFOLIO_API, apiGet, apiJson, isPlanLimitError } from "../_shared/api";
+import { API_BASE, GYMFOLIO_API, apiGet, apiJson, isPlanLimitError, replaceParams } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
 import UsersImportModal from "./UsersImportModal";
 import MemberProfileModal from "./MemberProfileModal";
@@ -127,7 +128,7 @@ interface PackageOption {
   period?: string;
 }
 
-export default function UsersAdminPage() {
+function UsersAdminPageInner() {
   const { can } = usePermissions();
   // Every write on this page is gated on users:manage by the backend; the
   // package assignment is a package-orders write.
@@ -144,8 +145,14 @@ export default function UsersAdminPage() {
   // Create-user dialog
   const [createOpen, setCreateOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
-  const [profileFor, setProfileFor] = useState<User | null>(null);
-  const [query, setQuery] = useState("");
+  const [profileId, setProfileId] = useState<string | null>(null);
+  // The address carries the search (?q=) and can name a member to open
+  // (?id=, from the header search). Both are read again whenever the
+  // address changes, so a second link followed from this page lands too.
+  const searchParams = useSearchParams();
+  const urlQuery = searchParams.get("q") ?? "";
+  const urlId = searchParams.get("id");
+  const [query, setQuery] = useState(urlQuery);
   const [tagFilter, setTagFilter] = useState("");
   const [creating, setCreating] = useState(false);
   const [createErr, setCreateErr] = useState<string | null>(null);
@@ -260,6 +267,18 @@ export default function UsersAdminPage() {
   useEffect(() => { load(); }, []);
 
   useEffect(() => {
+    setQuery(urlQuery);
+  }, [urlQuery]);
+
+  // Opened once, then dropped from the address: closing the profile is final,
+  // and the same link followed again opens it again.
+  useEffect(() => {
+    if (!urlId) return;
+    setProfileId(urlId);
+    replaceParams({ id: null });
+  }, [urlId]);
+
+  useEffect(() => {
     apiGet<{ data?: RoleOption[] }>(`${API_BASE}/roles/options`)
       .then((r) => setRoles(r.data || []))
       // A failure here is not fatal: the list still renders, only the role
@@ -353,7 +372,15 @@ export default function UsersAdminPage() {
 
       <div className="mb-5 flex flex-wrap items-end gap-3">
         <div className="w-72">
-          <TextField label="Search" value={query} onChange={setQuery} placeholder="Name, email, username, phone or member code" />
+          <TextField
+            label="Search"
+            value={query}
+            onChange={(v) => {
+              setQuery(v);
+              replaceParams({ q: v });
+            }}
+            placeholder="Name, email, username, phone or member code"
+          />
         </div>
         {allTags.length > 0 && (
           <div className="w-48">
@@ -389,7 +416,7 @@ export default function UsersAdminPage() {
             <Badge key="s" color={u.isActive === false ? "rose" : "green"}>{u.isActive === false ? "inactive" : "active"}</Badge>,
             u.createdAt ? new Date(u.createdAt).toLocaleDateString() : "—",
             <div key="a" className="flex gap-2">
-              <SecondaryButton onClick={() => setProfileFor(u)}>Profile</SecondaryButton>
+              <SecondaryButton onClick={() => setProfileId(u._id)}>Profile</SecondaryButton>
               {canAssign && <SecondaryButton onClick={() => openAssign(u)}>Package</SecondaryButton>}
               {canManage && (
                 <>
@@ -547,7 +574,7 @@ export default function UsersAdminPage() {
         )}
       </Modal>
 
-      <MemberProfileModal userId={profileFor ? profileFor._id : null} onClose={() => setProfileFor(null)} onSaved={load} />
+      <MemberProfileModal userId={profileId} onClose={() => setProfileId(null)} onSaved={load} />
 
       <Modal open={!!selected} onClose={() => setSelected(null)} title="Update Role" size="sm">
         {selected && (
@@ -570,5 +597,14 @@ export default function UsersAdminPage() {
         )}
       </Modal>
     </div>
+  );
+}
+
+export default function UsersAdminPage() {
+  // useSearchParams requires a Suspense boundary during prerender.
+  return (
+    <Suspense fallback={<Spinner />}>
+      <UsersAdminPageInner />
+    </Suspense>
   );
 }

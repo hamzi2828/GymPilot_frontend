@@ -148,6 +148,27 @@ export async function apiForm<T>(url: string, method: "POST" | "PUT", form: Form
   );
 }
 
+/**
+ * Rewrites the current page's address in place. Next keeps useSearchParams
+ * in step with history.replaceState, and unlike router.replace it does not
+ * refetch the page (for every key typed into a search box, say). An empty
+ * value drops the parameter.
+ */
+export function replaceParams(changes: Record<string, string | null | undefined>) {
+  const params = new URLSearchParams(window.location.search);
+  for (const [key, value] of Object.entries(changes)) {
+    if (value) params.set(key, value);
+    else params.delete(key);
+  }
+  const query = params.toString();
+  try {
+    window.history.replaceState(null, "", query ? `?${query}` : window.location.pathname);
+  } catch {
+    // Browsers cap how often a page may rewrite its address. Past the cap the
+    // address lags behind; the page itself is unaffected.
+  }
+}
+
 export function absoluteUrl(p?: string): string {
   if (!p) return "";
   if (p.startsWith("http://") || p.startsWith("https://")) return p;

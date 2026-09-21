@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import Image from "next/image";
+import { useSearchParams } from "next/navigation";
 import { FiPlus, FiEdit2, FiTrash2 } from "react-icons/fi";
 import {
   PageHeader,
@@ -17,7 +18,7 @@ import {
   Spinner,
   Table,
 } from "../_shared/ui";
-import { GYMFOLIO_API, apiGet, apiJson, apiForm, absoluteUrl } from "../_shared/api";
+import { GYMFOLIO_API, apiGet, apiJson, apiForm, absoluteUrl, replaceParams } from "../_shared/api";
 import {
   WeekScheduleEditor,
   validateSchedule,
@@ -60,9 +61,12 @@ interface Trainer {
   commissionPercent?: number | null;
 }
 
-export default function TrainersAdminPage() {
+function TrainersAdminPageInner() {
   const { can } = usePermissions();
   const editable = can("trainers", "manage");
+  // The address can name a trainer to open (?id=, from the header search),
+  // read again whenever it changes.
+  const urlId = useSearchParams().get("id");
   const [list, setList] = useState<Trainer[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -129,6 +133,21 @@ export default function TrainersAdminPage() {
     setImg(null);
     setOpen(true);
   };
+
+  // Fetched on its own, as it need not be on the page shown, and then dropped
+  // from the address: closing the editor is final, and the same link
+  // followed again opens it again. The editor is the only view of one
+  // trainer, so without the manage permission the link just lands on the list.
+  useEffect(() => {
+    if (!urlId) return;
+    replaceParams({ id: null });
+    if (!editable) return;
+    apiGet<{ data?: Trainer }>(`${GYMFOLIO_API}/trainers/${encodeURIComponent(urlId)}`)
+      .then((r) => {
+        if (r.data) openEdit(r.data);
+      })
+      .catch((e) => alert(e instanceof Error ? e.message : "Could not open that trainer"));
+  }, [urlId, editable]);
 
   const save = async () => {
     const problems = validateSchedule(availability);
@@ -330,5 +349,14 @@ export default function TrainersAdminPage() {
         </div>
       </Modal>
     </div>
+  );
+}
+
+export default function TrainersAdminPage() {
+  // useSearchParams requires a Suspense boundary during prerender.
+  return (
+    <Suspense fallback={<Spinner />}>
+      <TrainersAdminPageInner />
+    </Suspense>
   );
 }

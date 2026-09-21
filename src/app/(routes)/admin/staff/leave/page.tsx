@@ -3,10 +3,11 @@
 // Leave requests: what staff asked for, approve or reject, and record leave
 // agreed in person.
 
-import { useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { FiPlus } from "react-icons/fi";
 import { PageHeader, PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, TextArea, SelectField, Toggle, Badge, Spinner, Table, ErrorState } from "../../_shared/ui";
-import { API_BASE, apiGet, apiJson } from "../../_shared/api";
+import { API_BASE, apiGet, apiJson, replaceParams } from "../../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
 
 interface Leave {
@@ -34,15 +35,25 @@ const TYPES = [
   { value: "unpaid", label: "Unpaid leave" },
   { value: "other", label: "Other" },
 ];
+const STATUSES = [
+  { value: "pending", label: "Pending" },
+  { value: "approved", label: "Approved" },
+  { value: "rejected", label: "Rejected" },
+  { value: "cancelled", label: "Withdrawn" },
+];
 const TONE: Record<Leave["status"], "amber" | "green" | "rose" | "neutral"> = { pending: "amber", approved: "green", rejected: "rose", cancelled: "neutral" };
 const today = () => new Date().toISOString().slice(0, 10);
 
-export default function LeavePage() {
+function LeavePageInner() {
   const { can } = usePermissions();
   const editable = can("staff", "manage");
   const [rows, setRows] = useState<Leave[]>([]);
   const [staff, setStaff] = useState<StaffOption[]>([]);
-  const [status, setStatus] = useState("");
+  // The status filter lives in the address too (?status=pending, from the
+  // bell), read again whenever the address changes.
+  const askedStatus = useSearchParams().get("status");
+  const urlStatus = STATUSES.find((s) => s.value === askedStatus)?.value ?? "";
+  const [status, setStatus] = useState(urlStatus);
   const [loading, setLoading] = useState(true);
   const [loadErr, setLoadErr] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
@@ -66,6 +77,10 @@ export default function LeavePage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    setStatus(urlStatus);
+  }, [urlStatus]);
 
   useEffect(() => {
     apiGet<{ staff: StaffOption[] }>(`${API_BASE}/staff?status=active`)
@@ -130,7 +145,16 @@ export default function LeavePage() {
       />
       {notice && <p className={`mb-4 rounded-lg px-3 py-2 text-sm ${notice.tone === "ok" ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}>{notice.text}</p>}
       <div className="mb-4 w-48">
-        <SelectField label="Status" value={status} onChange={setStatus} placeholder="All" options={[{ value: "pending", label: "Pending" }, { value: "approved", label: "Approved" }, { value: "rejected", label: "Rejected" }, { value: "cancelled", label: "Withdrawn" }]} />
+        <SelectField
+          label="Status"
+          value={status}
+          onChange={(v) => {
+            setStatus(v);
+            replaceParams({ status: v });
+          }}
+          placeholder="All"
+          options={STATUSES}
+        />
       </div>
       {loading ? (
         <Spinner />
@@ -182,5 +206,14 @@ export default function LeavePage() {
         </div>
       </Modal>
     </div>
+  );
+}
+
+export default function LeavePage() {
+  // useSearchParams requires a Suspense boundary during prerender.
+  return (
+    <Suspense fallback={<Spinner />}>
+      <LeavePageInner />
+    </Suspense>
   );
 }

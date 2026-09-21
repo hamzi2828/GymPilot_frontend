@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   PageHeader,
   Modal,
@@ -15,7 +16,7 @@ import {
   ErrorState,
   Pager,
 } from "../_shared/ui";
-import { API_BASE, apiGet, apiJson } from "../_shared/api";
+import { API_BASE, apiGet, apiJson, replaceParams } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
 
 // Field names as the contact model stores them (models/contactModel.js).
@@ -44,9 +45,17 @@ const statusColor: Record<string, "neutral" | "green" | "amber" | "rose" | "blue
   closed: "neutral",
 };
 
-export default function ContactQueriesAdminPage() {
+function ContactQueriesAdminPageInner() {
   const { can } = usePermissions();
   const editable = can("contact-queries", "manage");
+  // The status filter lives in the address too (?status=new, from the bell),
+  // which can also name a query to open (?id=). Read again whenever the
+  // address changes, so a second link followed from this page lands too.
+  const searchParams = useSearchParams();
+  const askedStatus = searchParams.get("status");
+  const urlStatus = askedStatus && statuses.includes(askedStatus) ? askedStatus : "";
+  const urlId = searchParams.get("id");
+  const [statusFilter, setStatusFilter] = useState(urlStatus);
   const [list, setList] = useState<Contact[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadErr, setLoadErr] = useState<string | null>(null);
@@ -62,7 +71,7 @@ export default function ContactQueriesAdminPage() {
     setLoading(true);
     try {
       const r = await apiGet<{ data?: Contact[]; pagination?: { total: number; pages: number } }>(
-        `${API_BASE}/api/contact?page=${page}&limit=${PAGE_SIZE}`
+        `${API_BASE}/api/contact?page=${page}&limit=${PAGE_SIZE}${statusFilter ? `&status=${statusFilter}` : ""}`
       );
       const rows = r.data || [];
       const lastPage = Math.max(1, r.pagination?.pages || 1);
@@ -80,9 +89,14 @@ export default function ContactQueriesAdminPage() {
     } finally {
       setLoading(false);
     }
-  }, [page]);
+  }, [page, statusFilter]);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    setStatusFilter(urlStatus);
+    setPage(1);
+  }, [urlStatus]);
 
   const open = (c: Contact) => {
     setSelected(c);
@@ -90,6 +104,19 @@ export default function ContactQueriesAdminPage() {
     setPriority(c.priority || "medium");
     setNote("");
   };
+
+  // Fetched on its own, as it need not be on the page shown, and then dropped
+  // from the address: closing it is final, and the same link followed again
+  // opens it again.
+  useEffect(() => {
+    if (!urlId) return;
+    replaceParams({ id: null });
+    apiGet<{ data?: Contact }>(`${API_BASE}/api/contact/${encodeURIComponent(urlId)}`)
+      .then((r) => {
+        if (r.data) open(r.data);
+      })
+      .catch((e) => alert(e instanceof Error ? e.message : "Could not open that query"));
+  }, [urlId]);
 
   const save = async () => {
     if (!selected) return;
@@ -124,6 +151,20 @@ export default function ContactQueriesAdminPage() {
     <div>
       <PageHeader eyebrow="Customers" title="Contact Queries" />
 
+      <div className="mb-4 w-48">
+        <SelectField
+          label="Status"
+          value={statusFilter}
+          onChange={(v) => {
+            setStatusFilter(v);
+            setPage(1);
+            replaceParams({ status: v });
+          }}
+          placeholder="All"
+          options={statuses.map((s) => ({ value: s, label: s }))}
+        />
+      </div>
+
       {loading ? (
         <Spinner />
       ) : loadErr ? (
@@ -143,7 +184,7 @@ export default function ContactQueriesAdminPage() {
               {editable && <DangerButton onClick={() => remove(c._id)}>Delete</DangerButton>}
             </div>,
           ])}
-          empty="No contact queries yet."
+          empty={statusFilter ? "No contact queries with this status." : "No contact queries yet."}
         />
       )}
       {!loading && !loadErr && <Pager page={page} pages={pages} total={total} onChange={setPage} />}
@@ -174,5 +215,14 @@ export default function ContactQueriesAdminPage() {
         )}
       </Modal>
     </div>
+  );
+}
+
+export default function ContactQueriesAdminPage() {
+  // useSearchParams requires a Suspense boundary during prerender.
+  return (
+    <Suspense fallback={<Spinner />}>
+      <ContactQueriesAdminPageInner />
+    </Suspense>
   );
 }

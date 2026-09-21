@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   PageHeader,
   Modal,
@@ -13,7 +14,7 @@ import {
   Spinner,
   Table,
 } from "../_shared/ui";
-import { GYMFOLIO_API, apiGet, apiJson } from "../_shared/api";
+import { GYMFOLIO_API, apiGet, apiJson, replaceParams } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
 import { Pager, LoadError, pageCount } from "../_ops/lists";
 
@@ -39,9 +40,14 @@ const colorMap: Record<string, "neutral" | "green" | "amber" | "rose" | "blue"> 
 
 const PAGE_SIZE = 50;
 
-export default function PackageRegistrationsAdminPage() {
+function PackageRegistrationsAdminPageInner() {
   const { can } = usePermissions();
   const editable = can("registrations", "manage");
+  // The status filter lives in the address too (?status=pending, from the
+  // bell), read again whenever the address changes.
+  const askedStatus = useSearchParams().get("status");
+  const urlStatus = askedStatus && statuses.includes(askedStatus) ? askedStatus : "";
+  const [statusFilter, setStatusFilter] = useState(urlStatus);
   const [list, setList] = useState<Registration[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -59,7 +65,7 @@ export default function PackageRegistrationsAdminPage() {
     setLoading(true);
     try {
       const r = await apiGet<{ data: Registration[]; pagination?: { total?: number; pages?: number; limit?: number } }>(
-        `${GYMFOLIO_API}/package-registrations?page=${page}&limit=${PAGE_SIZE}`
+        `${GYMFOLIO_API}/package-registrations?page=${page}&limit=${PAGE_SIZE}${statusFilter ? `&status=${statusFilter}` : ""}`
       );
       // Deleting the last registration on the last page leaves nothing to show.
       if (!(r.data || []).length && page > 1) {
@@ -76,9 +82,14 @@ export default function PackageRegistrationsAdminPage() {
     } finally {
       setLoading(false);
     }
-  }, [page]);
+  }, [page, statusFilter]);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    setStatusFilter(urlStatus);
+    setPage(1);
+  }, [urlStatus]);
 
   const open = (r: Registration) => {
     setSelected(r);
@@ -114,6 +125,20 @@ export default function PackageRegistrationsAdminPage() {
     <div>
       <PageHeader eyebrow="Sales" title="Package Registrations" />
 
+      <div className="mb-4 w-48">
+        <SelectField
+          label="Status"
+          value={statusFilter}
+          onChange={(v) => {
+            setStatusFilter(v);
+            setPage(1);
+            replaceParams({ status: v });
+          }}
+          placeholder="All"
+          options={statuses.map((s) => ({ value: s, label: s }))}
+        />
+      </div>
+
       {error && <LoadError message={error} onRetry={load} />}
 
       {loading ? (
@@ -137,7 +162,7 @@ export default function PackageRegistrationsAdminPage() {
               <span key="a" />
             ),
           ])}
-          empty="No registrations yet."
+          empty={statusFilter ? "No registrations with this status." : "No registrations yet."}
         />
       )}
 
@@ -165,5 +190,14 @@ export default function PackageRegistrationsAdminPage() {
         )}
       </Modal>
     </div>
+  );
+}
+
+export default function PackageRegistrationsAdminPage() {
+  // useSearchParams requires a Suspense boundary during prerender.
+  return (
+    <Suspense fallback={<Spinner />}>
+      <PackageRegistrationsAdminPageInner />
+    </Suspense>
   );
 }

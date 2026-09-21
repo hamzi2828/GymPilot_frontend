@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { FiSearch } from "react-icons/fi";
 import {
   PageHeader,
@@ -19,7 +20,7 @@ import {
   UpgradePlanLink,
   Select2,
 } from "../_shared/ui";
-import { API_BASE, apiGet, apiJson, isPlanLimitError } from "../_shared/api";
+import { API_BASE, apiGet, apiJson, isPlanLimitError, replaceParams } from "../_shared/api";
 import { currencyOptions } from "@/data/countries";
 
 const CURRENCY_OPTIONS = currencyOptions();
@@ -256,9 +257,15 @@ function RosterEditor({ shifts, onChange }: { shifts: Shift[]; onChange: (next: 
   );
 }
 
-export default function StaffAdminPage() {
+function StaffAdminPageInner() {
   const { can } = usePermissions();
   const editable = can("staff", "manage");
+  // The address carries the search (?q=) and can name someone to open (?id=,
+  // from the header search). Both are read again whenever the address
+  // changes, so a second link followed from this page lands too.
+  const searchParams = useSearchParams();
+  const urlQuery = searchParams.get("q") ?? "";
+  const urlId = searchParams.get("id");
 
   const [staff, setStaff] = useState<StaffMember[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
@@ -269,8 +276,8 @@ export default function StaffAdminPage() {
   const [roleFilter, setRoleFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [departmentFilter, setDepartmentFilter] = useState("all");
-  const [search, setSearch] = useState("");
-  const [q, setQ] = useState("");
+  const [search, setSearch] = useState(urlQuery);
+  const [q, setQ] = useState(urlQuery.trim());
 
   const [loading, setLoading] = useState(true);
   const [loadErr, setLoadErr] = useState<string | null>(null);
@@ -289,6 +296,10 @@ export default function StaffAdminPage() {
     const timer = setTimeout(() => setQ(search.trim()), 350);
     return () => clearTimeout(timer);
   }, [search]);
+
+  useEffect(() => {
+    setSearch(urlQuery);
+  }, [urlQuery]);
 
   // The gym's currency (Settings → General); payroll starts on it.
   const [defaultCurrency, setDefaultCurrency] = useState("USD");
@@ -396,6 +407,18 @@ export default function StaffAdminPage() {
     setFormLimit(false);
     setOpen(true);
   };
+
+  // Opened once the list holds them, then dropped from the address: closing
+  // the form is final, and the same link followed again opens it again.
+  // Only this form shows a member of staff in full, so without the Staff
+  // manage permission the link just lands on the list.
+  useEffect(() => {
+    if (!urlId || loading) return;
+    const member = staff.find((m) => m.id === urlId);
+    if (!member) return;
+    if (editable) openEdit(member);
+    replaceParams({ id: null });
+  }, [urlId, loading, staff, editable]);
 
   const payload = () => ({
     firstName: draft.firstName.trim(),
@@ -606,7 +629,10 @@ export default function StaffAdminPage() {
               <input
                 type="text"
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={(e) => {
+                  setSearch(e.target.value);
+                  replaceParams({ q: e.target.value });
+                }}
                 placeholder="Name, email or code…"
                 className="h-9 w-full rounded-lg border border-neutral-200 bg-white pl-9 pr-3 text-sm focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[color-mix(in_srgb,var(--accent)_25%,transparent)]"
               />
@@ -1031,5 +1057,14 @@ export default function StaffAdminPage() {
         </div>
       </Modal>
     </div>
+  );
+}
+
+export default function StaffAdminPage() {
+  // useSearchParams requires a Suspense boundary during prerender.
+  return (
+    <Suspense fallback={<Spinner />}>
+      <StaffAdminPageInner />
+    </Suspense>
   );
 }

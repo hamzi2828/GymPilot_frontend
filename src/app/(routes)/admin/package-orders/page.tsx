@@ -4,7 +4,8 @@
 // do to it afterwards -- confirm a bank transfer, freeze, cancel, renew,
 // switch package, tick off a session, print the invoice.
 
-import { useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   PageHeader,
   Modal,
@@ -18,7 +19,7 @@ import {
   Card,
   EmptyState,
 } from "../_shared/ui";
-import { GYMFOLIO_API, apiGet, apiJson, authHeaders, absoluteUrl } from "../_shared/api";
+import { GYMFOLIO_API, apiGet, apiJson, authHeaders, absoluteUrl, replaceParams } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
 import { MemberPicker, type MemberOption } from "../_ops/MemberPicker";
 import { Pager, pageCount } from "../_ops/lists";
@@ -63,6 +64,7 @@ interface PackageOrder {
     endDate?: string;
     cancelAtPeriodEnd?: boolean;
     autoRenew?: boolean;
+    stripeStatus?: string;
     renewals?: { at: string; amount: number; currency: string }[];
   };
   freeze?: { isFrozen: boolean; resumeAt?: string | null; totalFrozenDays?: number; reason?: string };
@@ -90,6 +92,26 @@ const statusColors: Record<string, "neutral" | "green" | "amber" | "rose" | "blu
 };
 
 const METHOD_LABELS: Record<string, string> = { stripe: "Card (Stripe)", card: "Card (desk)", bank_transfer: "Bank transfer", cash: "Cash" };
+// Stripe subscription statuses that never charge again on their own (the
+// backend's reminderJobs reads them the same way).
+const NOT_RENEWING_STRIPE_STATUSES = ["canceled", "incomplete", "incomplete_expired", "unpaid", "paused"];
+const ORDER_STATUSES = ["pending", "active", "frozen", "past_due", "expired", "cancelled"];
+const PAYMENT_STATUSES = ["pending", "processing", "paid", "failed", "refunded"];
+
+type Filters = { search: string; status: string; paymentStatus: string; paymentMethod: string };
+type PanelAction = "" | "status" | "freeze" | "cancel" | "renew" | "change" | "reject" | "refund";
+
+// The list's filters as the address gives them (the bell links to
+// ?status=past_due, for one). A value the filters do not offer is ignored.
+function filtersFrom(params: { get(key: string): string | null }): Filters {
+  const offered = (value: string | null, options: string[]) => (value && options.includes(value) ? value : "");
+  return {
+    search: params.get("search") ?? "",
+    status: offered(params.get("status"), ORDER_STATUSES),
+    paymentStatus: offered(params.get("paymentStatus"), PAYMENT_STATUSES),
+    paymentMethod: offered(params.get("paymentMethod"), Object.keys(METHOD_LABELS)),
+  };
+}
 
 function fmtDate(value?: string | null) {
   if (!value) return "—";
@@ -105,22 +127,28 @@ function memberName(o: PackageOrder) {
   return (u && [u.firstName, u.lastName].filter(Boolean).join(" ")) || o.customerInfo?.fullName || o.customerInfo?.email;
 }
 
-export default function PackageOrdersAdminPage() {
+function PackageOrdersAdminPageInner() {
   const { can } = usePermissions();
   const manage = can("package-orders", "manage");
+  // The filters live in the address as well, and it can name an order to
+  // open (?id=, from the header search). Read again whenever the address
+  // changes, so a second link followed from this page lands too.
+  const searchParams = useSearchParams();
+  const url = filtersFrom(searchParams);
+  const urlId = searchParams.get("id");
 
   const [list, setList] = useState<PackageOrder[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [pages, setPages] = useState(1);
   const [loading, setLoading] = useState(true);
-  const [filters, setFilters] = useState({ search: "", status: "", paymentStatus: "", paymentMethod: "" });
+  const [filters, setFilters] = useState<Filters>(url);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const [selected, setSelected] = useState<PackageOrder | null>(null);
-  const [action, setAction] = useState<"" | "status" | "freeze" | "cancel" | "renew" | "change" | "reject" | "refund">("");
+  const [action, setAction] = useState<PanelAction>("");
   const [draft, setDraft] = useState<Record<string, string>>({});
 
   const [assignOpen, setAssignOpen] = useState(false);
@@ -158,10 +186,23 @@ export default function PackageOrdersAdminPage() {
   }, [load, filters.search]);
 
   // A new filter starts again from the first page.
-  const filterBy = (change: Partial<typeof filters>) => {
+  const filterBy = (change: Partial<Filters>) => {
     setPage(1);
     setFilters({ ...filters, ...change });
+    replaceParams(change);
   };
+
+  // A link followed while already here brings a whole new set of filters.
+  // (Changes made on the page come back through here too, already applied.)
+  useEffect(() => {
+    const next = { search: url.search, status: url.status, paymentStatus: url.paymentStatus, paymentMethod: url.paymentMethod };
+    setFilters((prev) =>
+      prev.search === next.search && prev.status === next.status && prev.paymentStatus === next.paymentStatus && prev.paymentMethod === next.paymentMethod
+        ? prev
+        : next
+    );
+    setPage(1);
+  }, [url.search, url.status, url.paymentStatus, url.paymentMethod]);
 
   // Members come from the picker's own search. Packages: the full list when
   // this account has the Packages tab, else the ones on sale right now.
@@ -218,12 +259,30 @@ export default function PackageOrdersAdminPage() {
       return res;
     });
 
-  const openAction = async (o: PackageOrder, a: typeof action) => {
+  // The manage panel on one order, its forms reset.
+  const openOrder = (o: PackageOrder, a: PanelAction) => {
     setSelected(o);
     setAction(a);
     setDraft({ status: o.status, days: "7", reason: "", immediate: "no", paymentMethod: "cash", markPaid: "yes", months: "", packageId: "", amount: "" });
+  };
+
+  const openAction = async (o: PackageOrder, a: typeof action) => {
+    openOrder(o, a);
     if (a === "change" && !packages.length) await loadPickers();
   };
+
+  // Fetched on its own, as it need not be on the page of the list shown, and
+  // then dropped from the address: closing the panel is final, and the same
+  // link followed again opens it again.
+  useEffect(() => {
+    if (!urlId) return;
+    replaceParams({ id: null });
+    apiGet<{ data?: PackageOrder }>(`${GYMFOLIO_API}/package-orders/${encodeURIComponent(urlId)}`)
+      .then((r) => {
+        if (r.data) openOrder(r.data, "status");
+      })
+      .catch((e) => setError(e instanceof Error ? e.message : "Could not open that order"));
+  }, [urlId]);
 
   const post = (o: PackageOrder, path: string, body?: unknown) => apiJson<{ message: string }>(`${GYMFOLIO_API}/package-orders/${o._id}/${path}`, "POST", body);
 
@@ -259,6 +318,20 @@ export default function PackageOrdersAdminPage() {
   const select = "h-9 rounded-lg border border-neutral-200 bg-white px-3 text-sm text-neutral-700";
   const isPack = (o: PackageOrder) => !!(o.sessions && o.sessions.total > 0);
   const live = (o: PackageOrder) => o.payment.status === "paid" && ["active", "frozen", "past_due"].includes(o.status);
+  // A card subscription Stripe will charge again at the end of the term by
+  // itself -- nobody has told it to stop. A Renew taken at the desk on top
+  // of it would make the member pay twice, so the panel offers none. The
+  // same rule as the backend's reminderJobs.willAutoRenew, which the renew
+  // endpoint also checks: should the two ever disagree, its refusal (409)
+  // is shown as the panel's error, and the page never sends `force`.
+  const autoRenewsByCard = (o: PackageOrder) =>
+    !!o.payment.stripeSubscriptionId &&
+    o.subscription?.autoRenew === true &&
+    !o.subscription?.cancelAtPeriodEnd &&
+    !NOT_RENEWING_STRIPE_STATUSES.includes((o.subscription?.stripeStatus || "").toLowerCase());
+  // A card renewal Stripe could not collect and is still retrying: the fix
+  // is a working card, not a second payment.
+  const cardPaymentFailed = (o: PackageOrder) => o.status === "past_due" && !!o.payment.stripeSubscriptionId;
 
   return (
     <div>
@@ -283,7 +356,7 @@ export default function PackageOrdersAdminPage() {
         />
         <select value={filters.status} onChange={(e) => filterBy({ status: e.target.value })} className={select}>
           <option value="">Any status</option>
-          {["pending", "active", "frozen", "past_due", "expired", "cancelled"].map((s) => (
+          {ORDER_STATUSES.map((s) => (
             <option key={s} value={s}>
               {s.replace("_", " ")}
             </option>
@@ -291,7 +364,7 @@ export default function PackageOrdersAdminPage() {
         </select>
         <select value={filters.paymentStatus} onChange={(e) => filterBy({ paymentStatus: e.target.value })} className={select}>
           <option value="">Any payment</option>
-          {["pending", "processing", "paid", "failed", "refunded"].map((s) => (
+          {PAYMENT_STATUSES.map((s) => (
             <option key={s} value={s}>
               {s === "processing" ? "awaiting review" : s}
             </option>
@@ -536,7 +609,16 @@ export default function PackageOrdersAdminPage() {
                     Resume now
                   </SecondaryButton>
                 )}
-                {live(selected) && <SecondaryButton onClick={() => setAction("renew")}>Renew</SecondaryButton>}
+                {live(selected) &&
+                  (cardPaymentFailed(selected) ? (
+                    <span className="self-center text-xs font-medium text-rose-600">Card payment failed — ask the member to update their card</span>
+                  ) : autoRenewsByCard(selected) ? (
+                    <span className="self-center text-xs text-neutral-500">
+                      Renews automatically{selected.subscription?.endDate ? ` on ${fmtDate(selected.subscription.endDate)}` : ""} (card)
+                    </span>
+                  ) : (
+                    <SecondaryButton onClick={() => setAction("renew")}>Renew</SecondaryButton>
+                  ))}
                 {live(selected) && <SecondaryButton onClick={() => openAction(selected, "change")}>Change package</SecondaryButton>}
                 {live(selected) && isPack(selected) && (
                   <SecondaryButton disabled={busy} onClick={() => run("Session used.", () => post(selected, "use-session"))}>
@@ -699,5 +781,14 @@ export default function PackageOrdersAdminPage() {
         )}
       </Modal>
     </div>
+  );
+}
+
+export default function PackageOrdersAdminPage() {
+  // useSearchParams requires a Suspense boundary during prerender.
+  return (
+    <Suspense fallback={<Spinner />}>
+      <PackageOrdersAdminPageInner />
+    </Suspense>
   );
 }
