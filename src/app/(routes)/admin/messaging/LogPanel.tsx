@@ -2,19 +2,12 @@
 
 // What went out, and a way to write to one member by hand.
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { FiSend } from "react-icons/fi";
 import { PrimaryButton, SecondaryButton, Modal, TextField, TextArea, SelectField, Badge, Spinner, Table } from "../_shared/ui";
-import { API_BASE, apiGet, apiJson } from "../_shared/api";
+import { apiGet, apiJson } from "../_shared/api";
 import { MESSAGING_API, CHANNEL_LABEL, when, type LogRow, type Channel, type ChannelsInfo } from "./shared";
-
-interface MemberOption {
-  _id: string;
-  firstName?: string;
-  lastName?: string;
-  email: string;
-  phone?: string | null;
-}
+import { MemberPicker, type MemberOption } from "../_ops/MemberPicker";
 
 export default function LogPanel({ editable, channels }: { editable: boolean; channels: ChannelsInfo | null }) {
   const [rows, setRows] = useState<LogRow[]>([]);
@@ -22,9 +15,8 @@ export default function LogPanel({ editable, channels }: { editable: boolean; ch
   const [channel, setChannel] = useState<string>("");
   const [status, setStatus] = useState<string>("");
   const [open, setOpen] = useState(false);
-  const [members, setMembers] = useState<MemberOption[]>([]);
-  const [query, setQuery] = useState("");
-  const [draft, setDraft] = useState<{ userId: string; channel: Channel; subject: string; body: string }>({ userId: "", channel: "email", subject: "", body: "" });
+  const [chosen, setChosen] = useState<MemberOption | null>(null);
+  const [draft, setDraft] = useState<{ channel: Channel; subject: string; body: string }>({ channel: "email", subject: "", body: "" });
   const [sending, setSending] = useState(false);
   const [notice, setNotice] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
 
@@ -47,33 +39,20 @@ export default function LogPanel({ editable, channels }: { editable: boolean; ch
     load();
   }, [load]);
 
-  const openSend = async () => {
+  const openSend = () => {
     setOpen(true);
     setNotice(null);
-    if (!members.length) {
-      try {
-        const res = await apiGet<{ data?: MemberOption[]; users?: MemberOption[] }>(`${API_BASE}/get/allUsers`);
-        setMembers((res.data || res.users || []) as MemberOption[]);
-      } catch {
-        /* the picker just stays empty */
-      }
-    }
   };
-
-  const matches = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return members.slice(0, 20);
-    return members.filter((m) => `${m.firstName || ""} ${m.lastName || ""} ${m.email} ${m.phone || ""}`.toLowerCase().includes(q)).slice(0, 20);
-  }, [members, query]);
 
   const send = async () => {
     setSending(true);
     setNotice(null);
     try {
-      const res = await apiJson<{ message: string }>(`${MESSAGING_API}/send`, "POST", draft);
+      const res = await apiJson<{ message: string }>(`${MESSAGING_API}/send`, "POST", { ...draft, userId: chosen?.id });
       setNotice({ tone: "ok", text: res.message });
       setOpen(false);
-      setDraft({ userId: "", channel: "email", subject: "", body: "" });
+      setChosen(null);
+      setDraft({ channel: "email", subject: "", body: "" });
       await load();
     } catch (e) {
       setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not send" });
@@ -81,8 +60,6 @@ export default function LogPanel({ editable, channels }: { editable: boolean; ch
       setSending(false);
     }
   };
-
-  const chosen = members.find((m) => m._id === draft.userId);
 
   return (
     <div>
@@ -126,16 +103,7 @@ export default function LogPanel({ editable, channels }: { editable: boolean; ch
 
       <Modal open={open} onClose={() => setOpen(false)} title="Send a message" size="lg">
         <div className="space-y-4">
-          <TextField label="Find a member" value={query} onChange={setQuery} placeholder="Name, email or phone" />
-          <div className="max-h-40 overflow-y-auto rounded-lg border border-neutral-200">
-            {matches.map((m) => (
-              <button key={m._id} type="button" onClick={() => setDraft({ ...draft, userId: m._id })} className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-neutral-50 ${draft.userId === m._id ? "bg-neutral-100" : ""}`}>
-                <span>{[m.firstName, m.lastName].filter(Boolean).join(" ") || m.email}</span>
-                <span className="text-xs text-neutral-500">{m.email}{m.phone ? ` · ${m.phone}` : ""}</span>
-              </button>
-            ))}
-            {!matches.length && <p className="px-3 py-2 text-xs text-neutral-500">No matches.</p>}
-          </div>
+          <MemberPicker label="Find a member" value={chosen} onChange={setChosen} placeholder="Name, email or phone" listWhenEmpty />
           <SelectField
             label="Channel"
             value={draft.channel}
@@ -145,12 +113,12 @@ export default function LogPanel({ editable, channels }: { editable: boolean; ch
           />
           {(draft.channel === "email" || draft.channel === "push") && <TextField label={draft.channel === "email" ? "Subject" : "Title"} value={draft.subject} onChange={(v) => setDraft({ ...draft, subject: v })} />}
           <TextArea label="Message" value={draft.body} onChange={(v) => setDraft({ ...draft, body: v })} placeholder="Hi {{firstName}}, …" />
-          {chosen && <p className="text-xs text-neutral-500">To: {[chosen.firstName, chosen.lastName].filter(Boolean).join(" ")} ({draft.channel === "email" ? chosen.email : draft.channel === "push" ? "their devices" : chosen.phone || "no phone number"})</p>}
+          {chosen && <p className="text-xs text-neutral-500">To: {chosen.name} ({draft.channel === "email" ? chosen.email : draft.channel === "push" ? "their devices" : chosen.phone || "no phone number"})</p>}
           <div className="flex justify-end gap-2">
             <SecondaryButton onClick={() => setOpen(false)} disabled={sending}>
               Cancel
             </SecondaryButton>
-            <PrimaryButton onClick={send} disabled={sending || !draft.userId || !draft.body.trim()}>
+            <PrimaryButton onClick={send} disabled={sending || !chosen || !draft.body.trim()}>
               {sending ? "Sending…" : "Send"}
             </PrimaryButton>
           </div>

@@ -8,6 +8,7 @@ import { FiPlus } from "react-icons/fi";
 import { PageHeader, Card, PrimaryButton, SecondaryButton, DangerButton, Modal, TextField } from "../_shared/ui";
 import { API_BASE, apiGet, apiJson } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
+import { MemberPicker, type MemberOption } from "../_ops/MemberPicker";
 
 interface Locker {
   id: string;
@@ -22,12 +23,6 @@ interface Locker {
   currency: string;
   notes: string;
 }
-interface MemberOption {
-  _id: string;
-  firstName?: string;
-  lastName?: string;
-  email: string;
-}
 
 export default function LockersPage() {
   const { can } = usePermissions();
@@ -38,9 +33,8 @@ export default function LockersPage() {
   const [addOpen, setAddOpen] = useState(false);
   const [addDraft, setAddDraft] = useState({ from: "1", to: "20", zone: "", fee: "0" });
   const [selected, setSelected] = useState<Locker | null>(null);
-  const [members, setMembers] = useState<MemberOption[]>([]);
-  const [query, setQuery] = useState("");
-  const [assign, setAssign] = useState({ memberId: "", until: "", fee: "" });
+  const [member, setMember] = useState<MemberOption | null>(null);
+  const [assign, setAssign] = useState({ until: "", fee: "" });
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
@@ -58,24 +52,11 @@ export default function LockersPage() {
   }, [load]);
 
   const zones = useMemo(() => Array.from(new Set(rows.map((l) => l.zone))).sort(), [rows]);
-  const matches = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return [];
-    return members.filter((m) => `${m.firstName || ""} ${m.lastName || ""} ${m.email}`.toLowerCase().includes(q)).slice(0, 6);
-  }, [members, query]);
 
-  const open = async (l: Locker) => {
+  const open = (l: Locker) => {
     setSelected(l);
-    setAssign({ memberId: "", until: "", fee: String(l.fee || "") });
-    setQuery("");
-    if (!members.length) {
-      try {
-        const r = await apiGet<{ data?: MemberOption[]; users?: MemberOption[] }>(`${API_BASE}/get/allUsers?role=user`);
-        setMembers((r.data || r.users || []) as MemberOption[]);
-      } catch {
-        /* picker stays empty */
-      }
-    }
+    setAssign({ until: "", fee: String(l.fee || "") });
+    setMember(null);
   };
 
   const run = async (fn: () => Promise<{ message?: string } | void>) => {
@@ -91,6 +72,14 @@ export default function LockersPage() {
     } finally {
       setSaving(false);
     }
+  };
+
+  // A cancelled prompt returns null and must leave the locker as it was; an
+  // empty answer is still a yes, just without a note.
+  const markOutOfOrder = (l: Locker) => {
+    const notes = prompt("What is wrong with it?");
+    if (notes === null) return;
+    run(() => apiJson(`${API_BASE}/admin/lockers/${l.id}`, "PUT", { status: "maintenance", notes }));
   };
 
   const tone = (l: Locker) => (l.status === "maintenance" ? "border-neutral-300 bg-neutral-100 text-neutral-400" : l.status === "assigned" ? (l.overdue ? "border-rose-300 bg-rose-50 text-rose-800" : "border-neutral-900 bg-neutral-900 text-white") : "border-emerald-200 bg-emerald-50 text-emerald-800");
@@ -171,21 +160,12 @@ export default function LockersPage() {
                 {selected.status === "maintenance" && <p className="text-neutral-500">Out of order{selected.notes ? ` — ${selected.notes}` : ""}.</p>}
                 {editable && selected.status === "free" && (
                   <>
-                    <TextField label="Assign to member" value={query} onChange={(v) => { setQuery(v); setAssign({ ...assign, memberId: "" }); }} placeholder="Name or email" />
-                    {matches.length > 0 && !assign.memberId && (
-                      <div className="rounded-lg border border-neutral-200">
-                        {matches.map((m) => (
-                          <button key={m._id} type="button" onClick={() => { setAssign({ ...assign, memberId: m._id }); setQuery([m.firstName, m.lastName].filter(Boolean).join(" ") || m.email); }} className="block w-full px-3 py-1.5 text-left hover:bg-neutral-50">
-                            {[m.firstName, m.lastName].filter(Boolean).join(" ") || m.email} <span className="text-xs text-neutral-500">{m.email}</span>
-                          </button>
-                        ))}
-                      </div>
-                    )}
+                    <MemberPicker label="Assign to member" type="member" value={member} onChange={setMember} placeholder="Name, email or code" />
                     <div className="grid grid-cols-2 gap-3">
                       <TextField label="Until (optional)" type="date" value={assign.until} onChange={(v) => setAssign({ ...assign, until: v })} />
                       <TextField label="Fee" type="number" value={assign.fee} onChange={(v) => setAssign({ ...assign, fee: v })} />
                     </div>
-                    <PrimaryButton onClick={() => run(() => apiJson<{ message: string }>(`${API_BASE}/admin/lockers/${selected.id}/assign`, "POST", { memberId: assign.memberId, until: assign.until || null, fee: assign.fee === "" ? undefined : Number(assign.fee) }))} disabled={saving || !assign.memberId}>Assign</PrimaryButton>
+                    <PrimaryButton onClick={() => run(() => apiJson<{ message: string }>(`${API_BASE}/admin/lockers/${selected.id}/assign`, "POST", { memberId: member?.id, until: assign.until || null, fee: assign.fee === "" ? undefined : Number(assign.fee) }))} disabled={saving || !member}>Assign</PrimaryButton>
                   </>
                 )}
               </>
@@ -193,7 +173,7 @@ export default function LockersPage() {
             {editable && selected.status !== "assigned" && (
               <div className="flex flex-wrap gap-2 border-t border-neutral-100 pt-3">
                 {selected.status === "free" ? (
-                  <SecondaryButton onClick={() => run(() => apiJson(`${API_BASE}/admin/lockers/${selected.id}`, "PUT", { status: "maintenance", notes: prompt("What is wrong with it?") || "" }))} disabled={saving}>Mark out of order</SecondaryButton>
+                  <SecondaryButton onClick={() => markOutOfOrder(selected)} disabled={saving}>Mark out of order</SecondaryButton>
                 ) : (
                   <SecondaryButton onClick={() => run(() => apiJson(`${API_BASE}/admin/lockers/${selected.id}`, "PUT", { status: "free", notes: "" }))} disabled={saving}>Back in service</SecondaryButton>
                 )}

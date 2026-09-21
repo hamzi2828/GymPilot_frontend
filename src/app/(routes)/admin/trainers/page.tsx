@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Image from "next/image";
 import { FiPlus, FiEdit2, FiTrash2 } from "react-icons/fi";
 import {
@@ -17,12 +17,17 @@ import {
   Spinner,
   Table,
 } from "../_shared/ui";
-import { API_BASE, GYMFOLIO_API, apiGet, apiJson, apiForm, absoluteUrl } from "../_shared/api";
+import { GYMFOLIO_API, apiGet, apiJson, apiForm, absoluteUrl } from "../_shared/api";
 import {
   WeekScheduleEditor,
   validateSchedule,
   type ScheduleRow,
 } from "../_shared/WeekScheduleEditor";
+import { usePermissions } from "@/components/admin/PermissionsProvider";
+import { useMemberSearch } from "../_ops/MemberPicker";
+import { Pager, LoadError, pageCount } from "../_ops/lists";
+
+const PAGE_SIZE = 20;
 
 interface Trainer {
   _id: string;
@@ -55,47 +60,53 @@ interface Trainer {
   commissionPercent?: number | null;
 }
 
-interface StaffOption {
-  _id: string;
-  firstName?: string;
-  lastName?: string;
-  email: string;
-  employment?: { isStaff?: boolean; jobTitle?: string };
-}
-
 export default function TrainersAdminPage() {
+  const { can } = usePermissions();
+  const editable = can("trainers", "manage");
   const [list, setList] = useState<Trainer[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [pages, setPages] = useState(1);
+  const [total, setTotal] = useState(0);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Trainer | null>(null);
   const [form, setForm] = useState<Partial<Trainer>>({});
   const [img, setImg] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
-  const [staff, setStaff] = useState<StaffOption[]>([]);
   const [availability, setAvailability] = useState<ScheduleRow[]>([]);
 
-  const load = async () => {
+  // Paged: the endpoint returns twenty at a time, and reading only the first
+  // page used to make every trainer after the twentieth vanish from here.
+  const load = useCallback(async () => {
     setLoading(true);
     try {
-      const r = await apiGet<{ data: Trainer[] }>(`${GYMFOLIO_API}/trainers`);
+      const r = await apiGet<{ data: Trainer[]; pagination?: { total?: number; pages?: number; limit?: number } }>(
+        `${GYMFOLIO_API}/trainers?page=${page}&limit=${PAGE_SIZE}`
+      );
+      // Deleting the last trainer on the last page leaves nothing to show.
+      if (!(r.data || []).length && page > 1) {
+        setPage(page - 1);
+        return;
+      }
       setList(r.data || []);
+      setPages(pageCount(r.pagination));
+      setTotal(r.pagination?.total ?? (r.data || []).length);
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not load trainers");
     } finally {
       setLoading(false);
     }
-  };
+  }, [page]);
 
-  // Staff accounts available to link a trainer to. Fetched once alongside the
-  // list; a failure here only costs the dropdown, so it must not break the page.
-  const loadStaff = async () => {
-    try {
-      const r = await apiGet<{ data: StaffOption[] }>(`${API_BASE}/get/allUsers`);
-      setStaff((r.data || []).filter((u) => u.employment?.isStaff));
-    } catch {
-      setStaff([]);
-    }
-  };
+  useEffect(() => { load(); }, [load]);
 
-  useEffect(() => { load(); loadStaff(); }, []);
+  // Staff accounts available to link a trainer to, from the staff-readable
+  // picker endpoint rather than the whole user list (which needs the Users
+  // tab). Only fetched for someone who can edit; a failure here only costs
+  // the dropdown, so it must not break the page.
+  const { results: staff } = useMemberSearch("", { type: "staff", limit: 50, enabled: editable });
 
   const openCreate = () => {
     setEditing(null);
@@ -198,15 +209,19 @@ export default function TrainersAdminPage() {
         eyebrow="Fitness"
         title="Trainers"
         actions={
-          <PrimaryButton onClick={openCreate}>
-            <FiPlus className="w-4 h-4 mr-1.5" /> New Trainer
-          </PrimaryButton>
+          editable ? (
+            <PrimaryButton onClick={openCreate}>
+              <FiPlus className="w-4 h-4 mr-1.5" /> New Trainer
+            </PrimaryButton>
+          ) : undefined
         }
       />
 
+      {error && <LoadError message={error} onRetry={load} />}
+
       {loading ? (
         <Spinner />
-      ) : (
+      ) : error && !list.length ? null : (
         <Table
           columns={["", "Name", "Role", "Experience", "Email", "Status", "Actions"]}
           rows={list.map((t) => [
@@ -226,23 +241,29 @@ export default function TrainersAdminPage() {
             t.role,
             t.experience ? `${t.experience} yrs` : "—",
             t.email || "—",
-            <button key="b" onClick={() => toggleActive(t)}>
+            <button key="b" onClick={() => toggleActive(t)} disabled={!editable} className="disabled:cursor-default">
               <Badge color={t.isActive ? "green" : "neutral"}>
                 {t.isActive ? "Active" : "Inactive"}
               </Badge>
             </button>,
-            <div key="a" className="flex gap-2">
-              <SecondaryButton onClick={() => openEdit(t)}>
-                <FiEdit2 className="w-3.5 h-3.5" />
-              </SecondaryButton>
-              <DangerButton onClick={() => remove(t._id)}>
-                <FiTrash2 className="w-3.5 h-3.5" />
-              </DangerButton>
-            </div>,
+            editable ? (
+              <div key="a" className="flex gap-2">
+                <SecondaryButton onClick={() => openEdit(t)}>
+                  <FiEdit2 className="w-3.5 h-3.5" />
+                </SecondaryButton>
+                <DangerButton onClick={() => remove(t._id)}>
+                  <FiTrash2 className="w-3.5 h-3.5" />
+                </DangerButton>
+              </div>
+            ) : (
+              <span key="a" />
+            ),
           ])}
-          empty="No trainers yet — click 'New Trainer' to add one."
+          empty={editable ? "No trainers yet — click 'New Trainer' to add one." : "No trainers yet."}
         />
       )}
+
+      <Pager page={page} pages={pages} total={total} onChange={setPage} disabled={loading} />
 
       <Modal open={open} onClose={() => setOpen(false)} title={editing ? "Edit Trainer" : "New Trainer"} size="lg">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -262,10 +283,9 @@ export default function TrainersAdminPage() {
               onChange={(v) => setForm({ ...form, userId: v || null })}
               placeholder="Not on the payroll"
               options={staff.map((u) => ({
-                value: u._id,
-                label: `${[u.firstName, u.lastName].filter(Boolean).join(" ") || u.email}${
-                  u.employment?.jobTitle ? ` — ${u.employment.jobTitle}` : ""
-                }`,
+                value: u.id,
+                label: `${u.name}${u.job_title ? ` — ${u.job_title}` : ""}`,
+                hint: u.email,
               }))}
             />
             <p className="mt-1 text-[12px] text-neutral-500">

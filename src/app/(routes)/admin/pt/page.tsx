@@ -4,11 +4,12 @@
 // marking them done or missed, booking one for a member, and what each
 // trainer has earned.
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { FiPlus } from "react-icons/fi";
 import { PageHeader, Card, PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, SelectField, Badge, Spinner, Table } from "../_shared/ui";
-import { API_BASE, GYMFOLIO_API, apiGet, apiJson } from "../_shared/api";
+import { GYMFOLIO_API, apiGet, apiJson } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
+import { MemberPicker, type MemberOption } from "../_ops/MemberPicker";
 
 const PT_API = `${GYMFOLIO_API}/pt`;
 
@@ -34,12 +35,6 @@ interface Session {
 interface TrainerOption {
   id: string;
   name: string;
-}
-interface MemberOption {
-  _id: string;
-  firstName?: string;
-  lastName?: string;
-  email: string;
 }
 interface Summary {
   trainer_id: string;
@@ -74,12 +69,11 @@ export default function PtAdminPage() {
   const [rows, setRows] = useState<Session[]>([]);
   const [summary, setSummary] = useState<Summary[]>([]);
   const [trainers, setTrainers] = useState<TrainerOption[]>([]);
-  const [members, setMembers] = useState<MemberOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
   const [open, setOpen] = useState(false);
-  const [draft, setDraft] = useState({ trainerId: "", userId: "", date: today(), startTime: "", notes: "" });
-  const [query, setQuery] = useState("");
+  const [draft, setDraft] = useState({ trainerId: "", date: today(), startTime: "", notes: "" });
+  const [member, setMember] = useState<MemberOption | null>(null);
   const [slots, setSlots] = useState<Slot[]>([]);
   const [saving, setSaving] = useState(false);
 
@@ -119,31 +113,17 @@ export default function PtAdminPage() {
       .catch(() => setSlots([]));
   }, [open, draft.trainerId, draft.date]);
 
-  const openBook = async () => {
-    setDraft({ trainerId: trainerId || "", userId: "", date: today(), startTime: "", notes: "" });
-    setQuery("");
+  const openBook = () => {
+    setDraft({ trainerId: trainerId || "", date: today(), startTime: "", notes: "" });
+    setMember(null);
     setOpen(true);
-    if (!members.length) {
-      try {
-        const r = await apiGet<{ data?: MemberOption[]; users?: MemberOption[] }>(`${API_BASE}/get/allUsers?role=user`);
-        setMembers((r.data || r.users || []) as MemberOption[]);
-      } catch {
-        /* picker stays empty */
-      }
-    }
   };
-
-  const matches = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    const list = q ? members.filter((m) => `${m.firstName || ""} ${m.lastName || ""} ${m.email}`.toLowerCase().includes(q)) : members;
-    return list.slice(0, 12);
-  }, [members, query]);
 
   const book = async () => {
     setSaving(true);
     setNotice(null);
     try {
-      const res = await apiJson<{ message: string }>(`${PT_API}/sessions/staff`, "POST", draft);
+      const res = await apiJson<{ message: string }>(`${PT_API}/sessions/staff`, "POST", { ...draft, userId: member?.id });
       setNotice({ tone: "ok", text: res.message });
       setOpen(false);
       await load();
@@ -173,8 +153,6 @@ export default function PtAdminPage() {
       setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not cancel" });
     }
   };
-
-  const chosenMember = members.find((m) => m._id === draft.userId);
 
   return (
     <div>
@@ -256,17 +234,7 @@ export default function PtAdminPage() {
       <Modal open={open} onClose={() => setOpen(false)} title="Book a session" size="lg">
         <div className="space-y-4">
           <SelectField label="Trainer" value={draft.trainerId} allowClear={false} onChange={(v) => setDraft({ ...draft, trainerId: v, startTime: "" })} options={trainers.map((t) => ({ value: t.id, label: t.name }))} />
-          <TextField label="Find a member" value={query} onChange={setQuery} placeholder="Name or email" />
-          <div className="max-h-36 overflow-y-auto rounded-lg border border-neutral-200">
-            {matches.map((m) => (
-              <button key={m._id} type="button" onClick={() => setDraft({ ...draft, userId: m._id })} className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-neutral-50 ${draft.userId === m._id ? "bg-neutral-100" : ""}`}>
-                <span>{[m.firstName, m.lastName].filter(Boolean).join(" ") || m.email}</span>
-                <span className="text-xs text-neutral-500">{m.email}</span>
-              </button>
-            ))}
-            {!matches.length && <p className="px-3 py-2 text-xs text-neutral-500">No matches.</p>}
-          </div>
-          {chosenMember && <p className="text-xs text-neutral-600">For: {[chosenMember.firstName, chosenMember.lastName].filter(Boolean).join(" ") || chosenMember.email}</p>}
+          <MemberPicker label="Find a member" type="member" value={member} onChange={setMember} listWhenEmpty />
           <TextField label="Date" type="date" value={draft.date} onChange={(v) => setDraft({ ...draft, date: v, startTime: "" })} />
           <div>
             <p className="text-xs font-medium text-neutral-600">Free slots</p>
@@ -284,7 +252,7 @@ export default function PtAdminPage() {
             <SecondaryButton onClick={() => setOpen(false)} disabled={saving}>
               Cancel
             </SecondaryButton>
-            <PrimaryButton onClick={book} disabled={saving || !draft.trainerId || !draft.userId || !draft.startTime}>
+            <PrimaryButton onClick={book} disabled={saving || !draft.trainerId || !member || !draft.startTime}>
               {saving ? "Booking…" : "Book"}
             </PrimaryButton>
           </div>

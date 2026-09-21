@@ -8,6 +8,7 @@ import Link from "next/link";
 import { PageHeader, Card, PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, SelectField, Badge, Spinner } from "../_shared/ui";
 import { API_BASE, apiGet, apiJson } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
+import { MemberPicker, type MemberOption } from "../_ops/MemberPicker";
 
 const POS_API = `${API_BASE}/admin/pos`;
 
@@ -21,13 +22,6 @@ interface Product {
   stock: number;
   low: boolean;
   is_active: boolean;
-}
-interface MemberOption {
-  _id: string;
-  firstName?: string;
-  lastName?: string;
-  email: string;
-  memberCode?: string | null;
 }
 interface Sale {
   id: string;
@@ -70,9 +64,7 @@ export default function PosPage() {
   const [basket, setBasket] = useState<{ product: Product; quantity: number }[]>([]);
   const [discount, setDiscount] = useState("0");
   const [method, setMethod] = useState("cash");
-  const [members, setMembers] = useState<MemberOption[]>([]);
-  const [memberQuery, setMemberQuery] = useState("");
-  const [memberId, setMemberId] = useState("");
+  const [member, setMember] = useState<MemberOption | null>(null);
   const [category, setCategory] = useState("");
   const [busy, setBusy] = useState(false);
   const [receipt, setReceipt] = useState<Sale | null>(null);
@@ -97,21 +89,8 @@ export default function PosPage() {
     load();
   }, [load]);
 
-  useEffect(() => {
-    if (!memberQuery.trim() || members.length) return;
-    apiGet<{ data?: MemberOption[]; users?: MemberOption[] }>(`${API_BASE}/get/allUsers?role=user`)
-      .then((r) => setMembers((r.data || r.users || []) as MemberOption[]))
-      .catch(() => setMembers([]));
-  }, [memberQuery, members.length]);
-
   const categories = useMemo(() => Array.from(new Set(products.map((p) => p.category))).sort(), [products]);
   const shown = products.filter((p) => !category || p.category === category);
-  const matches = useMemo(() => {
-    const q = memberQuery.trim().toLowerCase();
-    if (!q) return [];
-    return members.filter((m) => `${m.firstName || ""} ${m.lastName || ""} ${m.email} ${m.memberCode || ""}`.toLowerCase().includes(q)).slice(0, 6);
-  }, [members, memberQuery]);
-  const chosenMember = members.find((m) => m._id === memberId);
 
   const add = (p: Product) => {
     setBasket((b) => {
@@ -133,13 +112,12 @@ export default function PosPage() {
         items: basket.map((x) => ({ productId: x.product.id, quantity: x.quantity })),
         discount: Number(discount) || 0,
         paymentMethod: method,
-        memberId: memberId || undefined,
+        memberId: member?.id || undefined,
       });
       setReceipt(res.data);
       setBasket([]);
       setDiscount("0");
-      setMemberId("");
-      setMemberQuery("");
+      setMember(null);
       await load();
     } catch (e) {
       setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not record the sale" });
@@ -259,17 +237,7 @@ export default function PosPage() {
               </div>
             )}
             <div className="mt-4 space-y-3">
-              <TextField label="Member (optional)" value={memberQuery} onChange={(v) => { setMemberQuery(v); setMemberId(""); }} placeholder="Name, email or code" />
-              {matches.length > 0 && !memberId && (
-                <div className="rounded-lg border border-neutral-200">
-                  {matches.map((m) => (
-                    <button key={m._id} type="button" onClick={() => { setMemberId(m._id); setMemberQuery([m.firstName, m.lastName].filter(Boolean).join(" ") || m.email); }} className="block w-full px-3 py-1.5 text-left text-sm hover:bg-neutral-50">
-                      {[m.firstName, m.lastName].filter(Boolean).join(" ") || m.email} <span className="text-xs text-neutral-500">{m.email}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-              {chosenMember && <p className="text-xs text-emerald-700">For {chosenMember.email}</p>}
+              <MemberPicker label="Member (optional)" type="member" value={member} onChange={setMember} placeholder="Name, email or code" disabled={!editable} />
               <TextField label="Discount" type="number" value={discount} onChange={setDiscount} />
               <SelectField label="Payment" value={method} allowClear={false} onChange={setMethod} options={METHODS} />
               <div className="flex items-center justify-between border-t border-neutral-200 pt-3 text-sm">
