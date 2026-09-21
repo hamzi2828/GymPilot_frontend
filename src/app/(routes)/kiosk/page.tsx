@@ -7,6 +7,13 @@
 //
 // It speaks the same /api/desktop endpoints as the Windows front-desk app,
 // so the two record identical attendance rows.
+//
+// The screen faces the public, so finding someone by name -- a list with
+// phone numbers and emails -- checking them in by hand, and signing the kiosk
+// out are behind a "Staff" unlock: the desk account's password typed again.
+// The server holds the kiosk to that too (kioskStaffOnly in the backend's
+// desktopAuth), and the kiosk locks itself again after a minute without a
+// tap.
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import type { Html5Qrcode } from "html5-qrcode";
@@ -16,6 +23,10 @@ const TOKEN_KEY = "kiosk_token";
 const CLIENT_APP = "GymPilotKiosk/1.0";
 const RECEIPT_SECONDS = 8;
 const SCAN_COOLDOWN_MS = 4000;
+// A staff unlock lasts while someone is using it. The server's own ceiling
+// on one unlock is longer; this is what keeps it from being left open.
+const STAFF_IDLE_MS = 60 * 1000;
+const STAFF_UNLOCK_REQUIRED = "STAFF_UNLOCK_REQUIRED";
 
 interface ReceiptRow { caption: string; value: string }
 interface Receipt {
@@ -42,7 +53,7 @@ function readToken(): string | null {
   }
 }
 
-async function desk<T>(path: string, body: Record<string, unknown> = {}, token?: string | null): Promise<T & { success: boolean; message?: string; http_status?: number }> {
+async function desk<T>(path: string, body: Record<string, unknown> = {}, token?: string | null): Promise<T & { success: boolean; message?: string; code?: string; http_status?: number }> {
   const res = await fetch(`${API_BASE}/api/desktop/${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
@@ -102,6 +113,15 @@ export default function KioskPage() {
   const [people, setPeople] = useState<Person[]>([]);
   const [searching, setSearching] = useState(false);
 
+  // The staff unlock: the signed grant the server handed back, sent with
+  // every people search and hand-picked punch until the kiosk locks again.
+  const [staffUnlock, setStaffUnlock] = useState<{ grant: string; expiresAt: number } | null>(null);
+  const [unlockPrompt, setUnlockPrompt] = useState(false);
+  const [unlockPassword, setUnlockPassword] = useState("");
+  const [unlockError, setUnlockError] = useState<string | null>(null);
+  const [unlocking, setUnlocking] = useState(false);
+  const staffActivityRef = useRef(0);
+
   const [cameraOn, setCameraOn] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const scannerRef = useRef<Html5Qrcode | null>(null);
@@ -146,15 +166,59 @@ export default function KioskPage() {
     }, RECEIPT_SECONDS * 1000);
   };
 
+  // Back to the member-only screen: the grant is forgotten, and so is
+  // whatever the search had on screen.
+  const lockStaff = useCallback(() => {
+    setStaffUnlock(null);
+    setUnlockPrompt(false);
+    setUnlockPassword("");
+    setUnlockError(null);
+    setQuery("");
+    setPeople([]);
+  }, []);
+
+  const touchStaff = useCallback(() => {
+    staffActivityRef.current = Date.now();
+  }, []);
+
+  // A minute with no tap -- or the server's grant running out -- locks it.
+  // The password prompt closes on the same clock, so a half-typed unlock is
+  // not left waiting for the next person.
+  useEffect(() => {
+    if (!staffUnlock && !unlockPrompt) return;
+    const timer = setInterval(() => {
+      const idle = Date.now() - staffActivityRef.current >= STAFF_IDLE_MS;
+      const expired = staffUnlock !== null && Date.now() >= staffUnlock.expiresAt;
+      if (idle || expired) lockStaff();
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [staffUnlock, unlockPrompt, lockStaff]);
+
+  // The server refused the desk token itself: back to the sign-in form.
+  const endSession = useCallback(
+    (message?: string) => {
+      localStorage.removeItem(TOKEN_KEY);
+      lockStaff();
+      setToken(null);
+      setOperator(null);
+      setLoginError(message || "Please sign in again.");
+    },
+    [lockStaff]
+  );
+
   const punch = useCallback(
     async (body: Record<string, unknown>) => {
       if (!token) return;
       const res = await desk<{ detail: Receipt | null }>("punch", body, token);
       if (res.http_status === 401 || res.http_status === 403) {
-        localStorage.removeItem(TOKEN_KEY);
-        setToken(null);
-        setOperator(null);
-        setLoginError(res.message || "Please sign in again.");
+        endSession(res.message);
+        return;
+      }
+      if (res.code === STAFF_UNLOCK_REQUIRED) {
+        // The unlock ran out on the server between the pick and the punch.
+        lockStaff();
+        beep(false);
+        showReceipt(null, { tone: "bad", text: "Staff unlock expired. Unlock again to check someone in by name." });
         return;
       }
       if (res.success && res.detail) {
@@ -170,7 +234,7 @@ export default function KioskPage() {
       setQuery("");
       setPeople([]);
     },
-    [token, loadRecent]
+    [token, loadRecent, endSession, lockStaff]
   );
 
   // Camera scanning.
@@ -242,20 +306,67 @@ export default function KioskPage() {
   const logout = async () => {
     if (token) await desk("logout", {}, token).catch(() => {});
     await stopCamera();
+    lockStaff();
     localStorage.removeItem(TOKEN_KEY);
     setToken(null);
     setOperator(null);
   };
 
+  const openUnlock = () => {
+    touchStaff();
+    setUnlockError(null);
+    setUnlockPrompt(true);
+  };
+
+  // The desk account's password again. A wrong one is a 400 from the
+  // server, not a 401 -- the kiosk stays signed in either way.
+  const unlock = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!token || !unlockPassword) return;
+    touchStaff();
+    setUnlocking(true);
+    setUnlockError(null);
+    try {
+      const res = await desk<{ unlock: string; expires_in?: number }>("unlock", { password: unlockPassword }, token);
+      if (res.http_status === 401 || res.http_status === 403) {
+        endSession(res.message);
+        return;
+      }
+      if (!res.success || !res.unlock) {
+        setUnlockError(res.message || "Could not unlock.");
+        return;
+      }
+      touchStaff();
+      setPeople([]);
+      setStaffUnlock({ grant: res.unlock, expiresAt: Date.now() + (res.expires_in || 600) * 1000 });
+      setUnlockPrompt(false);
+    } catch {
+      setUnlockError("Could not reach the server. Try again.");
+    } finally {
+      setUnlockPassword("");
+      setUnlocking(false);
+    }
+  };
+
   const search = async (q: string) => {
     setQuery(q);
-    if (!token || q.trim().length < 2) {
+    touchStaff();
+    if (!token || !staffUnlock || q.trim().length < 2) {
       setPeople([]);
       return;
     }
     setSearching(true);
     try {
-      const res = await desk<{ members: Person[]; staff: Person[] }>("people", { q: q.trim() }, token);
+      const res = await desk<{ members: Person[]; staff: Person[] }>("people", { q: q.trim(), staff_unlock: staffUnlock.grant }, token);
+      if (res.http_status === 401 || res.http_status === 403) {
+        endSession(res.message);
+        return;
+      }
+      if (res.code === STAFF_UNLOCK_REQUIRED) {
+        lockStaff();
+        showReceipt(null, { tone: "bad", text: "Staff unlock expired. Unlock again to search." });
+        return;
+      }
       if (res.success) setPeople([...(res.members || []), ...(res.staff || [])].slice(0, 8));
     } finally {
       setSearching(false);
@@ -306,9 +417,13 @@ export default function KioskPage() {
             {operator?.location ? ` · ${operator.location}` : ""} · {dateLabel}
           </p>
         </div>
-        <button type="button" onClick={logout} className="text-xs font-medium text-neutral-400 hover:text-white">
-          Sign out
-        </button>
+        {/* Staff only, like the search: a member at the screen must not be
+            able to take the kiosk off its desk account. */}
+        {staffUnlock && (
+          <button type="button" onClick={logout} className="text-xs font-medium text-neutral-400 hover:text-white">
+            Sign out
+          </button>
+        )}
       </header>
 
       <div className="grid gap-6 p-6 lg:grid-cols-[1.2fr_1fr]">
@@ -356,27 +471,85 @@ export default function KioskPage() {
               </button>
             </form>
 
-            <div className="mt-4">
-              <input
-                value={query}
-                onChange={(e) => search(e.target.value)}
-                placeholder="Staff: find someone by name, phone or email…"
-                className="h-10 w-full rounded-lg border border-white/10 bg-neutral-950 px-3 text-sm text-white outline-none focus:border-white/30"
-              />
-              {(people.length > 0 || searching) && (
-                <ul className="mt-2 divide-y divide-white/5 overflow-hidden rounded-lg border border-white/10">
-                  {searching && !people.length && <li className="px-3 py-2 text-xs text-neutral-500">Searching…</li>}
-                  {people.map((p) => (
-                    <li key={`${p.person_type}:${p.id}`}>
-                      <button type="button" onClick={() => punch({ person_type: p.person_type, person_id: p.id, method: "manual" })} className="flex w-full items-center justify-between px-3 py-2 text-left hover:bg-white/5">
-                        <span className="text-sm text-white">
-                          {p.name} <span className="text-xs text-neutral-500">{p.code}</span>
-                        </span>
-                        <span className="text-xs text-neutral-500">{p.person_type} · {p.meta}</span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
+            {/* Staff only. Locked, this is one quiet button: nothing a member
+                can use to list other members or check them in. */}
+            <div className="mt-4 border-t border-white/10 pt-4">
+              {staffUnlock ? (
+                <>
+                  <input
+                    value={query}
+                    onChange={(e) => search(e.target.value)}
+                    placeholder="Staff: find someone by name, phone or email…"
+                    autoComplete="off"
+                    autoFocus
+                    className="h-10 w-full rounded-lg border border-white/10 bg-neutral-950 px-3 text-sm text-white outline-none focus:border-white/30"
+                  />
+                  {(people.length > 0 || searching) && (
+                    <ul className="mt-2 divide-y divide-white/5 overflow-hidden rounded-lg border border-white/10">
+                      {searching && !people.length && <li className="px-3 py-2 text-xs text-neutral-500">Searching…</li>}
+                      {people.map((p) => (
+                        <li key={`${p.person_type}:${p.id}`}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              touchStaff();
+                              punch({ person_type: p.person_type, person_id: p.id, method: "manual", staff_unlock: staffUnlock.grant });
+                            }}
+                            className="flex w-full items-center justify-between px-3 py-2 text-left hover:bg-white/5"
+                          >
+                            <span className="text-sm text-white">
+                              {p.name} <span className="text-xs text-neutral-500">{p.code}</span>
+                            </span>
+                            <span className="text-xs text-neutral-500">
+                              {p.person_type}
+                              {p.meta ? ` · ${p.meta}` : ""}
+                            </span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  <div className="mt-2 flex items-center justify-between text-[11px] text-neutral-500">
+                    <span>Staff unlocked · locks after a minute idle</span>
+                    <button type="button" onClick={lockStaff} className="rounded-md border border-white/15 px-2 py-1 font-semibold text-neutral-300 hover:bg-white/5">
+                      Lock now
+                    </button>
+                  </div>
+                </>
+              ) : unlockPrompt ? (
+                <form onSubmit={unlock}>
+                  <p className="text-xs text-neutral-400">
+                    Staff only: enter the password for {operator?.name || "this desk account"} to find someone by name or sign the kiosk out.
+                  </p>
+                  <div className="mt-2 flex gap-2">
+                    <input
+                      type="password"
+                      name="kiosk-staff-unlock"
+                      // Not "current-password": a browser that saved the desk
+                      // password must not offer it to whoever taps here.
+                      autoComplete="new-password"
+                      autoFocus
+                      value={unlockPassword}
+                      onChange={(e) => {
+                        touchStaff();
+                        setUnlockPassword(e.target.value);
+                      }}
+                      placeholder="Desk password"
+                      className="h-10 flex-1 rounded-lg border border-white/10 bg-neutral-950 px-3 text-sm text-white outline-none focus:border-white/30"
+                    />
+                    <button type="submit" disabled={unlocking || !unlockPassword} className="h-10 rounded-lg bg-white px-4 text-sm font-semibold text-neutral-900 hover:opacity-90 disabled:opacity-40">
+                      {unlocking ? "Checking…" : "Unlock"}
+                    </button>
+                    <button type="button" onClick={lockStaff} className="h-10 rounded-lg border border-white/15 px-3 text-sm text-neutral-300 hover:bg-white/5">
+                      Cancel
+                    </button>
+                  </div>
+                  {unlockError && <p className="mt-2 rounded-lg bg-rose-500/10 px-3 py-2 text-xs text-rose-300">{unlockError}</p>}
+                </form>
+              ) : (
+                <button type="button" onClick={openUnlock} className="text-xs font-medium text-neutral-500 hover:text-neutral-300">
+                  Staff: find someone by name, or sign out…
+                </button>
               )}
             </div>
           </div>
