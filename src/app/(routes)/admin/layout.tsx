@@ -5,7 +5,8 @@ import { usePathname, useRouter } from "next/navigation";
 import AdminHeader from "@/components/admin/AdminHeader";
 import AdminSidebar from "@/components/admin/AdminSidebar";
 import { PermissionsProvider, usePermissions } from "@/components/admin/PermissionsProvider";
-import { isAuthenticated } from "@/helper/helper";
+import { isAuthenticated, removeToken } from "@/helper/helper";
+import { getSubscription, type BillingSubscription } from "./settings/billingApi";
 
 // Which tab each admin route belongs to. Longest prefix wins, so
 // /admin/package-registrations is not mistaken for /admin/package-orders.
@@ -48,6 +49,24 @@ function tabForPath(pathname: string | null): string {
   return match ? match.tab : "dashboard";
 }
 
+// A trial with this many days or fewer left gets the banner.
+const TRIAL_BANNER_DAYS = 14;
+
+/** What the billing banner says, or null for no banner. */
+function billingBanner(sub: BillingSubscription | null): { text: string; action: string; tone: "warn" | "bad" } | null {
+  if (!sub) return null;
+  if (sub.status === "past_due") {
+    return { text: "Payment overdue — update billing to keep your website, member app and admin running.", action: "Update billing", tone: "bad" };
+  }
+  // A trial with a card on file is already taken care of.
+  if (sub.status === "trialing" && !sub.hasStripeSubscription && sub.daysLeft !== null && sub.daysLeft <= TRIAL_BANNER_DAYS) {
+    const when =
+      sub.daysLeft <= 0 ? "Your trial has ended" : sub.daysLeft === 1 ? "Your trial ends tomorrow" : `Your trial ends in ${sub.daysLeft} days`;
+    return { text: `${when} — choose a plan to keep everything running.`, action: "Choose a plan", tone: "warn" };
+  }
+  return null;
+}
+
 // The shell, once permissions are known.
 //
 // Access is decided by permissions rather than by role === "admin": that check
@@ -55,19 +74,41 @@ function tabForPath(pathname: string | null): string {
 // let them into. Anyone holding at least one tab gets in, and the page they
 // asked for is checked separately.
 function AdminShell({ children }: { children: React.ReactNode }) {
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-  const { loading, tabs, can, me } = usePermissions();
+  // Closed to start with: below lg the sidebar is a drawer over the page, and
+  // opening it unasked covered the page on every phone. From lg up it is
+  // always shown, whatever this says.
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const { loading, tabs, can, me, error } = usePermissions();
   const router = useRouter();
   const pathname = usePathname();
+  const [subscription, setSubscription] = useState<BillingSubscription | null>(null);
 
   const tab = tabForPath(pathname);
   const allowedHere = tab === "dashboard" ? tabs.length > 0 : can(tab);
+  const canViewSettings = can("settings");
 
   useEffect(() => {
     if (loading) return;
-    // No tabs at all means this is a gym member who found the URL.
-    if (!tabs.length) router.replace("/");
-  }, [loading, tabs, router]);
+    // No tabs and no error means this is a gym member who found the URL. A
+    // failed /roles/me is not that: an ended session is already on its way
+    // to sign-in (PermissionsProvider), and anything else is shown below
+    // rather than bounced to the homepage as if the panel were not theirs.
+    if (!tabs.length && !error) router.replace("/");
+  }, [loading, tabs, error, router]);
+
+  // Fetched once for whoever can see Settings; any failure just means no banner.
+  useEffect(() => {
+    if (loading || !canViewSettings) return;
+    let cancelled = false;
+    getSubscription()
+      .then((res) => {
+        if (!cancelled && res.ok && res.data) setSubscription(res.data);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [loading, canViewSettings]);
 
   if (loading) {
     return (
@@ -77,7 +118,38 @@ function AdminShell({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (!tabs.length) return null;
+  if (!tabs.length) {
+    if (!error) return null;
+    return (
+      <div className="flex h-screen items-center justify-center bg-white px-6">
+        <div className="max-w-md rounded-xl border border-neutral-200 bg-white px-6 py-10 text-center">
+          <p className="text-sm font-semibold text-neutral-900">The admin panel could not load</p>
+          <p className="mt-2 text-[13px] text-neutral-500">{error}</p>
+          <div className="mt-5 flex justify-center gap-2">
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              className="inline-flex h-9 items-center rounded-lg bg-neutral-900 px-4 text-sm font-semibold text-white"
+            >
+              Try again
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                removeToken();
+                router.replace("/authentication");
+              }}
+              className="inline-flex h-9 items-center rounded-lg border border-neutral-200 px-4 text-sm font-medium text-neutral-700"
+            >
+              Sign in again
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const banner = canViewSettings ? billingBanner(subscription) : null;
 
   return (
     <div className="admin-scroll flex h-screen bg-white text-neutral-900">
@@ -88,6 +160,22 @@ function AdminShell({ children }: { children: React.ReactNode }) {
 
         <main className="admin-scroll flex-1 overflow-y-auto px-6 py-8 lg:px-10 lg:py-10">
           <div className="mx-auto max-w-[1400px]">
+            {banner && (
+              <div
+                className={`mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-3 text-sm ${
+                  banner.tone === "bad" ? "border-red-200 bg-red-50 text-red-900" : "border-amber-200 bg-amber-50 text-amber-900"
+                }`}
+              >
+                <span>{banner.text}</span>
+                <button
+                  type="button"
+                  onClick={() => router.push("/admin/settings?tab=billing")}
+                  className="rounded-lg bg-neutral-900 px-3 py-1.5 text-xs font-semibold text-white"
+                >
+                  {banner.action}
+                </button>
+              </div>
+            )}
             {/* A brand-new gym is pointed at the setup wizard until its owner
                 has been through it; nobody is forced, it is just always there. */}
             {me && me.setup_completed === false && can("settings", "manage") && pathname !== "/admin/setup" && (
