@@ -13,6 +13,7 @@ import {
   TextArea,
   Spinner,
   EmptyState,
+  ErrorState,
 } from "../_shared/ui";
 import { API_BASE, apiGet, apiJson } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
@@ -112,6 +113,7 @@ export default function RolesAdminPage() {
   const [roles, setRoles] = useState<Role[]>([]);
   const [tabs, setTabs] = useState<PermissionTab[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadErr, setLoadErr] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -131,9 +133,11 @@ export default function RolesAdminPage() {
       ]);
       setRoles(rolesRes.roles || []);
       setTabs(catalogRes.tabs || []);
+      setLoadErr(null);
       setErr(null);
     } catch (e) {
-      setErr(e instanceof Error ? e.message : "Could not load roles");
+      // Shown in place of the list, not as "No roles yet".
+      setLoadErr(e instanceof Error ? e.message : "Could not load roles");
     } finally {
       setLoading(false);
     }
@@ -250,6 +254,8 @@ export default function RolesAdminPage() {
 
       {loading ? (
         <Spinner />
+      ) : loadErr ? (
+        <ErrorState message={loadErr} onRetry={load} />
       ) : !roles.length ? (
         <EmptyState title="No roles yet" hint="Create one to start handing out access." />
       ) : (

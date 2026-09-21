@@ -6,11 +6,14 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { FiPlus } from "react-icons/fi";
-import { PageHeader, Card, PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, TextArea, SelectField, Badge, Spinner } from "../_shared/ui";
+import { PageHeader, Card, PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, TextArea, SelectField, Badge, Spinner, ErrorState } from "../_shared/ui";
 import { API_BASE, apiGet, apiJson } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
 
 const LEADS_API = `${API_BASE}/admin/leads`;
+// leadController.list takes a limit (up to 1000) but no page or offset, so
+// the board loads the leads due soonest and says when there are more.
+const LEAD_LIMIT = 500;
 
 type Status = "new" | "contacted" | "trial" | "won" | "lost";
 const STATUSES: { key: Status; label: string; hint: string }[] = [
@@ -51,10 +54,11 @@ interface Lead {
   created_at: string;
 }
 
+// The shape GET /staff returns (staffController shapeStaff): `id` and a
+// ready-joined `name`, not the raw user document.
 interface StaffOption {
-  _id: string;
-  firstName?: string;
-  lastName?: string;
+  id: string;
+  name: string;
   email: string;
 }
 
@@ -74,6 +78,8 @@ export default function LeadsAdminPage() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [staff, setStaff] = useState<StaffOption[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadErr, setLoadErr] = useState<string | null>(null);
+  const [total, setTotal] = useState(0);
   const [search, setSearch] = useState("");
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Lead | null>(null);
@@ -86,10 +92,13 @@ export default function LeadsAdminPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await apiGet<{ data: Lead[] }>(`${LEADS_API}?limit=500`);
-      setLeads(res.data || []);
+      const res = await apiGet<{ data: Lead[]; counts?: Record<string, number> }>(`${LEADS_API}?limit=${LEAD_LIMIT}`);
+      const rows = res.data || [];
+      setLeads(rows);
+      setTotal(Math.max(rows.length, Object.values(res.counts || {}).reduce((sum, n) => sum + (Number(n) || 0), 0)));
+      setLoadErr(null);
     } catch (e) {
-      setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not load leads" });
+      setLoadErr(e instanceof Error ? e.message : "Could not load leads");
     } finally {
       setLoading(false);
     }
@@ -97,8 +106,10 @@ export default function LeadsAdminPage() {
 
   useEffect(() => {
     load();
-    apiGet<{ data?: StaffOption[]; staff?: StaffOption[] }>(`${API_BASE}/staff`)
-      .then((r) => setStaff((r.data || r.staff || []) as StaffOption[]))
+    // Needs the Staff tab; without it the picker only offers whoever a lead
+    // is already assigned to (see staffOptions below).
+    apiGet<{ staff?: StaffOption[] }>(`${API_BASE}/staff?status=active`)
+      .then((r) => setStaff(r.staff || []))
       .catch(() => setStaff([]));
   }, [load]);
 
@@ -156,7 +167,12 @@ export default function LeadsAdminPage() {
 
   const setStatus = async (l: Lead, status: Status) => {
     let reason = "";
-    if (status === "lost") reason = prompt("Why did they not join? (optional)") || "";
+    if (status === "lost") {
+      // Cancel on the prompt leaves the lead where it was.
+      const answer = prompt("Why did they not join? (optional)");
+      if (answer === null) return;
+      reason = answer;
+    }
     try {
       await apiJson(`${LEADS_API}/${l.id}/status`, "PATCH", { status, lostReason: reason });
       await load();
@@ -190,7 +206,12 @@ export default function LeadsAdminPage() {
     }
   };
 
-  const staffOptions = staff.map((s) => ({ value: s._id, label: [s.firstName, s.lastName].filter(Boolean).join(" ") || s.email }));
+  const staffOptions = staff.map((s) => ({ value: s.id, label: s.name || s.email, hint: s.email }));
+  // Keeps the current assignee visible (and the save from clearing it) when
+  // they are not in the list -- deactivated, or the list could not be read.
+  if (editing?.assigned_to && !staffOptions.some((o) => o.value === editing.assigned_to)) {
+    staffOptions.push({ value: editing.assigned_to, label: editing.assigned_name || "Current assignee", hint: "" });
+  }
 
   return (
     <div>
@@ -210,8 +231,16 @@ export default function LeadsAdminPage() {
         <TextField label="Search" value={search} onChange={setSearch} placeholder="Name, email, phone, interest…" />
       </div>
 
+      {!loading && !loadErr && total > leads.length && (
+        <p className="mb-4 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          Showing {leads.length} of {total} leads, nearest follow-up first. The rest are not on the board yet.
+        </p>
+      )}
+
       {loading ? (
         <Spinner />
+      ) : loadErr ? (
+        <ErrorState message={loadErr} onRetry={load} />
       ) : (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
           {STATUSES.map((col) => {
