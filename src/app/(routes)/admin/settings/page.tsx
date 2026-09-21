@@ -24,6 +24,7 @@ import { THEMES, DEFAULT_THEME_KEY } from "@/theme/themes";
 import { setActiveTheme } from "@/components/ThemeProvider";
 import MessagingSettings, { type MessagingConfig } from "./MessagingSettings";
 import WebsiteSettings from "./WebsiteSettings";
+import BillingSettings from "./BillingSettings";
 
 interface StripeConfig {
   publishableKey?: string;
@@ -127,7 +128,7 @@ function absoluteAsset(url: string) {
 }
 const BANKS_API = `${API_BASE}/banks`;
 
-type TabKey = "general" | "logo" | "stripe" | "smtp" | "messaging" | "banks" | "theme";
+type TabKey = "general" | "logo" | "stripe" | "smtp" | "messaging" | "banks" | "theme" | "billing";
 
 const TABS: { key: TabKey; label: string; hint: string }[] = [
   { key: "general", label: "General", hint: "Business, money and time, memberships, bookings, website" },
@@ -137,6 +138,7 @@ const TABS: { key: TabKey; label: string; hint: string }[] = [
   { key: "messaging", label: "Messaging", hint: "SMS, WhatsApp, push and automations" },
   { key: "banks", label: "Banks", hint: "Bank accounts and payment barcodes" },
   { key: "theme", label: "Colour Scheme", hint: "Public site palette" },
+  { key: "billing", label: "Billing", hint: "Your GymPilot plan and payments" },
 ];
 
 // The General tab is five screens, not one long one. The active section
@@ -222,6 +224,7 @@ function SettingsAdminPageInner() {
   };
   const [settings, setSettings] = useState<Settings | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<{ tone: "ok" | "warn" | "error"; text: string } | null>(null);
 
@@ -284,13 +287,17 @@ function SettingsAdminPageInner() {
     });
   };
 
+  // A failed read keeps whatever was already on screen and says so. It used
+  // to swap in an empty form, and saving that would have written blanks over
+  // the gym's real settings.
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const r = await apiGet<{ data?: Settings; settings?: Settings }>(SETTINGS_API);
       setSettings(r.data || r.settings || {});
-    } catch {
-      setSettings({});
+      setLoadError(null);
+    } catch (e) {
+      setLoadError(e instanceof Error ? e.message : "Could not load the settings");
     } finally {
       setLoading(false);
     }
@@ -321,9 +328,16 @@ function SettingsAdminPageInner() {
     setSaving(true);
     setNotice(null);
     try {
-      await apiJson(SETTINGS_API, "PUT", settings);
+      const res = await apiJson<{ warnings?: string[] }>(SETTINGS_API, "PUT", settings);
       await load();
-      setNotice({ tone: "ok", text: "Settings saved." });
+      // The save can succeed while refusing part of it (a secret field whose
+      // masked value was edited is kept as it was); say which part.
+      const warnings = Array.isArray(res?.warnings) ? res.warnings.filter(Boolean) : [];
+      setNotice(
+        warnings.length
+          ? { tone: "warn", text: `Settings saved, with warnings: ${warnings.join(" ")}` }
+          : { tone: "ok", text: "Settings saved." }
+      );
     } catch (e) {
       setNotice({ tone: "error", text: e instanceof Error ? e.message : "Save failed" });
     } finally {
@@ -458,7 +472,63 @@ function SettingsAdminPageInner() {
     }
   };
 
-  if (loading || !settings) return <Spinner />;
+  const tabStrip = (
+    <div className="mb-6 border-b border-neutral-200">
+      <div className="flex gap-1 overflow-x-auto -mb-px">
+        {TABS.map((t) => {
+          const active = tab === t.key;
+          return (
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => {
+                setTab(t.key);
+                setNotice(null);
+              }}
+              aria-current={active ? "page" : undefined}
+              className={`whitespace-nowrap px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+                active
+                  ? "border-neutral-900 text-neutral-900"
+                  : "border-transparent text-neutral-500 hover:text-neutral-800 hover:border-neutral-300"
+              }`}
+            >
+              {t.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+
+  // Billing reads its own endpoint, so it neither waits for the settings
+  // document nor goes away when that fails to load.
+  if (tab === "billing") {
+    return (
+      <div>
+        <PageHeader title="Settings" />
+        {tabStrip}
+        <BillingSettings />
+      </div>
+    );
+  }
+
+  if (loading) return <Spinner />;
+
+  if (!settings) {
+    return (
+      <div>
+        <PageHeader title="Settings" />
+        {tabStrip}
+        <Card className="p-6">
+          <p className="text-sm font-semibold text-neutral-900">The settings could not be loaded</p>
+          <p className="mt-1 text-xs text-neutral-500">{loadError || "Please try again in a moment."}</p>
+          <div className="mt-4">
+            <SecondaryButton onClick={load}>Try again</SecondaryButton>
+          </div>
+        </Card>
+      </div>
+    );
+  }
 
   const stripe = settings.stripe || {};
   const smtp = settings.smtp || {};
@@ -481,31 +551,14 @@ function SettingsAdminPageInner() {
       />
 
       {/* Tabs */}
-      <div className="mb-6 border-b border-neutral-200">
-        <div className="flex gap-1 overflow-x-auto -mb-px">
-          {TABS.map((t) => {
-            const active = tab === t.key;
-            return (
-              <button
-                key={t.key}
-                type="button"
-                onClick={() => {
-                  setTab(t.key);
-                  setNotice(null);
-                }}
-                aria-current={active ? "page" : undefined}
-                className={`whitespace-nowrap px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-                  active
-                    ? "border-neutral-900 text-neutral-900"
-                    : "border-transparent text-neutral-500 hover:text-neutral-800 hover:border-neutral-300"
-                }`}
-              >
-                {t.label}
-              </button>
-            );
-          })}
-        </div>
-      </div>
+      {tabStrip}
+
+      {/* The last reload failed: what is on screen is the previous copy. */}
+      {loadError && (
+        <Notice tone="error" onDismiss={() => setLoadError(null)}>
+          Could not reload the settings ({loadError}). What you see may be out of date — refresh the page before saving.
+        </Notice>
+      )}
 
       {notice && (
         <Notice tone={notice.tone} onDismiss={() => setNotice(null)}>
