@@ -8,8 +8,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { PageHeader, Card, PrimaryButton, SecondaryButton, TextField, TextArea, Toggle } from "../_shared/ui";
-import { API_BASE, GYMFOLIO_API, apiGet, apiJson, authHeaders } from "../_shared/api";
+import { PageHeader, Card, PrimaryButton, SecondaryButton, TextField, TextArea, Toggle, UpgradePlanLink } from "../_shared/ui";
+import { API_BASE, GYMFOLIO_API, apiGet, apiJson, apiForm, isPlanLimitError } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
 
 const STEPS = ["Your gym", "Money & time", "First package", "Getting paid", "Your team", "Done"] as const;
@@ -37,6 +37,9 @@ export default function SetupWizardPage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Set when a step was refused by the gym's platform plan (e.g. the staff
+  // limit), so the error can link straight to Billing.
+  const [planLimit, setPlanLimit] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
   const [pkg, setPkg] = useState({ name: "Monthly", price: "", period: "month", features: "Full gym access\nAll classes", recurring: false });
@@ -65,12 +68,14 @@ export default function SetupWizardPage() {
   const run = async (fn: () => Promise<void>, next = true) => {
     setBusy(true);
     setError(null);
+    setPlanLimit(false);
     setNotice(null);
     try {
       await fn();
       if (next) setStep((s) => Math.min(STEPS.length - 1, s + 1));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Something went wrong");
+      setPlanLimit(isPlanLimitError(e));
     } finally {
       setBusy(false);
     }
@@ -83,8 +88,14 @@ export default function SetupWizardPage() {
       if (logoFile) {
         const form = new FormData();
         form.append("logo", logoFile);
-        const res = await fetch(`${API_BASE}/settings/logo`, { method: "POST", headers: authHeaders(), body: form });
-        if (!res.ok) throw new Error("The logo could not be uploaded (you can add it later under Settings → Logo)");
+        try {
+          await apiForm(`${API_BASE}/settings/logo`, "POST", form);
+        } catch (e) {
+          // The shared helper says why (too large, server down); this says
+          // what to do about it.
+          const why = e instanceof Error ? e.message : "The logo could not be uploaded.";
+          throw new Error(`${why} You can add the logo later under Settings → Logo.`);
+        }
       }
     });
 
@@ -96,7 +107,7 @@ export default function SetupWizardPage() {
   const savePackage = () =>
     run(async () => {
       if (!pkg.name.trim() || !pkg.price.trim()) throw new Error("Give the package a name and a price");
-      const r = await apiJson<{ data: { name: string } }>(`${GYMFOLIO_API}/packages`, "POST", {
+      const r = await apiJson<{ data?: { name?: string } }>(`${GYMFOLIO_API}/packages`, "POST", {
         name: pkg.name,
         price: pkg.price,
         currency: settings.currency || "USD",
@@ -105,7 +116,7 @@ export default function SetupWizardPage() {
         kind: "membership",
         billing: pkg.recurring ? { mode: "recurring", interval: "month", intervalCount: 1, trialDays: 0 } : { mode: "one_time" },
       });
-      setPackageCreated(r.data.name);
+      setPackageCreated(r.data?.name || pkg.name);
     });
 
   const savePayment = () =>
@@ -150,7 +161,12 @@ export default function SetupWizardPage() {
         ))}
       </ol>
 
-      {error && <p className="mb-4 rounded-lg bg-rose-50 px-4 py-2 text-sm text-rose-700">{error}</p>}
+      {error && (
+        <p className="mb-4 rounded-lg bg-rose-50 px-4 py-2 text-sm text-rose-700">
+          {error}
+          {planLimit && <UpgradePlanLink />}
+        </p>
+      )}
       {notice && <p className="mb-4 rounded-lg bg-emerald-50 px-4 py-2 text-sm text-emerald-700">{notice}</p>}
 
       <Card className="p-6">

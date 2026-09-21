@@ -1,20 +1,18 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import {
   FiActivity,
   FiUserCheck,
   FiTag,
   FiUsers,
-  FiMessageSquare,
-  FiClipboard,
   FiAlertCircle,
   FiTrendingUp,
   FiClock,
   FiCalendar,
 } from "react-icons/fi";
-import { PageHeader, Card, Spinner, Badge } from "./_shared/ui";
+import { PageHeader, Card, Spinner, Badge, ErrorState } from "./_shared/ui";
 import { API_BASE, apiGet } from "./_shared/api";
 
 interface Totals {
@@ -70,12 +68,20 @@ interface Dashboard {
   }[];
 }
 
-const money = (amount: number, currency: string) =>
-  new Intl.NumberFormat(undefined, {
-    style: "currency",
-    currency: currency || "GBP",
-    maximumFractionDigits: 0,
-  }).format(amount || 0);
+// Intl throws a RangeError on anything that is not an ISO 4217 code, and the
+// currency is free text in the setup wizard -- a gym that typed "Rs" must not
+// lose its whole dashboard over it.
+const money = (amount: number, currency: string) => {
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: "currency",
+      currency: currency || "GBP",
+      maximumFractionDigits: 0,
+    }).format(amount || 0);
+  } catch {
+    return `${currency || ""} ${Math.round(amount || 0).toLocaleString()}`.trim();
+  }
+};
 
 const shortDate = (value: string) =>
   value
@@ -120,17 +126,21 @@ export default function AdminHomePage() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        setData(await apiGet<Dashboard>(`${API_BASE}/admin/dashboard`));
-      } catch (e) {
-        setErr(e instanceof Error ? e.message : "Could not load the dashboard");
-      } finally {
-        setLoading(false);
-      }
-    })();
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      setData(await apiGet<Dashboard>(`${API_BASE}/admin/dashboard`));
+      setErr(null);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Could not load the dashboard");
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
 
   if (loading) {
     return (
@@ -145,9 +155,7 @@ export default function AdminHomePage() {
     return (
       <div>
         <PageHeader eyebrow="Overview" title="Dashboard" />
-        <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
-          {err || "No data"}
-        </div>
+        <ErrorState message={err || "Could not load the dashboard"} onRetry={load} />
       </div>
     );
   }
