@@ -5,8 +5,10 @@ import { applyTheme, getTheme, DEFAULT_THEME_KEY } from "@/theme/themes";
 import TenantUnavailable from "@/components/TenantUnavailable";
 
 // The API's answer when the domain is not (or no longer) serving a gym.
+// `renewable` comes with a lapsed subscription: the gym's owner can still
+// sign in and pay from that page.
 const UNAVAILABLE_CODES = new Set(["TENANT_NOT_FOUND", "TENANT_SUSPENDED", "SUBSCRIPTION_INACTIVE"]);
-type Unavailable = { code: string; message?: string; host?: string | null };
+type Unavailable = { code: string; message?: string; host?: string | null; renewable?: boolean };
 
 const THEME_CACHE_KEY = "site_theme";
 const NAME_CACHE_KEY = "site_name";
@@ -130,7 +132,7 @@ export default function ThemeProvider({ children }: { children: React.ReactNode 
           try {
             const err = await res.json();
             if (err && UNAVAILABLE_CODES.has(err.code) && !cancelled) {
-              setUnavailable({ code: err.code, message: err.message, host: err.host || window.location.host });
+              setUnavailable({ code: err.code, message: err.message, host: err.host || window.location.host, renewable: err.renewable === true });
             }
           } catch {
             /* not JSON -- treat as an ordinary outage */
@@ -188,7 +190,7 @@ export default function ThemeProvider({ children }: { children: React.ReactNode 
   return (
     <SiteSettingsContext.Provider value={settings}>
       {unavailable ? (
-        <TenantUnavailable code={unavailable.code} message={unavailable.message} host={unavailable.host} />
+        <TenantUnavailable code={unavailable.code} message={unavailable.message} host={unavailable.host} renewable={unavailable.renewable} />
       ) : (
         children
       )}
