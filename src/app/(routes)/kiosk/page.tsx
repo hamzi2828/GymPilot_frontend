@@ -73,9 +73,12 @@ function beep(good: boolean) {
   }
 }
 
+// Suspended is lapsed, as the desk counts it; pending and cancelled (still
+// running) need a word rather than a refusal. Unlisted, they flashed green
+// over a receipt whose warning said otherwise.
 function tone(status: string) {
-  if (status.includes("expired") || status.includes("none") || status.includes("frozen") || status.includes("past_due") || status === "late") return "bad";
-  if (status.includes("expiring")) return "warn";
+  if (status.includes("expired") || status.includes("none") || status.includes("frozen") || status.includes("past_due") || status.includes("suspended") || status === "late") return "bad";
+  if (status.includes("expiring") || status.includes("pending") || status.includes("cancelled")) return "warn";
   return "good";
 }
 

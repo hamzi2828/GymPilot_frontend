@@ -20,6 +20,7 @@ interface PunchBy {
   os_user: string;
   method: string;
   ip: string;
+  location?: string;
 }
 
 interface AttendanceRecord {
@@ -34,11 +35,18 @@ interface AttendanceRecord {
   check_in_time: string | null;
   check_out_time: string | null;
   still_in: boolean;
+  // Never checked out, and past the point a scan could close it: shown as
+  // "No check-out", with no time out and no duration.
+  no_check_out?: boolean;
   worked_minutes: number | null;
   worked_label: string | null;
+  // Staff: the ARRIVAL verdict. How the shift ended is departure_*.
   status: string;
   status_label: string;
   variance_minutes: number | null;
+  departure_status?: string;
+  departure_label?: string;
+  departure_variance_minutes?: number | null;
   membership: { status: string; package_name: string; end_date_label: string | null };
   schedule: { has_schedule: boolean; start_time: string; end_time: string; label: string };
   check_in_by: PunchBy | null;
@@ -52,10 +60,13 @@ interface Summary {
   staff: number;
   unique_people: number;
   still_in: number;
+  no_check_out?: number;
   completed: number;
   total_label: string;
   avg_label: string | null;
   late: number;
+  left_early?: number;
+  overtime?: number;
   membership_issues: number;
   expiring_soon: number;
   by_status: Record<string, number>;
@@ -156,16 +167,30 @@ interface PersonDetail {
 // deliberately neither green nor red.
 // ---------------------------------------------------------------------------
 
+// A staff row's `status` is its ARRIVAL, so "early" here is good news; how
+// the shift ended has its own vocabulary below, where "early" is not.
 const STATUS_TONE: Record<string, "green" | "amber" | "rose" | "blue" | "neutral"> = {
   membership_active: "green",
   on_time: "green",
+  early: "green",
   early_arrival: "green",
   overtime: "blue",
+  membership_frozen: "blue",
   membership_expiring: "amber",
+  membership_past_due: "amber",
+  membership_pending: "amber",
+  membership_cancelled: "amber",
   late: "amber",
-  early: "amber",
   membership_expired: "rose",
   membership_none: "rose",
+  membership_suspended: "rose",
+  no_schedule: "neutral",
+};
+
+const DEPARTURE_TONE: Record<string, "green" | "amber" | "rose" | "blue" | "neutral"> = {
+  on_time: "green",
+  early: "amber",
+  overtime: "blue",
   no_schedule: "neutral",
 };
 
@@ -183,11 +208,18 @@ const STATUS_OPTIONS = [
   { value: "membership_expiring", label: "Member · Expiring soon", group: "member" },
   { value: "membership_expired", label: "Member · Expired", group: "member" },
   { value: "membership_none", label: "Member · No package", group: "member" },
-  { value: "on_time", label: "Staff · On time", group: "staff" },
-  { value: "late", label: "Staff · Late", group: "staff" },
-  { value: "early", label: "Staff · Left early", group: "staff" },
-  { value: "overtime", label: "Staff · Overtime", group: "staff" },
+  { value: "membership_frozen", label: "Member · Frozen", group: "member" },
+  { value: "membership_past_due", label: "Member · Payment overdue", group: "member" },
+  { value: "membership_pending", label: "Member · Awaiting payment", group: "member" },
+  { value: "membership_suspended", label: "Member · Suspended", group: "member" },
+  { value: "membership_cancelled", label: "Member · Cancelled", group: "member" },
+  { value: "on_time", label: "Staff · Arrived on time", group: "staff" },
+  { value: "late", label: "Staff · Arrived late", group: "staff" },
+  { value: "early", label: "Staff · Arrived early", group: "staff" },
   { value: "no_schedule", label: "Staff · Not rostered", group: "staff" },
+  // Departures: the server maps these to the check-out verdict.
+  { value: "left_early", label: "Staff · Left early", group: "staff" },
+  { value: "overtime", label: "Staff · Overtime", group: "staff" },
 ];
 
 function statusTone(status: string) {
@@ -233,17 +265,30 @@ function presetsFor(today: string) {
 // Small presentational pieces
 // ---------------------------------------------------------------------------
 
-function StatusPill({ status, label }: { status: string; label: string }) {
+function StatusPill({ status, label, tone }: { status: string; label: string; tone?: string }) {
   if (!label) return <span className="text-neutral-400">—</span>;
   return (
     <span
       className={`inline-flex items-center whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset ${
-        TONE_CLASS[statusTone(status)]
+        TONE_CLASS[tone || statusTone(status)]
       }`}
     >
       {label}
     </span>
   );
+}
+
+// How a staff shift ended, beside how it started. Absent until they leave.
+function DeparturePill({ record }: { record: AttendanceRecord }) {
+  if (!record.departure_label) return null;
+  const status = record.departure_status || "";
+  return <StatusPill status={status} label={record.departure_label} tone={DEPARTURE_TONE[status] || "neutral"} />;
+}
+
+// A visit nobody checked out of: no time out and no duration, said plainly
+// rather than left looking like someone is still inside.
+function NoCheckOut() {
+  return <span className="text-[12px] font-medium text-neutral-400">No check-out</span>;
 }
 
 function TypePill({ type }: { type: "member" | "staff" }) {
@@ -342,6 +387,7 @@ export default function AttendanceAdminPage() {
   const [limit, setLimit] = useState(25);
 
   const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
@@ -468,45 +514,74 @@ export default function AttendanceAdminPage() {
     !!q ||
     activePreset !== "today";
 
-  // Export covers exactly what is on screen — the same rows, in the same
-  // order, under the same filters — so a spreadsheet cannot disagree with the
-  // table it came from.
-  const exportCsv = () => {
+  // Export covers the WHOLE filtered range — every page, in the same order,
+  // under the same filters — not just the rows on screen. It walks the same
+  // endpoint the table reads, so a spreadsheet cannot disagree with it.
+  const exportCsv = async () => {
     const escape = (value: unknown) => `"${String(value ?? "").replace(/"/g, '""')}"`;
+    const pageSize = 500; // the server's own ceiling per page
     let header: string[];
     let lines: string[][];
 
-    if (tab === "log") {
-      header = ["Date", "Day", "Type", "Name", "Code", "Check in", "Check out", "Duration", "Status", "Checked in by", "Device"];
-      lines = records.map((r) => [
-        r.date_label,
-        r.day_name,
-        r.person_type,
-        r.person_name,
-        r.person_code,
-        r.check_in_time || "",
-        r.check_out_time || (r.still_in ? "Still in" : ""),
-        r.worked_label || "",
-        r.status_label,
-        r.check_in_by?.name || "",
-        r.check_in_by?.device || "",
-      ]);
-    } else {
-      header = ["Type", "Name", "Code", "Email", "Phone", "Visits", "Days present", "Total time", "Average", "Last seen", "Membership", "Fingerprints"];
-      lines = people.map((p) => [
-        p.person_type,
-        p.name,
-        p.code,
-        p.email,
-        p.phone,
-        String(p.visits),
-        String(p.days_present),
-        p.total_label,
-        p.avg_label || "",
-        p.last_seen_label || p.ever_seen_label || "Never",
-        p.membership?.label || p.meta || "",
-        String(p.fingerprints),
-      ]);
+    setExporting(true);
+    setErr(null);
+    try {
+      if (tab === "log") {
+        const all: AttendanceRecord[] = [];
+        for (let p = 1; ; p++) {
+          // summary=0: the range summary is already on screen; recounting it
+          // for every page would only slow the export down.
+          const qs = queryString({ status, presence, page: p, limit: pageSize, summary: 0 });
+          const res = await apiGet<RecordsResponse>(`${ATTENDANCE_API}/records?${qs}`);
+          all.push(...(res.records || []));
+          if (!res.records?.length || !res.pagination || p >= res.pagination.pages) break;
+        }
+
+        header = ["Date", "Day", "Type", "Name", "Code", "Check in", "Check out", "Duration", "Status", "Departure", "Checked in by", "Device"];
+        lines = all.map((r) => [
+          r.date_label,
+          r.day_name,
+          r.person_type,
+          r.person_name,
+          r.person_code,
+          r.check_in_time || "",
+          r.check_out_time || (r.still_in ? "Still in" : r.no_check_out ? "No check-out" : ""),
+          r.worked_label || "",
+          r.status_label,
+          r.departure_label || "",
+          r.check_in_by?.name || "",
+          r.check_in_by?.device || "",
+        ]);
+      } else {
+        const all: PersonRow[] = [];
+        for (let p = 1; ; p++) {
+          const qs = queryString({ attended, sort, page: p, limit: pageSize });
+          const res = await apiGet<PeopleResponse>(`${ATTENDANCE_API}/people?${qs}`);
+          all.push(...(res.people || []));
+          if (!res.people?.length || !res.pagination || p >= res.pagination.pages) break;
+        }
+
+        header = ["Type", "Name", "Code", "Email", "Phone", "Visits", "Days present", "Total time", "Average", "Last seen", "Membership", "Fingerprints"];
+        lines = all.map((p) => [
+          p.person_type,
+          p.name,
+          p.code,
+          p.email,
+          p.phone,
+          String(p.visits),
+          String(p.days_present),
+          p.total_label,
+          p.avg_label || "",
+          p.last_seen_label || p.ever_seen_label || "Never",
+          p.membership?.label || p.meta || "",
+          String(p.fingerprints),
+        ]);
+      }
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Could not export attendance.");
+      return;
+    } finally {
+      setExporting(false);
     }
 
     const csv = [header, ...lines].map((row) => row.map(escape).join(",")).join("\r\n");
@@ -530,8 +605,11 @@ export default function AttendanceAdminPage() {
         title="Attendance"
         actions={
           <>
-            <SecondaryButton onClick={exportCsv} disabled={loading || (tab === "log" ? !records.length : !people.length)}>
-              <FiDownload className="mr-1.5 h-4 w-4" /> Export CSV
+            <SecondaryButton
+              onClick={exportCsv}
+              disabled={loading || exporting || (tab === "log" ? !records.length : !people.length)}
+            >
+              <FiDownload className="mr-1.5 h-4 w-4" /> {exporting ? "Exporting…" : "Export CSV"}
             </SecondaryButton>
             <SecondaryButton onClick={load} disabled={loading}>
               <FiRefreshCw className={`mr-1.5 h-4 w-4 ${loading ? "animate-spin" : ""}`} /> Refresh
@@ -656,6 +734,7 @@ export default function AttendanceAdminPage() {
                     { value: "all", label: "Any" },
                     { value: "in", label: "Still checked in" },
                     { value: "out", label: "Checked out" },
+                    { value: "missed", label: "No check-out" },
                   ]}
                 />
               </Field>
@@ -718,14 +797,24 @@ export default function AttendanceAdminPage() {
         <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-6">
           <Stat label="Visits" value={summary.visits} hint={`${summary.members} member · ${summary.staff} staff`} />
           <Stat label="People" value={summary.unique_people} hint="distinct in range" />
-          <Stat label="In the gym" value={summary.still_in} tone={summary.still_in ? "green" : "neutral"} hint="not checked out" />
+          <Stat
+            label="In the gym"
+            value={summary.still_in}
+            tone={summary.still_in ? "green" : "neutral"}
+            hint={summary.no_check_out ? `${summary.no_check_out} never checked out` : "right now"}
+          />
           <Stat label="Total time" value={summary.total_label} hint={summary.avg_label ? `avg ${summary.avg_label}` : "no closed visits"} />
-          <Stat label="Late arrivals" value={summary.late} tone={summary.late ? "amber" : "neutral"} hint="staff, past grace" />
+          <Stat
+            label="Late arrivals"
+            value={summary.late}
+            tone={summary.late ? "amber" : "neutral"}
+            hint={summary.left_early ? `${summary.left_early} left early` : "staff, past grace"}
+          />
           <Stat
             label="Membership issues"
             value={summary.membership_issues}
             tone={summary.membership_issues ? "rose" : "neutral"}
-            hint={summary.expiring_soon ? `${summary.expiring_soon} expiring soon` : "expired or none"}
+            hint={summary.expiring_soon ? `${summary.expiring_soon} expiring soon` : "expired, none or suspended"}
           />
         </div>
       )}
@@ -890,7 +979,13 @@ function LogTable({
                 </td>
 
                 <td className="whitespace-nowrap px-5 py-3 align-middle">
-                  {record.still_in ? <StillIn /> : <span className="font-medium text-neutral-800">{record.check_out_time || "—"}</span>}
+                  {record.still_in ? (
+                    <StillIn />
+                  ) : record.no_check_out ? (
+                    <NoCheckOut />
+                  ) : (
+                    <span className="font-medium text-neutral-800">{record.check_out_time || "—"}</span>
+                  )}
                 </td>
 
                 <td className="whitespace-nowrap px-5 py-3 align-middle text-neutral-700">
@@ -898,7 +993,10 @@ function LogTable({
                 </td>
 
                 <td className="px-5 py-3 align-middle">
-                  <StatusPill status={record.status} label={record.status_label} />
+                  <div className="flex flex-wrap items-center gap-1">
+                    <StatusPill status={record.status} label={record.status_label} />
+                    <DeparturePill record={record} />
+                  </div>
                 </td>
 
                 <td className="px-5 py-3 align-middle">
@@ -1185,14 +1283,19 @@ function PersonModal({
                           <span className="ml-2 text-[11px] text-neutral-400">visit #{record.visit_number} that month</span>
                         )}
                       </div>
-                      <StatusPill status={record.status} label={record.status_label} />
+                      <div className="flex flex-wrap items-center gap-1">
+                        <StatusPill status={record.status} label={record.status_label} />
+                        <DeparturePill record={record} />
+                      </div>
                     </div>
 
                     <div className="mt-2 grid grid-cols-1 gap-x-6 sm:grid-cols-2">
                       <DetailRow caption="Check in" value={record.check_in_time || "—"} />
                       <DetailRow
                         caption="Check out"
-                        value={record.still_in ? <StillIn /> : record.check_out_time || "—"}
+                        value={
+                          record.still_in ? <StillIn /> : record.no_check_out ? <NoCheckOut /> : record.check_out_time || "—"
+                        }
                       />
                       <DetailRow
                         caption={record.person_type === "member" ? "Duration" : "Worked"}
@@ -1210,7 +1313,9 @@ function PersonModal({
                         caption="In by"
                         value={
                           record.check_in_by?.name
-                            ? [record.check_in_by.name, record.check_in_by.device].filter(Boolean).join(" · ")
+                            ? [record.check_in_by.name, record.check_in_by.device, record.check_in_by.location]
+                                .filter(Boolean)
+                                .join(" · ")
                             : "—"
                         }
                       />
@@ -1218,7 +1323,9 @@ function PersonModal({
                         caption="Out by"
                         value={
                           record.check_out_by?.name
-                            ? [record.check_out_by.name, record.check_out_by.device].filter(Boolean).join(" · ")
+                            ? [record.check_out_by.name, record.check_out_by.device, record.check_out_by.location]
+                                .filter(Boolean)
+                                .join(" · ")
                             : "—"
                         }
                       />
