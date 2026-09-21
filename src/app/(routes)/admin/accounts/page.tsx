@@ -134,6 +134,8 @@ interface ExpenseRow {
 
 interface ExpensesResponse {
   base_currency: string;
+  /** What a new expense is recorded in: the Settings currency. */
+  record_currency?: string;
   currency_notice: CurrencyNotice | null;
   range: { from: string; to: string; label: string };
   categories: { key: string; label: string }[];
@@ -180,6 +182,8 @@ interface AssetRow {
 
 interface AssetsResponse {
   base_currency: string;
+  /** What a new asset is recorded in: the Settings currency. */
+  record_currency?: string;
   currency_notice: CurrencyNotice | null;
   categories: { key: string; label: string; default_life: number }[];
   conditions: string[];
@@ -363,6 +367,9 @@ export default function AccountsAdminPage() {
   const base = overview?.base_currency || sales?.base_currency || expenses?.base_currency || assets?.base_currency || "USD";
   const currencyNotice =
     overview?.currency_notice || sales?.currency_notice || expenses?.currency_notice || assets?.currency_notice || null;
+  // New records start in the gym's Settings currency -- what the server
+  // stamps them with -- not whichever currency most of the history is in.
+  const recordCurrency = expenses?.record_currency || assets?.record_currency || base;
   const format = useMoneyFormatter(base);
 
   useEffect(() => {
@@ -441,7 +448,7 @@ export default function AccountsAdminPage() {
       });
     } else {
       setEditingExpense(null);
-      setExpenseDraft({ ...emptyExpense, currency: base, incurredOn: today });
+      setExpenseDraft({ ...emptyExpense, currency: recordCurrency, incurredOn: today });
     }
     setFormErr(null);
     setExpenseOpen(true);
@@ -523,7 +530,7 @@ export default function AccountsAdminPage() {
       });
     } else {
       setEditingAsset(null);
-      setAssetDraft({ ...emptyAsset, currency: base, purchasedOn: today });
+      setAssetDraft({ ...emptyAsset, currency: recordCurrency, purchasedOn: today });
     }
     setFormErr(null);
     setAssetOpen(true);
@@ -1179,7 +1186,7 @@ function SalesTab({ data, format }: { data: SalesResponse | null; format: (v: nu
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-        <Stat label="Sales" value={format(data.summary.base_amount, data.base_currency)} hint={`${data.summary.orders} paid`} accent={SERIES_IN} />
+        <Stat label="Sales" value={format(data.summary.base_amount, data.base_currency)} hint={`${data.summary.orders} payments`} accent={SERIES_IN} />
         <Stat label="Average sale" value={format(data.summary.average_sale, data.base_currency)} />
         <Stat label="New members" value={String(data.summary.new_business)} hint="first purchase" tone="good" />
         <Stat label="Renewals" value={String(data.summary.renewals)} hint="bought before" />
