@@ -4,6 +4,8 @@ import { useRouter } from "next/navigation";
 import { FiMenu, FiX, FiLogOut } from "react-icons/fi";
 import { removeToken } from "@/helper/helper";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
+import AdminSearch from "@/components/admin/AdminSearch";
+import AdminNotifications from "@/components/admin/AdminNotifications";
 
 interface AdminHeaderProps {
   isSidebarOpen: boolean;
@@ -44,9 +46,13 @@ export default function AdminHeader({
             <FiMenu className="w-5 h-5" />
           )}
         </button>
+        {/* Both answer only from the tabs this account's role can open --
+            the backend decides, so neither needs the permission map here. */}
+        <AdminSearch />
       </div>
 
       <div className="flex items-center gap-4">
+        <AdminNotifications />
         <div className="flex items-center gap-3">
           <div className="hidden sm:flex flex-col items-end leading-tight">
             <span className="text-xs font-medium text-neutral-900">{displayName}</span>
