@@ -15,6 +15,8 @@ import {
   Badge,
 } from "../_shared/ui";
 import { API_BASE, apiGet, apiJson } from "../_shared/api";
+import { usePermissions } from "@/components/admin/PermissionsProvider";
+import { LoadError } from "../_ops/lists";
 
 interface FaqItem {
   _id?: string;
@@ -50,12 +52,15 @@ const PUBLIC_PATH: Record<ContentPage["slug"], string> = {
 };
 
 export default function ContentPagesAdmin() {
+  const { can } = usePermissions();
+  const editable = can("pages", "manage");
   const [pages, setPages] = useState<ContentPage[]>([]);
   const [active, setActive] = useState<ContentPage["slug"]>("faqs");
   const [draft, setDraft] = useState<ContentPage | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -64,8 +69,11 @@ export default function ContentPagesAdmin() {
       setPages(r.data || []);
       const found = (r.data || []).find((p) => p.slug === active);
       if (found) setDraft(structuredClone(found));
+      setLoadError(null);
     } catch (e) {
-      setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not load pages" });
+      // Its own state rather than the notice: without a page to show, the
+      // spinner below used to turn forever under the error.
+      setLoadError(e instanceof Error ? e.message : "Could not load pages");
     } finally {
       setLoading(false);
     }
@@ -149,12 +157,16 @@ export default function ContentPagesAdmin() {
               >
                 <FiExternalLink className="h-3.5 w-3.5" /> View page
               </a>
-              <SecondaryButton onClick={reset} disabled={saving}>
-                <FiRotateCcw className="h-3.5 w-3.5" /> Reset to default
-              </SecondaryButton>
-              <PrimaryButton onClick={save} disabled={saving}>
-                {saving ? "Saving…" : "Save"}
-              </PrimaryButton>
+              {editable && (
+                <>
+                  <SecondaryButton onClick={reset} disabled={saving}>
+                    <FiRotateCcw className="h-3.5 w-3.5" /> Reset to default
+                  </SecondaryButton>
+                  <PrimaryButton onClick={save} disabled={saving}>
+                    {saving ? "Saving…" : "Save"}
+                  </PrimaryButton>
+                </>
+              )}
             </div>
           )
         }
@@ -190,7 +202,9 @@ export default function ContentPagesAdmin() {
         ))}
       </div>
 
-      {loading || !draft ? (
+      {loadError && <LoadError message={loadError} onRetry={load} />}
+
+      {loadError && !draft ? null : loading || !draft ? (
         <Spinner />
       ) : (
         <div className="space-y-6">
@@ -266,15 +280,17 @@ export default function ContentPagesAdmin() {
                         onChange={(v) => patchSection(si, { heading: v })}
                       />
                     </div>
-                    <div className="pt-5">
-                      <DangerButton
-                        onClick={() =>
-                          patch({ sections: (draft.sections || []).filter((_, i) => i !== si) })
-                        }
-                      >
-                        <FiTrash2 className="h-3.5 w-3.5" />
-                      </DangerButton>
-                    </div>
+                    {editable && (
+                      <div className="pt-5">
+                        <DangerButton
+                          onClick={() =>
+                            patch({ sections: (draft.sections || []).filter((_, i) => i !== si) })
+                          }
+                        >
+                          <FiTrash2 className="h-3.5 w-3.5" />
+                        </DangerButton>
+                      </div>
+                    )}
                   </div>
 
                   <div className="space-y-4 border-l-2 border-neutral-100 pl-4">
@@ -288,17 +304,19 @@ export default function ContentPagesAdmin() {
                               onChange={(v) => patchItem(si, ii, { question: v })}
                             />
                           </div>
-                          <div className="pt-5">
-                            <DangerButton
-                              onClick={() =>
-                                patchSection(si, {
-                                  items: section.items.filter((_, j) => j !== ii),
-                                })
-                              }
-                            >
-                              <FiTrash2 className="h-3.5 w-3.5" />
-                            </DangerButton>
-                          </div>
+                          {editable && (
+                            <div className="pt-5">
+                              <DangerButton
+                                onClick={() =>
+                                  patchSection(si, {
+                                    items: section.items.filter((_, j) => j !== ii),
+                                  })
+                                }
+                              >
+                                <FiTrash2 className="h-3.5 w-3.5" />
+                              </DangerButton>
+                            </div>
+                          )}
                         </div>
                         <TextArea
                           label="Answer (HTML)"
@@ -309,28 +327,32 @@ export default function ContentPagesAdmin() {
                       </div>
                     ))}
 
-                    <SecondaryButton
-                      onClick={() =>
-                        patchSection(si, {
-                          items: [...section.items, { question: "", answer: "<p></p>" }],
-                        })
-                      }
-                    >
-                      <FiPlus className="h-3.5 w-3.5" /> Add a question
-                    </SecondaryButton>
+                    {editable && (
+                      <SecondaryButton
+                        onClick={() =>
+                          patchSection(si, {
+                            items: [...section.items, { question: "", answer: "<p></p>" }],
+                          })
+                        }
+                      >
+                        <FiPlus className="h-3.5 w-3.5" /> Add a question
+                      </SecondaryButton>
+                    )}
                   </div>
                 </Card>
               ))}
 
-              <SecondaryButton
-                onClick={() =>
-                  patch({
-                    sections: [...(draft.sections || []), { heading: "New section", items: [] }],
-                  })
-                }
-              >
-                <FiPlus className="h-3.5 w-3.5" /> Add a section
-              </SecondaryButton>
+              {editable && (
+                <SecondaryButton
+                  onClick={() =>
+                    patch({
+                      sections: [...(draft.sections || []), { heading: "New section", items: [] }],
+                    })
+                  }
+                >
+                  <FiPlus className="h-3.5 w-3.5" /> Add a section
+                </SecondaryButton>
+              )}
             </div>
           )}
 
@@ -345,9 +367,11 @@ export default function ContentPagesAdmin() {
                 </>
               )}
             </p>
-            <PrimaryButton onClick={save} disabled={saving}>
-              {saving ? "Saving…" : "Save"}
-            </PrimaryButton>
+            {editable && (
+              <PrimaryButton onClick={save} disabled={saving}>
+                {saving ? "Saving…" : "Save"}
+              </PrimaryButton>
+            )}
           </div>
         </div>
       )}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   PageHeader,
   Card,
@@ -11,6 +11,8 @@ import {
   Spinner,
 } from "../_shared/ui";
 import { API_BASE, apiGet, apiForm } from "../_shared/api";
+import { usePermissions } from "@/components/admin/PermissionsProvider";
+import { LoadError } from "../_ops/lists";
 
 interface BlogHero {
   _id?: string;
@@ -24,25 +26,32 @@ interface BlogHero {
 const HERO_API = `${API_BASE}/blog-hero`;
 
 export default function BlogSettingsAdminPage() {
+  const { can } = usePermissions();
+  const editable = can("blog-settings", "manage");
   const [hero, setHero] = useState<BlogHero | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [bg, setBg] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
       const r = await apiGet<{ data?: BlogHero[]; hero?: BlogHero }>(HERO_API);
       const data = (r.data && r.data[0]) || r.hero || null;
       setHero(data || { title: "", subtitle: "", description: "", isActive: true });
-    } catch {
-      setHero({ title: "", subtitle: "", description: "", isActive: true });
+      setError(null);
+    } catch (e) {
+      // Not a blank form: saving that would create a second hero next to
+      // the one that simply failed to load.
+      setHero(null);
+      setError(e instanceof Error ? e.message : "Could not load the blog hero");
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [load]);
 
   const save = async () => {
     if (!hero) return;
@@ -69,6 +78,14 @@ export default function BlogSettingsAdminPage() {
     }
   };
 
+  if (error && !hero) {
+    return (
+      <div>
+        <PageHeader eyebrow="Content" title="Blog Settings" />
+        <LoadError message={error} onRetry={load} />
+      </div>
+    );
+  }
   if (loading || !hero) return <Spinner />;
 
   return (
@@ -89,9 +106,11 @@ export default function BlogSettingsAdminPage() {
           </div>
           <Toggle label="Active" checked={!!hero.isActive} onChange={(v) => setHero({ ...hero, isActive: v })} />
         </div>
-        <div className="flex justify-end mt-6">
-          <PrimaryButton onClick={save} disabled={saving}>{saving ? "Saving..." : "Save Changes"}</PrimaryButton>
-        </div>
+        {editable && (
+          <div className="flex justify-end mt-6">
+            <PrimaryButton onClick={save} disabled={saving}>{saving ? "Saving..." : "Save Changes"}</PrimaryButton>
+          </div>
+        )}
       </Card>
     </div>
   );

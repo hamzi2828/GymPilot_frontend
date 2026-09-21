@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Image from "next/image";
 import { FiPlus, FiEdit2, FiTrash2, FiMenu } from "react-icons/fi";
 import {
@@ -16,6 +16,8 @@ import {
   Spinner,
 } from "../_shared/ui";
 import { API_BASE, apiGet, apiJson, apiForm, absoluteUrl } from "../_shared/api";
+import { usePermissions } from "@/components/admin/PermissionsProvider";
+import { LoadError } from "../_ops/lists";
 
 interface HeroSlide {
   _id: string;
@@ -32,27 +34,32 @@ interface HeroSlide {
 const SLIDES_API = `${API_BASE}/hero-slides`;
 
 export default function HeroSlidesAdminPage() {
+  const { can } = usePermissions();
+  const editable = can("hero-slides", "manage");
   const [list, setList] = useState<HeroSlide[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<HeroSlide | null>(null);
   const [form, setForm] = useState<Partial<HeroSlide>>({});
   const [img, setImg] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
       const r = await apiGet<{ data?: HeroSlide[]; slides?: HeroSlide[] }>(SLIDES_API);
       setList(r.data || r.slides || []);
-    } catch {
-      setList([]);
+      setError(null);
+    } catch (e) {
+      // Said out loud: swallowed, a failed load read as "No hero slides yet".
+      setError(e instanceof Error ? e.message : "Could not load hero slides");
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [load]);
 
   const openCreate = () => {
     setEditing(null);
@@ -154,18 +161,22 @@ export default function HeroSlidesAdminPage() {
         eyebrow="Content"
         title="Hero Slides"
         actions={
-          <PrimaryButton onClick={openCreate}>
-            <FiPlus className="w-4 h-4 mr-1.5" /> New Slide
-          </PrimaryButton>
+          editable ? (
+            <PrimaryButton onClick={openCreate}>
+              <FiPlus className="w-4 h-4 mr-1.5" /> New Slide
+            </PrimaryButton>
+          ) : undefined
         }
       />
 
+      {error && <LoadError message={error} onRetry={load} />}
+
       {loading ? (
         <Spinner />
-      ) : (
+      ) : error && !list.length ? null : (
         <div>
           <div className="mb-4 flex items-center gap-3 text-xs text-neutral-500">
-            <span>Drag a slide to reorder. The order here is the order on the site.</span>
+            <span>{editable ? "Drag a slide to reorder. The order here is the order on the site." : "The order here is the order on the site."}</span>
             {savingOrder && <span className="text-neutral-400">Saving…</span>}
           </div>
 
@@ -192,7 +203,7 @@ export default function HeroSlidesAdminPage() {
               {list.map((s, i) => (
                 <li
                   key={s._id}
-                  draggable
+                  draggable={editable}
                   onDragStart={() => setDragIndex(i)}
                   onDragEnter={() => setOverIndex(i)}
                   onDragOver={(e) => e.preventDefault()}
@@ -206,13 +217,15 @@ export default function HeroSlidesAdminPage() {
                       : "border-neutral-200"
                   }`}
                 >
-                  <span
-                    className="cursor-grab select-none text-neutral-300 active:cursor-grabbing"
-                    title="Drag to reorder"
-                    aria-hidden="true"
-                  >
-                    <FiMenu className="h-4 w-4" />
-                  </span>
+                  {editable && (
+                    <span
+                      className="cursor-grab select-none text-neutral-300 active:cursor-grabbing"
+                      title="Drag to reorder"
+                      aria-hidden="true"
+                    >
+                      <FiMenu className="h-4 w-4" />
+                    </span>
+                  )}
 
                   <span className="w-6 shrink-0 text-center text-xs font-semibold text-neutral-400">{i + 1}</span>
 
@@ -237,14 +250,16 @@ export default function HeroSlidesAdminPage() {
                     )}
                   </div>
 
-                  <button type="button" onClick={() => toggleActive(s)} className="shrink-0">
+                  <button type="button" onClick={() => toggleActive(s)} disabled={!editable} className="shrink-0 disabled:cursor-default">
                     <Badge color={s.isActive ? "green" : "neutral"}>{s.isActive ? "Active" : "Inactive"}</Badge>
                   </button>
 
-                  <div className="flex shrink-0 gap-2">
-                    <SecondaryButton onClick={() => openEdit(s)}><FiEdit2 className="h-3.5 w-3.5" /></SecondaryButton>
-                    <DangerButton onClick={() => remove(s._id)}><FiTrash2 className="h-3.5 w-3.5" /></DangerButton>
-                  </div>
+                  {editable && (
+                    <div className="flex shrink-0 gap-2">
+                      <SecondaryButton onClick={() => openEdit(s)}><FiEdit2 className="h-3.5 w-3.5" /></SecondaryButton>
+                      <DangerButton onClick={() => remove(s._id)}><FiTrash2 className="h-3.5 w-3.5" /></DangerButton>
+                    </div>
+                  )}
                 </li>
               ))}
             </ul>

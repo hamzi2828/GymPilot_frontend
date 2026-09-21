@@ -14,6 +14,7 @@ import CampaignsPanel from "./CampaignsPanel";
 import AnnouncementsPanel from "./AnnouncementsPanel";
 import TemplatesPanel from "./TemplatesPanel";
 import LogPanel from "./LogPanel";
+import { LoadError } from "../_ops/lists";
 
 type TabKey = "campaigns" | "announcements" | "wording" | "log" | "setup";
 const TABS: { key: TabKey; label: string }[] = [
@@ -29,15 +30,20 @@ export default function MessagingAdminPage() {
   const editable = can("messaging", "manage");
   const [tab, setTab] = useState<TabKey>("campaigns");
   const [channels, setChannels] = useState<ChannelsInfo | null>(null);
+  const [channelsError, setChannelsError] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
   const [runResult, setRunResult] = useState<string | null>(null);
 
+  // A failure here is said out loud: swallowed, it read as every channel
+  // being "Not set up", which sends people off to Settings for nothing.
   const loadChannels = useCallback(async () => {
     try {
       const res = await apiGet<{ data: ChannelsInfo }>(`${MESSAGING_API}/channels`);
       setChannels(res.data);
-    } catch {
+      setChannelsError(null);
+    } catch (e) {
       setChannels(null);
+      setChannelsError(e instanceof Error ? e.message : "Could not load the channel status");
     }
   }, []);
 
@@ -63,6 +69,8 @@ export default function MessagingAdminPage() {
   return (
     <div>
       <PageHeader eyebrow="Customers" title="Messaging" />
+
+      {channelsError && <LoadError message={`Could not check which channels are set up: ${channelsError}`} onRetry={loadChannels} />}
 
       <div className="mb-6 border-b border-neutral-200">
         <div className="-mb-px flex gap-1 overflow-x-auto">

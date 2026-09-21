@@ -35,11 +35,18 @@ import {
   Card,
 } from "../_shared/ui";
 import { API_BASE, apiGet, apiJson, apiForm, absoluteUrl } from "../_shared/api";
+import { usePermissions } from "@/components/admin/PermissionsProvider";
+import { LoadError } from "../_ops/lists";
 
 const SECTIONS_API = `${API_BASE}/home-sections`;
 
 /** Keep in sync with GALLERY_MAX_PHOTOS in main/services/homeService.ts. */
 const GALLERY_MAX_PHOTOS = 12;
+
+// The API accepts videos far larger than this, but on Vercel a request body
+// over about 4.5 MB is refused before it reaches the API at all -- the upload
+// just fails. Anything bigger belongs on a video host, linked by URL.
+const MAX_VIDEO_UPLOAD_MB = 4;
 
 // ---------------------------------------------------------------------------
 // Types
@@ -162,7 +169,7 @@ const SECTION_META: Record<string, SectionMeta> = {
             key: "url",
             label: "Video",
             type: "video",
-            hint: "Paste a YouTube/Vimeo link, a direct .mp4 URL, or upload a file.",
+            hint: `Paste a YouTube/Vimeo link, a direct .mp4 URL, or upload a file of up to ${MAX_VIDEO_UPLOAD_MB} MB.`,
           },
           { key: "poster", label: "Poster image (shown before play)", type: "image" },
         ],
@@ -308,8 +315,17 @@ function VideoInput({
   onChange: (v: string) => void;
 }) {
   const [uploading, setUploading] = useState(false);
+  const [tooBig, setTooBig] = useState<string | null>(null);
 
   const upload = async (file: File) => {
+    if (file.size > MAX_VIDEO_UPLOAD_MB * 1024 * 1024) {
+      setTooBig(
+        `That video is ${(file.size / (1024 * 1024)).toFixed(1)} MB — uploads here stop at ${MAX_VIDEO_UPLOAD_MB} MB. ` +
+          "Put it on YouTube or Vimeo (or any video host) and paste the link above instead."
+      );
+      return;
+    }
+    setTooBig(null);
     setUploading(true);
     try {
       const fd = new FormData();
@@ -333,8 +349,11 @@ function VideoInput({
         <input
           type="text"
           value={value}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder="https://youtube.com/… or upload an mp4"
+          onChange={(e) => {
+            setTooBig(null);
+            onChange(e.target.value);
+          }}
+          placeholder={`https://youtube.com/… or upload an mp4 (up to ${MAX_VIDEO_UPLOAD_MB} MB)`}
           className="flex-1 h-9 px-3 text-sm bg-white border border-neutral-200 rounded-lg focus:outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[color-mix(in_srgb,var(--accent)_25%,transparent)] transition-colors"
         />
         <label className="inline-flex items-center h-9 px-3 text-sm font-medium text-neutral-700 bg-white border border-neutral-200 rounded-lg hover:bg-neutral-50 cursor-pointer transition-colors">
@@ -352,6 +371,7 @@ function VideoInput({
           />
         </label>
       </div>
+      {tooBig && <span className="mt-1 block text-[11px] text-rose-600">{tooBig}</span>}
       {hint && <span className="mt-1 block text-[11px] text-neutral-400">{hint}</span>}
     </div>
   );
@@ -745,8 +765,11 @@ function GalleryGroupsEditor({
 // ---------------------------------------------------------------------------
 
 export default function HomepageAdminPage() {
+  const { can } = usePermissions();
+  const editable = can("homepage", "manage");
   const [sections, setSections] = useState<HomeSection[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<HomeSection | null>(null);
   const [draft, setDraft] = useState<Record<string, unknown>>({});
   const [saving, setSaving] = useState(false);
@@ -757,8 +780,10 @@ export default function HomepageAdminPage() {
     try {
       const r = await apiGet<{ data?: HomeSection[] }>(SECTIONS_API);
       setSections(r.data || []);
-    } catch {
-      setSections([]);
+      setError(null);
+    } catch (e) {
+      // Said out loud: swallowed, a failed load showed an empty section list.
+      setError(e instanceof Error ? e.message : "Could not load the homepage sections");
     } finally {
       setLoading(false);
     }
@@ -888,15 +913,21 @@ export default function HomepageAdminPage() {
         </Card>
       </div>
 
+      {error && <LoadError message={error} onRetry={load} />}
+
       {loading ? (
         <Spinner />
-      ) : (
+      ) : error && !sections.length ? null : (
         <div>
           <div className="mb-4 flex items-center gap-3 text-xs text-neutral-500">
-            <span>
-              Drag a section to reorder — the order here is the order on the homepage, below the hero banner. Nothing
-              is saved until you press <span className="font-semibold text-neutral-700">Update order</span>.
-            </span>
+            {editable ? (
+              <span>
+                Drag a section to reorder — the order here is the order on the homepage, below the hero banner. Nothing
+                is saved until you press <span className="font-semibold text-neutral-700">Update order</span>.
+              </span>
+            ) : (
+              <span>The order here is the order on the homepage, below the hero banner.</span>
+            )}
           </div>
 
           {orderDirty && (
@@ -938,7 +969,7 @@ export default function HomepageAdminPage() {
               return (
                 <li
                   key={s.key}
-                  draggable
+                  draggable={editable}
                   onDragStart={() => setDragIndex(i)}
                   onDragEnter={() => setOverIndex(i)}
                   onDragOver={(e) => e.preventDefault()}
@@ -955,9 +986,11 @@ export default function HomepageAdminPage() {
                       : "border-neutral-200"
                   } ${s.enabled ? "" : "bg-neutral-50/70"}`}
                 >
-                  <span className="cursor-grab select-none text-neutral-300 active:cursor-grabbing" title="Drag to reorder" aria-hidden="true">
-                    <FiMenu className="h-4 w-4" />
-                  </span>
+                  {editable && (
+                    <span className="cursor-grab select-none text-neutral-300 active:cursor-grabbing" title="Drag to reorder" aria-hidden="true">
+                      <FiMenu className="h-4 w-4" />
+                    </span>
+                  )}
 
                   <span className="w-6 shrink-0 text-center text-xs font-semibold text-neutral-400">{i + 1}</span>
 
@@ -972,15 +1005,17 @@ export default function HomepageAdminPage() {
                     type="button"
                     onClick={() => toggle(s)}
                     className="shrink-0 disabled:opacity-40"
-                    title={orderDirty ? "Save or discard the new order first" : "Click to toggle visibility"}
-                    disabled={orderDirty}
+                    title={!editable ? undefined : orderDirty ? "Save or discard the new order first" : "Click to toggle visibility"}
+                    disabled={!editable || orderDirty}
                   >
                     <Badge color={s.enabled ? "green" : "neutral"}>{s.enabled ? "Visible" : "Hidden"}</Badge>
                   </button>
 
-                  <SecondaryButton onClick={() => openEdit(s)} disabled={orderDirty}>
-                    <FiEdit2 className="h-3.5 w-3.5 mr-1.5" /> Edit
-                  </SecondaryButton>
+                  {editable && (
+                    <SecondaryButton onClick={() => openEdit(s)} disabled={orderDirty}>
+                      <FiEdit2 className="h-3.5 w-3.5 mr-1.5" /> Edit
+                    </SecondaryButton>
+                  )}
                 </li>
               );
             })}

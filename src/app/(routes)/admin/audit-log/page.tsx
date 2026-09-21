@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { PageHeader, Card, Spinner, EmptyState, Badge } from "../_shared/ui";
 import { API_BASE, apiGet } from "../_shared/api";
+import { LoadError } from "../_ops/lists";
 
 interface Row {
   _id: string;
@@ -74,11 +75,11 @@ export default function AuditLogPage() {
         <span className="text-xs text-neutral-500">{total} entries</span>
       </div>
 
-      {error && <p className="mb-4 text-sm text-rose-600">{error}</p>}
+      {error && <LoadError message={error} onRetry={load} />}
 
       {loading ? (
         <Spinner />
-      ) : !rows.length ? (
+      ) : error && !rows.length ? null : !rows.length ? (
         <EmptyState title="Nothing recorded yet" hint="Changes made in the admin panel appear here." />
       ) : (
         <Card className="overflow-hidden">

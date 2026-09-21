@@ -5,7 +5,7 @@
 // Member reviews rendered by the homepage testimonials section. Same list /
 // modal / drag-reorder patterns as Hero Slides.
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Image from "next/image";
 import { FiPlus, FiEdit2, FiTrash2, FiMenu, FiStar } from "react-icons/fi";
 import {
@@ -21,6 +21,8 @@ import {
   Spinner,
 } from "../_shared/ui";
 import { API_BASE, apiGet, apiJson, apiForm, absoluteUrl } from "../_shared/api";
+import { usePermissions } from "@/components/admin/PermissionsProvider";
+import { LoadError } from "../_ops/lists";
 
 interface Testimonial {
   _id: string;
@@ -62,29 +64,34 @@ function RatingPicker({ value, onChange }: { value: number; onChange: (v: number
 }
 
 export default function TestimonialsAdminPage() {
+  const { can } = usePermissions();
+  const editable = can("testimonials", "manage");
   const [list, setList] = useState<Testimonial[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Testimonial | null>(null);
   const [form, setForm] = useState<Partial<Testimonial>>({});
   const [img, setImg] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
       const r = await apiGet<{ data?: Testimonial[] }>(TESTIMONIALS_API);
       setList(r.data || []);
-    } catch {
-      setList([]);
+      setError(null);
+    } catch (e) {
+      // Said out loud: swallowed, a failed load read as "No testimonials yet".
+      setError(e instanceof Error ? e.message : "Could not load testimonials");
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     load();
-  }, []);
+  }, [load]);
 
   const openCreate = () => {
     setEditing(null);
@@ -183,18 +190,22 @@ export default function TestimonialsAdminPage() {
         eyebrow="Content"
         title="Testimonials"
         actions={
-          <PrimaryButton onClick={openCreate}>
-            <FiPlus className="w-4 h-4 mr-1.5" /> New Testimonial
-          </PrimaryButton>
+          editable ? (
+            <PrimaryButton onClick={openCreate}>
+              <FiPlus className="w-4 h-4 mr-1.5" /> New Testimonial
+            </PrimaryButton>
+          ) : undefined
         }
       />
 
+      {error && <LoadError message={error} onRetry={load} />}
+
       {loading ? (
         <Spinner />
-      ) : (
+      ) : error && !list.length ? null : (
         <div>
           <div className="mb-4 flex items-center gap-3 text-xs text-neutral-500">
-            <span>Drag to reorder. Active testimonials appear in the homepage testimonials section.</span>
+            <span>{editable ? "Drag to reorder. " : ""}Active testimonials appear in the homepage testimonials section.</span>
             {savingOrder && <span className="text-neutral-400">Saving…</span>}
           </div>
 
@@ -223,7 +234,7 @@ export default function TestimonialsAdminPage() {
               {list.map((t, i) => (
                 <li
                   key={t._id}
-                  draggable
+                  draggable={editable}
                   onDragStart={() => setDragIndex(i)}
                   onDragEnter={() => setOverIndex(i)}
                   onDragOver={(e) => e.preventDefault()}
@@ -240,9 +251,11 @@ export default function TestimonialsAdminPage() {
                       : "border-neutral-200"
                   }`}
                 >
-                  <span className="cursor-grab select-none text-neutral-300 active:cursor-grabbing" title="Drag to reorder" aria-hidden="true">
-                    <FiMenu className="h-4 w-4" />
-                  </span>
+                  {editable && (
+                    <span className="cursor-grab select-none text-neutral-300 active:cursor-grabbing" title="Drag to reorder" aria-hidden="true">
+                      <FiMenu className="h-4 w-4" />
+                    </span>
+                  )}
 
                   {t.imageUrl ? (
                     <Image
@@ -271,18 +284,20 @@ export default function TestimonialsAdminPage() {
                     <div className="truncate text-xs text-neutral-500">{t.quote}</div>
                   </div>
 
-                  <button type="button" onClick={() => toggleActive(t)} className="shrink-0">
+                  <button type="button" onClick={() => toggleActive(t)} disabled={!editable} className="shrink-0 disabled:cursor-default">
                     <Badge color={t.isActive ? "green" : "neutral"}>{t.isActive ? "Active" : "Inactive"}</Badge>
                   </button>
 
-                  <div className="flex shrink-0 gap-2">
-                    <SecondaryButton onClick={() => openEdit(t)}>
-                      <FiEdit2 className="h-3.5 w-3.5" />
-                    </SecondaryButton>
-                    <DangerButton onClick={() => remove(t._id)}>
-                      <FiTrash2 className="h-3.5 w-3.5" />
-                    </DangerButton>
-                  </div>
+                  {editable && (
+                    <div className="flex shrink-0 gap-2">
+                      <SecondaryButton onClick={() => openEdit(t)}>
+                        <FiEdit2 className="h-3.5 w-3.5" />
+                      </SecondaryButton>
+                      <DangerButton onClick={() => remove(t._id)}>
+                        <FiTrash2 className="h-3.5 w-3.5" />
+                      </DangerButton>
+                    </div>
+                  )}
                 </li>
               ))}
             </ul>

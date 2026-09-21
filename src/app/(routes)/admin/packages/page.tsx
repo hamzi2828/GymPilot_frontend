@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { FiPlus, FiEdit2, FiTrash2 } from "react-icons/fi";
 import {
   PageHeader,
@@ -18,6 +18,8 @@ import {
 } from "../_shared/ui";
 import { API_BASE, GYMFOLIO_API, apiGet, apiJson } from "../_shared/api";
 import { currencyOptions } from "@/data/countries";
+import { usePermissions } from "@/components/admin/PermissionsProvider";
+import { LoadError } from "../_ops/lists";
 
 const CURRENCY_OPTIONS = currencyOptions();
 
@@ -72,8 +74,11 @@ function describeBilling(p: Package) {
 }
 
 export default function PackagesAdminPage() {
+  const { can } = usePermissions();
+  const editable = can("packages", "manage");
   const [list, setList] = useState<Package[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Package | null>(null);
   const [form, setForm] = useState<Partial<Package>>({});
@@ -92,19 +97,23 @@ export default function PackagesAdminPage() {
       .catch(() => {});
   }, []);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
       const r = await apiGet<{ data: Package[] }>(`${GYMFOLIO_API}/packages`);
       setList(r.data || []);
+      setLoadError(null);
+    } catch (e) {
+      // Said out loud: unhandled, a failed load read as "No packages yet".
+      setLoadError(e instanceof Error ? e.message : "Could not load packages");
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     load();
-  }, []);
+  }, [load]);
 
   const openCreate = () => {
     setEditing(null);
@@ -183,15 +192,19 @@ export default function PackagesAdminPage() {
         eyebrow="Fitness"
         title="Packages"
         actions={
-          <PrimaryButton onClick={openCreate}>
-            <FiPlus className="w-4 h-4 mr-1.5" /> New Package
-          </PrimaryButton>
+          editable ? (
+            <PrimaryButton onClick={openCreate}>
+              <FiPlus className="w-4 h-4 mr-1.5" /> New Package
+            </PrimaryButton>
+          ) : undefined
         }
       />
 
+      {loadError && <LoadError message={loadError} onRetry={load} />}
+
       {loading ? (
         <Spinner />
-      ) : (
+      ) : loadError && !list.length ? null : (
         <Table
           columns={["Name", "Type", "Price", "Billing", "Features", "Status", "Actions"]}
           rows={list.map((p) => [
@@ -209,19 +222,23 @@ export default function PackagesAdminPage() {
             </span>,
             <span key="b" className="text-xs text-neutral-600">{describeBilling(p)}</span>,
             <span key="f" className="text-neutral-500 text-xs">{(p.features || []).length} items</span>,
-            <button key="s" onClick={() => toggleActive(p)}>
+            <button key="s" onClick={() => toggleActive(p)} disabled={!editable} className="disabled:cursor-default">
               <Badge color={p.isActive ? "green" : "neutral"}>{p.isActive ? "Active" : "Inactive"}</Badge>
             </button>,
-            <div key="a" className="flex gap-2">
-              <SecondaryButton onClick={() => openEdit(p)}>
-                <FiEdit2 className="w-3.5 h-3.5" />
-              </SecondaryButton>
-              <DangerButton onClick={() => remove(p._id)}>
-                <FiTrash2 className="w-3.5 h-3.5" />
-              </DangerButton>
-            </div>,
+            editable ? (
+              <div key="a" className="flex gap-2">
+                <SecondaryButton onClick={() => openEdit(p)}>
+                  <FiEdit2 className="w-3.5 h-3.5" />
+                </SecondaryButton>
+                <DangerButton onClick={() => remove(p._id)}>
+                  <FiTrash2 className="w-3.5 h-3.5" />
+                </DangerButton>
+              </div>
+            ) : (
+              <span key="a" />
+            ),
           ])}
-          empty="No packages yet — click 'New Package' to add one."
+          empty={editable ? "No packages yet — click 'New Package' to add one." : "No packages yet."}
         />
       )}
 

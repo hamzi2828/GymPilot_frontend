@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Image from "next/image";
 import { FiPlus, FiEdit2, FiTrash2 } from "react-icons/fi";
 import {
@@ -24,6 +24,13 @@ import {
   type ScheduleRow,
   type InstructorOption,
 } from "../_shared/WeekScheduleEditor";
+import { usePermissions } from "@/components/admin/PermissionsProvider";
+import { Pager, LoadError, pageCount } from "../_ops/lists";
+
+const PAGE_SIZE = 20;
+// Enough for any gym's trainer list in one dropdown. The trainers endpoint
+// defaults to twenty, which quietly left later trainers out of the picker.
+const ALL_TRAINERS = 500;
 
 interface GymClass {
   _id: string;
@@ -52,8 +59,14 @@ const difficulties = ["Beginner", "Intermediate", "Advanced", "All Levels"];
 const categories = ["Yoga", "Cardio", "Strength", "Boxing", "HIIT", "Dance", "Martial Arts", "Other"];
 
 export default function ClassesAdminPage() {
+  const { can } = usePermissions();
+  const editable = can("classes", "manage");
   const [list, setList] = useState<GymClass[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [pages, setPages] = useState(1);
+  const [total, setTotal] = useState(0);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<GymClass | null>(null);
   const [form, setForm] = useState<Partial<GymClass>>({});
@@ -62,25 +75,42 @@ export default function ClassesAdminPage() {
   const [schedule, setSchedule] = useState<ScheduleRow[]>([]);
   const [trainers, setTrainers] = useState<InstructorOption[]>([]);
 
-  const load = async () => {
+  // Paged: the endpoint returns twenty at a time, and reading only the first
+  // page used to make every class after the twentieth vanish from here.
+  const load = useCallback(async () => {
     setLoading(true);
     try {
-      const r = await apiGet<{ data: GymClass[] }>(`${GYMFOLIO_API}/gym-classes`);
+      const r = await apiGet<{ data: GymClass[]; pagination?: { total?: number; pages?: number; limit?: number } }>(
+        `${GYMFOLIO_API}/gym-classes?page=${page}&limit=${PAGE_SIZE}`
+      );
+      // Deleting the last class on the last page leaves nothing to show.
+      if (!(r.data || []).length && page > 1) {
+        setPage(page - 1);
+        return;
+      }
       setList(r.data || []);
+      setPages(pageCount(r.pagination));
+      setTotal(r.pagination?.total ?? (r.data || []).length);
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not load classes");
     } finally {
       setLoading(false);
     }
-  };
+  }, [page]);
 
-  // Instructors for the per-session dropdown. A failure here costs the
-  // dropdown, not the page.
+  // Instructors for the per-session dropdown. Someone with the Classes tab
+  // but not the Trainers one falls back to the public list of active
+  // trainers. A failure here costs the dropdown, not the page.
   useEffect(() => {
-    apiGet<{ data: InstructorOption[] }>(`${GYMFOLIO_API}/trainers`)
+    if (!editable) return;
+    apiGet<{ data: InstructorOption[] }>(`${GYMFOLIO_API}/trainers?limit=${ALL_TRAINERS}`)
+      .catch(() => apiGet<{ data: InstructorOption[] }>(`${GYMFOLIO_API}/trainers/active`))
       .then((r) => setTrainers(r.data || []))
       .catch(() => setTrainers([]));
-  }, []);
+  }, [editable]);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [load]);
 
   const openCreate = () => {
     setEditing(null);
@@ -180,15 +210,19 @@ export default function ClassesAdminPage() {
         eyebrow="Fitness"
         title="Classes"
         actions={
-          <PrimaryButton onClick={openCreate}>
-            <FiPlus className="w-4 h-4 mr-1.5" /> New Class
-          </PrimaryButton>
+          editable ? (
+            <PrimaryButton onClick={openCreate}>
+              <FiPlus className="w-4 h-4 mr-1.5" /> New Class
+            </PrimaryButton>
+          ) : undefined
         }
       />
 
+      {error && <LoadError message={error} onRetry={load} />}
+
       {loading ? (
         <Spinner />
-      ) : (
+      ) : error && !list.length ? null : (
         <Table
           columns={["", "Name", "Category", "Difficulty", "Capacity", "Status", "Actions"]}
           rows={list.map((c) => [
@@ -208,23 +242,29 @@ export default function ClassesAdminPage() {
             c.category || "—",
             c.difficulty || "—",
             c.capacity ?? "—",
-            <button key="b" onClick={() => toggleActive(c)}>
+            <button key="b" onClick={() => toggleActive(c)} disabled={!editable} className="disabled:cursor-default">
               <Badge color={c.isActive ? "green" : "neutral"}>
                 {c.isActive ? "Active" : "Inactive"}
               </Badge>
             </button>,
-            <div key="a" className="flex gap-2">
-              <SecondaryButton onClick={() => openEdit(c)}>
-                <FiEdit2 className="w-3.5 h-3.5" />
-              </SecondaryButton>
-              <DangerButton onClick={() => remove(c._id)}>
-                <FiTrash2 className="w-3.5 h-3.5" />
-              </DangerButton>
-            </div>,
+            editable ? (
+              <div key="a" className="flex gap-2">
+                <SecondaryButton onClick={() => openEdit(c)}>
+                  <FiEdit2 className="w-3.5 h-3.5" />
+                </SecondaryButton>
+                <DangerButton onClick={() => remove(c._id)}>
+                  <FiTrash2 className="w-3.5 h-3.5" />
+                </DangerButton>
+              </div>
+            ) : (
+              <span key="a" />
+            ),
           ])}
-          empty="No classes yet — click 'New Class' to add one."
+          empty={editable ? "No classes yet — click 'New Class' to add one." : "No classes yet."}
         />
       )}
+
+      <Pager page={page} pages={pages} total={total} onChange={setPage} disabled={loading} />
 
       <Modal open={open} onClose={() => setOpen(false)} title={editing ? "Edit Class" : "New Class"} size="lg">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

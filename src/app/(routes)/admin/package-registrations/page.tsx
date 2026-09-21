@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   PageHeader,
   Modal,
@@ -14,6 +14,8 @@ import {
   Table,
 } from "../_shared/ui";
 import { GYMFOLIO_API, apiGet, apiJson } from "../_shared/api";
+import { usePermissions } from "@/components/admin/PermissionsProvider";
+import { Pager, LoadError, pageCount } from "../_ops/lists";
 
 interface Registration {
   _id: string;
@@ -35,29 +37,48 @@ const colorMap: Record<string, "neutral" | "green" | "amber" | "rose" | "blue"> 
   rejected: "rose",
 };
 
+const PAGE_SIZE = 50;
+
 export default function PackageRegistrationsAdminPage() {
+  const { can } = usePermissions();
+  const editable = can("registrations", "manage");
   const [list, setList] = useState<Registration[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [pages, setPages] = useState(1);
+  const [total, setTotal] = useState(0);
   const [selected, setSelected] = useState<Registration | null>(null);
   const [status, setStatus] = useState("");
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
 
-  const load = async () => {
+  // Paged rather than one big request: the endpoint defaults to twenty, and a
+  // fixed larger limit only moved the point where registrations went missing.
+  const load = useCallback(async () => {
     setLoading(true);
     try {
-      // Explicit limit: the endpoint defaults to 20, so without this the
-      // screen quietly showed only the newest twenty registrations.
-      const r = await apiGet<{ data: Registration[] }>(`${GYMFOLIO_API}/package-registrations?limit=200`);
+      const r = await apiGet<{ data: Registration[]; pagination?: { total?: number; pages?: number; limit?: number } }>(
+        `${GYMFOLIO_API}/package-registrations?page=${page}&limit=${PAGE_SIZE}`
+      );
+      // Deleting the last registration on the last page leaves nothing to show.
+      if (!(r.data || []).length && page > 1) {
+        setPage(page - 1);
+        return;
+      }
       setList(r.data || []);
-    } catch {
-      setList([]);
+      setPages(pageCount(r.pagination));
+      setTotal(r.pagination?.total ?? (r.data || []).length);
+      setError(null);
+    } catch (e) {
+      // Said out loud: an empty list here reads as "no registrations yet".
+      setError(e instanceof Error ? e.message : "Could not load registrations");
     } finally {
       setLoading(false);
     }
-  };
+  }, [page]);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [load]);
 
   const open = (r: Registration) => {
     setSelected(r);
@@ -93,9 +114,11 @@ export default function PackageRegistrationsAdminPage() {
     <div>
       <PageHeader eyebrow="Sales" title="Package Registrations" />
 
+      {error && <LoadError message={error} onRetry={load} />}
+
       {loading ? (
         <Spinner />
-      ) : (
+      ) : error && !list.length ? null : (
         <Table
           columns={["Name", "Email", "Phone", "Platform", "Status", "Created", "Actions"]}
           rows={list.map((r) => [
@@ -105,14 +128,20 @@ export default function PackageRegistrationsAdminPage() {
             r.platform,
             <Badge key="s" color={colorMap[r.status] || "neutral"}>{r.status}</Badge>,
             new Date(r.createdAt).toLocaleDateString(),
-            <div key="a" className="flex gap-2">
-              <SecondaryButton onClick={() => open(r)}>Update</SecondaryButton>
-              <DangerButton onClick={() => remove(r._id)}>Delete</DangerButton>
-            </div>,
+            editable ? (
+              <div key="a" className="flex gap-2">
+                <SecondaryButton onClick={() => open(r)}>Update</SecondaryButton>
+                <DangerButton onClick={() => remove(r._id)}>Delete</DangerButton>
+              </div>
+            ) : (
+              <span key="a" />
+            ),
           ])}
           empty="No registrations yet."
         />
       )}
+
+      <Pager page={page} pages={pages} total={total} onChange={setPage} disabled={loading} />
 
       <Modal open={!!selected} onClose={() => setSelected(null)} title="Update Registration" size="md">
         {selected && (
