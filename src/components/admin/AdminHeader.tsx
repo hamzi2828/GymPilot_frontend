@@ -1,6 +1,9 @@
 "use client";
 
-import { FiMenu, FiX, FiSearch, FiBell } from "react-icons/fi";
+import { useRouter } from "next/navigation";
+import { FiMenu, FiX, FiLogOut } from "react-icons/fi";
+import { removeToken } from "@/helper/helper";
+import { usePermissions } from "@/components/admin/PermissionsProvider";
 
 interface AdminHeaderProps {
   isSidebarOpen: boolean;
@@ -11,6 +14,22 @@ export default function AdminHeader({
   isSidebarOpen,
   onToggleSidebar,
 }: AdminHeaderProps) {
+  const router = useRouter();
+  // Who is signed in comes from /roles/me, which the shell has already loaded
+  // before this header renders.
+  const { me } = usePermissions();
+
+  const displayName = me?.name || me?.email || "Signed in";
+  const roleLabel = me?.role_name || me?.job_title || "";
+  const initial = (me?.name || me?.email || "?").trim().charAt(0).toUpperCase() || "?";
+
+  // Same sign-out as the website header: drop the token and role, then go to
+  // the sign-in page rather than a panel that can no longer load.
+  const logout = () => {
+    removeToken();
+    router.replace("/authentication");
+  };
+
   return (
     <header className="flex items-center justify-between h-16 px-6 bg-white border-b border-neutral-200 lg:px-10">
       <div className="flex items-center gap-4">
@@ -25,28 +44,13 @@ export default function AdminHeader({
             <FiMenu className="w-5 h-5" />
           )}
         </button>
-
-        <div
-          className="hidden md:flex items-center gap-2 px-3 h-9 w-72 border border-neutral-200 rounded-lg bg-neutral-50 text-sm text-neutral-400 select-none"
-          title="Search is not wired up yet"
-          aria-hidden="true"
-        >
-          <FiSearch className="w-4 h-4" />
-          <span>Search…</span>
-        </div>
       </div>
 
       <div className="flex items-center gap-4">
-        <button
-          className="p-1.5 text-neutral-500 rounded-md hover:bg-neutral-100 transition-colors"
-          aria-label="Notifications"
-        >
-          <FiBell className="w-[18px] h-[18px]" />
-        </button>
         <div className="flex items-center gap-3">
           <div className="hidden sm:flex flex-col items-end leading-tight">
-            <span className="text-xs font-medium text-neutral-900">Admin</span>
-            <span className="text-[11px] text-neutral-500">Administrator</span>
+            <span className="text-xs font-medium text-neutral-900">{displayName}</span>
+            {roleLabel && <span className="text-[11px] text-neutral-500">{roleLabel}</span>}
           </div>
           {/* Rendered from theme tokens rather than a remote avatar service, so
               it follows the selected colour scheme and needs no network round-trip. */}
@@ -59,9 +63,19 @@ export default function AdminHeader({
             }}
             aria-hidden="true"
           >
-            A
+            {initial}
           </div>
         </div>
+        <button
+          type="button"
+          onClick={logout}
+          className="inline-flex items-center gap-1.5 h-8 px-2.5 text-xs font-medium text-neutral-600 border border-neutral-200 rounded-md hover:bg-neutral-50 hover:text-neutral-900 transition-colors"
+          aria-label="Log out"
+          title="Log out"
+        >
+          <FiLogOut className="w-4 h-4" aria-hidden="true" />
+          <span className="hidden sm:inline">Log out</span>
+        </button>
       </div>
     </header>
   );

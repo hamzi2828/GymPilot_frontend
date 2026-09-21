@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { getAuthToken } from "@/helper/helper";
+import { API_BASE, apiGet, isSessionEndError } from "@/app/(routes)/admin/_shared/api";
 
 // The browser half of the permission system. It asks the server once what this
 // account may do and hands the answer to the shell, the sidebar and the pages.
@@ -64,25 +65,31 @@ export function PermissionsProvider({ children }: { children: React.ReactNode })
       return;
     }
 
+    // Through the shared helper, so an ended session (deactivated, signed out
+    // everywhere, expired) clears the token and goes to sign-in instead of
+    // reading as "no tabs" and bouncing to the homepage.
+    let signedOut = false;
     try {
-      const base = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:4000";
-      const res = await fetch(`${base}/roles/me`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const json = await res.json();
-
-      if (!res.ok) throw new Error(json?.message || "Could not load your permissions");
+      const json = await apiGet<{ user?: AdminIdentity; permissions?: PermissionMap; tabs?: string[] }>(
+        `${API_BASE}/roles/me`
+      );
 
       setMe(json.user || null);
       setPermissions(json.permissions || {});
       setTabs(json.tabs || []);
       setError(null);
     } catch (e) {
+      // Already on the way to the sign-in page: keep the spinner up rather
+      // than let the shell react to an empty permission set.
+      if (isSessionEndError(e)) {
+        signedOut = true;
+        return;
+      }
       setError(e instanceof Error ? e.message : "Could not load your permissions");
       setPermissions({});
       setTabs([]);
     } finally {
-      setLoading(false);
+      if (!signedOut) setLoading(false);
     }
   }, []);
 
