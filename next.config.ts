@@ -31,6 +31,23 @@ const nextConfig: NextConfig = {
     // bundles (see DemoAccounts.tsx). Off unless explicitly turned on.
     NEXT_PUBLIC_SHOW_DEMO_LOGINS: process.env.NEXT_PUBLIC_SHOW_DEMO_LOGINS === 'true' ? 'true' : 'false',
   },
+  // A gym's admin panel, member portal and front-desk kiosk all live here, so
+  // no other site may put any of it in a frame: a click on what looks like
+  // their own page would otherwise land on a button in here. `frame-ancestors`
+  // is what modern browsers honour; X-Frame-Options covers the older ones.
+  async headers() {
+    return [
+      {
+        source: '/:path*',
+        headers: [
+          { key: 'Content-Security-Policy', value: "frame-ancestors 'none'" },
+          { key: 'X-Frame-Options', value: 'DENY' },
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+        ],
+      },
+    ];
+  },
   async redirects() {
     return [
       { source: '/super-admin', destination: `${PLATFORM_ADMIN_URL}/super-admin`, permanent: false },
