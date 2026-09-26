@@ -17,15 +17,15 @@ interface DemoAccountsProps {
 export const SHOW_DEMO_LOGINS = process.env.NEXT_PUBLIC_SHOW_DEMO_LOGINS === 'true';
 
 // The credentials match the accounts seeded into the dev database:
-//   - admin@gymwear.com / admin123      (Seeder/createAdmin.js)
+//   - admin@demogym.test / admin123     (Seeder/createAdmin.js)
 //   - ...@gympilot.test / Gym@12345     (Seeder/createAttendance.js members)
 const DEMO = SHOW_DEMO_LOGINS
   ? [
       {
         key: 'admin',
         label: 'Admin',
-        caption: 'admin@gymwear.com',
-        email: 'admin@gymwear.com',
+        caption: 'admin@demogym.test',
+        email: 'admin@demogym.test',
         password: 'admin123',
       },
       {
@@ -39,7 +39,7 @@ const DEMO = SHOW_DEMO_LOGINS
   : [];
 
 // The super admin signs in on the platform panel, which lives in its own app
-// (GymPilot_frontendAdmin) against the platform API, so its card is a plain
+// (GymPilot_marketing) against the platform API, so its card is a plain
 // link. That app pre-fills the super admin account when it has one configured;
 // nothing about it is stored here.
 const PLATFORM_ADMIN_URL = (process.env.NEXT_PUBLIC_PLATFORM_ADMIN_URL || 'http://localhost:3001').replace(/\/+$/, '');
