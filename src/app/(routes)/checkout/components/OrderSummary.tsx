@@ -18,6 +18,12 @@ interface OrderSummaryProps {
   onPaymentMethodChange: (method: PaymentMethodKey) => void;
   coupon: CouponPreview | null;
   onCouponChange: (coupon: CouponPreview | null) => void;
+  /**
+   * Whether checkout adds the joining fee for this account (only a member's
+   * first membership carries it): true or false once the API has said, null
+   * when it cannot know yet -- signed out, or the session has lapsed.
+   */
+  joiningFeeDue?: boolean | null;
 }
 
 function money(amount: number, currency: string) {
@@ -50,6 +56,7 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
   onPaymentMethodChange,
   coupon,
   onCouponChange,
+  joiningFeeDue = null,
 }) => {
   const [code, setCode] = useState("");
   const [checking, setChecking] = useState(false);
@@ -75,7 +82,11 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
   // total shown is the total paid. The old strip-and-parseFloat turned
   // "Rs. 1,200" into 0.12.
   const listPrice = parseAmount(packageData.price) ?? 0;
-  const joiningFee = Number(packageData.joiningFee || 0);
+  // The API charges the joining fee only with a member's first membership.
+  // Known to be off (a returning member), it is left out of the total; not
+  // known (null), it stays in -- the most they will pay -- and is labelled
+  // as new members only.
+  const joiningFee = joiningFeeDue === false ? 0 : Number(packageData.joiningFee || 0);
   const discount = coupon ? coupon.discount : 0;
   const total = Math.max(0, listPrice + joiningFee - discount);
   const recurring = packageData.billing?.mode === "recurring";
@@ -191,9 +202,12 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
             <span className="checkout-shipping-price font-medium">{money(listPrice, currency)}</span>
           </div>
           {joiningFee > 0 && (
-            <div className="flex items-center justify-between">
-              <span className="checkout-subtotal-label text-gray-600">Joining fee (one-off)</span>
-              <span className="font-medium">{money(joiningFee, currency)}</span>
+            <div>
+              <div className="flex items-center justify-between">
+                <span className="checkout-subtotal-label text-gray-600">{joiningFeeDue ? "Joining fee (one-off)" : "Joining fee (new members only)"}</span>
+                <span className="font-medium">{money(joiningFee, currency)}</span>
+              </div>
+              {!joiningFeeDue && <p className="mt-1 text-xs text-gray-500">Returning members aren&apos;t charged it; checkout takes it off if you&apos;ve been a member here before.</p>}
             </div>
           )}
           {discount > 0 && (

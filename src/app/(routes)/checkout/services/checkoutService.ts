@@ -114,6 +114,18 @@ class CheckoutService {
     return json.data;
   }
 
+  /**
+   * Whether checkout will add the package's joining fee for the signed-in
+   * account: it is charged only with a member's first membership. null when
+   * the API does not know who is asking (signed out, or a stale session).
+   */
+  async getJoiningFeeDue(): Promise<boolean | null> {
+    if (!getAuthToken()) return null;
+    const res = await fetch(`${this.baseUrl}/api/gymfolio/membership/joining-fee-due`, { headers: this.getAuthHeaders(false) });
+    const json = await this.parse<{ data: { due: boolean | null } }>(res, "Could not check the joining fee");
+    return typeof json.data?.due === "boolean" ? json.data.due : null;
+  }
+
   /** Checks a discount code against a package before paying. */
   async validateCoupon(code: string, packageId: string): Promise<CouponPreview> {
     const res = await fetch(`${this.baseUrl}/api/gymfolio/coupons/validate`, {
