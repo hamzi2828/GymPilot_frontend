@@ -29,6 +29,10 @@ const STAFF_IDLE_MS = 60 * 1000;
 const STAFF_UNLOCK_REQUIRED = "STAFF_UNLOCK_REQUIRED";
 
 interface ReceiptRow { caption: string; value: string }
+// Which sound a member's punch gets and what to say after it -- decided by the
+// server (punchService.memberAlert), so this kiosk and the Windows desk agree.
+// Null for staff and for a repeat scan.
+interface PunchAlert { level: "ok" | "warning" | "problem"; speech: string | null }
 interface Receipt {
   action: "check_in" | "check_out";
   person_type: string;
@@ -38,6 +42,11 @@ interface Receipt {
   status: string;
   status_label: string;
   warning: string | null;
+  alert?: PunchAlert | null;
+  // Money still owed on the member's package ("Balance due £25"); the
+  // warning line already says it, amber, and entry is never refused for it.
+  balance_due?: number;
+  balance_due_label?: string | null;
   rows: ReceiptRow[];
   check_in_time: string | null;
   check_out_time: string | null;
@@ -63,12 +72,25 @@ async function desk<T>(path: string, body: Record<string, unknown> = {}, token?:
   return { ...json, http_status: res.status };
 }
 
+type Tone = "good" | "warn" | "bad";
+
+// One tune per tone, so the three can be told apart without looking: rising
+// for all good, two level notes for "have a word" (expiring soon, balance
+// due), falling and low for a problem (expired, unpaid, frozen).
+const TONES: Record<Tone, number[]> = {
+  good: [880, 1320],
+  warn: [660, 660],
+  bad: [330, 220],
+};
+
+// How long a tune lasts, so speech starts after it rather than over it.
+const TONE_MS = 400;
+
 /** Two short tones through WebAudio -- no sound files to ship. */
-function beep(good: boolean) {
+function beep(kind: Tone) {
   try {
     const ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
-    const notes = good ? [880, 1320] : [330, 220];
-    notes.forEach((freq, i) => {
+    TONES[kind].forEach((freq, i) => {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.frequency.value = freq;
@@ -76,18 +98,36 @@ function beep(good: boolean) {
       gain.gain.value = 0.15;
       osc.connect(gain);
       gain.connect(ctx.destination);
-      osc.start(ctx.currentTime + i * 0.15);
-      osc.stop(ctx.currentTime + i * 0.15 + 0.14);
+      osc.start(ctx.currentTime + i * 0.18);
+      osc.stop(ctx.currentTime + i * 0.18 + 0.14);
     });
+    // A context per beep would otherwise pile up until the browser refuses
+    // to open another.
+    setTimeout(() => ctx.close().catch(() => {}), TONE_MS + 200);
   } catch {
     /* no audio: fine */
   }
 }
 
+/** The gym's message, read out by the browser. Silent where it cannot speak. */
+function speak(text: string) {
+  try {
+    if (typeof window === "undefined" || !window.speechSynthesis || typeof SpeechSynthesisUtterance === "undefined") return;
+    // The newest punch wins: a queue of stale messages would be read out to
+    // the wrong people.
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(new SpeechSynthesisUtterance(text));
+  } catch {
+    /* no speech: the tone has already played */
+  }
+}
+
+const ALERT_TONE: Record<PunchAlert["level"], Tone> = { ok: "good", warning: "warn", problem: "bad" };
+
 // Suspended is lapsed, as the desk counts it; pending and cancelled (still
 // running) need a word rather than a refusal. Unlisted, they flashed green
 // over a receipt whose warning said otherwise.
-function tone(status: string) {
+function tone(status: string): Tone {
   if (status.includes("expired") || status.includes("none") || status.includes("frozen") || status.includes("past_due") || status.includes("suspended") || status === "late") return "bad";
   if (status.includes("expiring") || status.includes("pending") || status.includes("cancelled")) return "warn";
   return "good";
@@ -127,6 +167,7 @@ export default function KioskPage() {
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const lastScanRef = useRef<{ text: string; at: number }>({ text: "", at: 0 });
   const receiptTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const speechTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const loadRecent = useCallback(async (t: string) => {
     const res = await desk<{ entries: RecentEntry[]; date_label: string }>("recent", { limit: 10 }, t);
@@ -214,20 +255,27 @@ export default function KioskPage() {
         endSession(res.message);
         return;
       }
+      // Whatever the last punch had queued up to say is stale now.
+      if (speechTimer.current) clearTimeout(speechTimer.current);
       if (res.code === STAFF_UNLOCK_REQUIRED) {
         // The unlock ran out on the server between the pick and the punch.
         lockStaff();
-        beep(false);
+        beep("bad");
         showReceipt(null, { tone: "bad", text: "Staff unlock expired. Unlock again to check someone in by name." });
         return;
       }
       if (res.success && res.detail) {
-        const t = tone(res.detail.status || "");
-        beep(t !== "bad");
+        // A member's punch comes with the server's alert; a staff punch (or an
+        // older server) is judged from the status here, as it always was.
+        const alert = res.detail.alert;
+        const t = alert ? ALERT_TONE[alert.level] || tone(res.detail.status || "") : tone(res.detail.status || "");
+        beep(t);
+        const said = alert?.speech;
+        if (said) speechTimer.current = setTimeout(() => speak(said), TONE_MS);
         showReceipt(res.detail, { tone: t, text: res.message || "" });
         loadRecent(token);
       } else {
-        beep(false);
+        beep("bad");
         showReceipt(null, { tone: "bad", text: res.message || "Could not record attendance." });
       }
       setCode("");
@@ -566,7 +614,18 @@ export default function KioskPage() {
                 <p className="text-sm text-neutral-400">
                   {receipt.person_code} · {receipt.person_meta}
                 </p>
-                {receipt.warning && <p className="mt-3 rounded-lg bg-rose-500/15 px-3 py-2 text-sm font-semibold text-rose-300">{receipt.warning}</p>}
+                {/* Amber for a word at the desk (running out, a balance owing),
+                    red for a problem: an expiry a week away or money still to
+                    collect must not look like a lapsed membership. */}
+                {receipt.warning && (
+                  <p
+                    className={`mt-3 rounded-lg px-3 py-2 text-sm font-semibold ${
+                      flash?.tone === "warn" ? "bg-amber-400/15 text-amber-300" : "bg-rose-500/15 text-rose-300"
+                    }`}
+                  >
+                    {receipt.warning}
+                  </p>
+                )}
                 <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
                   {receipt.rows.map((r) => (
                     <React.Fragment key={r.caption}>
