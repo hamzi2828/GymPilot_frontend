@@ -14,6 +14,8 @@ interface Profile {
   /** Empty for a member with no email address. */
   email?: string | null;
   phone: string;
+  /** One line, the account's primary address. */
+  address?: string;
   dateOfBirth: string | null;
   gender: string;
   avatarUrl: string;
@@ -91,6 +93,7 @@ export default function MemberProfileModal({ userId, onClose, onSaved }: { userI
         firstName: profile.firstName,
         lastName: profile.lastName,
         phone: profile.phone,
+        address: profile.address ?? "",
         dateOfBirth: profile.dateOfBirth || null,
         gender: profile.gender,
         tags: profile.tags,
@@ -220,6 +223,9 @@ export default function MemberProfileModal({ userId, onClose, onSaved }: { userI
               <TextField label="Date of birth" type="date" value={dateInput(profile.dateOfBirth)} onChange={(v) => set({ dateOfBirth: v })} />
               <SelectField label="Gender" value={profile.gender} onChange={(v) => set({ gender: v })} options={[{ value: "male", label: "Male" }, { value: "female", label: "Female" }, { value: "other", label: "Other" }]} />
               <TextField label="How they found us" value={profile.source} onChange={(v) => set({ source: v })} placeholder="Instagram, referral, walk-in…" />
+              <div className="md:col-span-2">
+                <TextField label="Address" value={profile.address ?? ""} onChange={(v) => set({ address: v })} placeholder="House, street, town" />
+              </div>
               <SelectField label="Personal trainer" value={profile.assignedTrainerId || ""} onChange={(v) => set({ assignedTrainerId: v || null })} options={trainers.map((t) => ({ value: t.id, label: t.name }))} placeholder="None assigned" />
               <div className="md:col-span-2">
                 <TextField label="Tags (comma separated)" value={profile.tags.join(", ")} onChange={(v) => set({ tags: v.split(/[\s,]+/).map((t) => t.trim().toLowerCase()).filter(Boolean) })} placeholder="student, corporate, vip" />

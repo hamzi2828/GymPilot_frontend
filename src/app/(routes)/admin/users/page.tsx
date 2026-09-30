@@ -10,6 +10,7 @@ import {
   DangerButton,
   SelectField,
   TextField,
+  TextArea,
   Badge,
   Spinner,
   Table,
@@ -191,7 +192,19 @@ function UsersAdminPageInner() {
   const [createErr, setCreateErr] = useState<string | null>(null);
   const [createLimit, setCreateLimit] = useState(false);
   const [notice, setNotice] = useState<{ tone: "ok" | "warn"; text: string } | null>(null);
-  const emptyDraft = { firstName: "", lastName: "", email: "", phone: "", role: "user" };
+  // The details the desk takes down at the counter; the rest of the profile
+  // (health, emergency contact, documents) is filled in afterwards.
+  const emptyDraft = {
+    firstName: "",
+    lastName: "",
+    email: "",
+    phone: "",
+    role: "user",
+    gender: "",
+    dateOfBirth: "",
+    address: "",
+    staffNotes: "",
+  };
   const [draft, setDraft] = useState(emptyDraft);
   // How the new account's first password reaches them, and the one typed
   // when the admin chooses it. Never kept past the request.
@@ -563,7 +576,7 @@ function UsersAdminPageInner() {
         />
       )}
 
-      <Modal open={createOpen} onClose={() => setCreateOpen(false)} title="Create User" size="sm">
+      <Modal open={createOpen} onClose={() => setCreateOpen(false)} title="Create User" size="md">
         <div className="space-y-4">
           <p className="text-sm text-neutral-500">
             Choose how they get their first password below: emailed, shown to you once to hand
@@ -596,6 +609,37 @@ function UsersAdminPageInner() {
               Without an email they sign in with their username, and you give them their password.
             </p>
           )}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <SelectField
+              label="Gender (optional)"
+              value={draft.gender}
+              onChange={(v) => setDraft({ ...draft, gender: v })}
+              options={[
+                { value: "male", label: "Male" },
+                { value: "female", label: "Female" },
+                { value: "other", label: "Other" },
+              ]}
+              placeholder="Not given"
+            />
+            <TextField
+              label="Date of birth (optional)"
+              type="date"
+              value={draft.dateOfBirth}
+              onChange={(v) => setDraft({ ...draft, dateOfBirth: v })}
+            />
+          </div>
+          <TextField
+            label="Address (optional)"
+            value={draft.address}
+            onChange={(v) => setDraft({ ...draft, address: v })}
+            placeholder="House, street, town"
+          />
+          <TextArea
+            label="Staff notes (optional, never shown to the member)"
+            value={draft.staffNotes}
+            onChange={(v) => setDraft({ ...draft, staffNotes: v })}
+            rows={2}
+          />
           <SelectField
             label="Role"
             value={draft.role}
