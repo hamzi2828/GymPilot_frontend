@@ -31,7 +31,7 @@ export interface RevealedPassword {
   note?: string;
 }
 
-function CopyButton({ text, label = "Copy" }: { text: string; label?: string }) {
+export function CopyButton({ text, label = "Copy" }: { text: string; label?: string }) {
   const [copied, setCopied] = useState(false);
   const [failed, setFailed] = useState(false);
   const copy = async () => {

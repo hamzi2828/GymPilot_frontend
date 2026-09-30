@@ -16,12 +16,25 @@ import {
   Table,
   ErrorState,
   UpgradePlanLink,
+  Pager,
 } from "../_shared/ui";
 import { API_BASE, GYMFOLIO_API, apiGet, apiJson, isPlanLimitError, replaceParams } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
 import UsersImportModal from "./UsersImportModal";
 import MemberProfileModal from "./MemberProfileModal";
 import UsernameModal, { type UsernameTarget } from "./UsernameModal";
+import AddMemberModal, { type RegisterResult } from "./AddMemberModal";
+import { DESK_METHOD_OPTIONS, type MembershipSummary } from "./membershipDesk";
+import {
+  BalanceCell,
+  DiscountCell,
+  ExpiryCell,
+  MEMBERSHIP_FILTER_OPTIONS,
+  PackageCell,
+  PaidCell,
+  matchesMembership,
+  type MembershipFilter,
+} from "./MembershipColumns";
 import {
   CredentialsChoice,
   PasswordReveal,
@@ -51,6 +64,20 @@ interface User {
    * and the phone app. Their name plus three digits unless staff chose one.
    */
   username?: string | null;
+  employment?: { isStaff?: boolean } | null;
+}
+
+// Rows per page. The list is loaded whole (search, tags and the filters run
+// here); the page is what the membership columns are fetched for, in one
+// call.
+const PAGE_SIZE = 50;
+
+// Members are the plain member role; everyone else -- any staff role, or an
+// account marked staff -- is staff.
+type View = "members" | "staff" | "all";
+
+function isMember(user: User) {
+  return (user.role || "user") === "user" && !user.employment?.isStaff;
 }
 
 // Who a row is, in words: a member may have no email, so the name comes first.
@@ -168,6 +195,8 @@ function UsersAdminPageInner() {
   // package assignment is a package-orders write.
   const canManage = can("users", "manage");
   const canAssign = can("package-orders", "manage");
+  // The membership columns read the orders (package-orders · view).
+  const canSeeMemberships = can("package-orders", "view");
 
   const [list, setList] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
@@ -176,8 +205,9 @@ function UsersAdminPageInner() {
   const [role, setRole] = useState("");
   const [roles, setRoles] = useState<RoleOption[]>([]);
 
-  // Create-user dialog
+  // Create-user dialog (any role), and the desk's one-screen Add member.
   const [createOpen, setCreateOpen] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [profileId, setProfileId] = useState<string | null>(null);
   // The address carries the search (?q=) and can name a member to open
@@ -188,6 +218,19 @@ function UsersAdminPageInner() {
   const urlId = searchParams.get("id");
   const [query, setQuery] = useState(urlQuery);
   const [tagFilter, setTagFilter] = useState("");
+  const [view, setView] = useState<View>("members");
+  // "" = active and inactive alike. Filtered here, not with the API's
+  // ?status=: that matches isActive: true exactly, and an account from
+  // before the field existed is active too.
+  const [activeFilter, setActiveFilter] = useState<"" | "active" | "inactive">("");
+  const [membershipFilter, setMembershipFilter] = useState<MembershipFilter>("");
+  const [page, setPage] = useState(1);
+  // Each member's membership (null: none), for the rows fetched so far;
+  // absent until their page has been asked about. Cleared whenever the list
+  // is reloaded, as a sale may have changed it.
+  const [summaries, setSummaries] = useState<Record<string, MembershipSummary | null>>({});
+  const [summaryErr, setSummaryErr] = useState<string | null>(null);
+  const [summaryRetry, setSummaryRetry] = useState(0);
   const [creating, setCreating] = useState(false);
   const [createErr, setCreateErr] = useState<string | null>(null);
   const [createLimit, setCreateLimit] = useState(false);
@@ -252,6 +295,7 @@ function UsersAdminPageInner() {
       });
       setAssignFor(null);
       setNotice({ tone: "ok", text: res.message || "Package assigned." });
+      setSummaries({});
     } catch (e) {
       setAssignErr(e instanceof Error ? e.message : "Could not assign the package.");
     } finally {
@@ -340,11 +384,22 @@ function UsersAdminPageInner() {
     }
   };
 
+  // Add member saved: the list gains the row, and the page says so once the
+  // dialog (password, receipt) is closed.
+  const registered = (res: RegisterResult) => {
+    const m = res.member;
+    const who = [m.firstName, m.lastName].filter(Boolean).join(" ") || m.email || "The member";
+    const sold = res.order ? ` ${res.order.packageDetails.name} sold.` : "";
+    setNotice({ tone: "ok", text: `${who} registered${m.memberCode ? ` (Member ID ${m.memberCode})` : ""}.${sold}` });
+    load();
+  };
+
   const load = async () => {
     setLoading(true);
     try {
       const r = await apiGet<{ data?: User[]; users?: User[] }>(`${API_BASE}/get/allUsers`);
       setList(r.data || r.users || []);
+      setSummaries({});
       setLoadErr(null);
     } catch (e) {
       // Kept apart from an empty list: "No users yet" over a failed request
@@ -422,9 +477,50 @@ function UsersAdminPageInner() {
   const q = query.trim().toLowerCase();
   const visible = list.filter((u) => {
     if (tagFilter && !(u.tags || []).includes(tagFilter)) return false;
+    if (view === "members" && !isMember(u)) return false;
+    if (view === "staff" && isMember(u)) return false;
+    if (activeFilter === "active" && u.isActive === false) return false;
+    if (activeFilter === "inactive" && u.isActive !== false) return false;
     if (!q) return true;
     return `${u.firstName || ""} ${u.lastName || ""} ${u.email || ""} ${u.username || ""} ${u.phone || ""} ${u.memberCode || ""}`.toLowerCase().includes(q);
   });
+  const pages = Math.max(1, Math.ceil(visible.length / PAGE_SIZE));
+  const currentPage = Math.min(page, pages);
+  const pageRows = visible.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+
+  // The membership columns belong to the members view.
+  const showMemberships = canSeeMemberships && view === "members";
+  // The membership filter works on the page shown: the memberships are only
+  // fetched a page at a time.
+  const shownRows = showMemberships && membershipFilter ? pageRows.filter((u) => matchesMembership(membershipFilter, summaries[u._id])) : pageRows;
+
+  // One summary call per page: the page's members not asked about yet.
+  const pageKey = showMemberships ? pageRows.map((u) => u._id).join(",") : "";
+  useEffect(() => {
+    if (!pageKey) return;
+    const missing = pageKey.split(",").filter((id) => !(id in summaries));
+    if (!missing.length) return;
+    let cancelled = false;
+    apiJson<{ data?: { userId: string; membership: MembershipSummary | null }[] }>(`${GYMFOLIO_API}/package-orders/summary`, "POST", { userIds: missing })
+      .then((r) => {
+        if (cancelled) return;
+        setSummaries((prev) => {
+          const next = { ...prev };
+          // Every id asked about is settled, answered or not, so a page is
+          // never asked about twice.
+          for (const id of missing) next[id] = null;
+          for (const row of r.data || []) next[row.userId] = row.membership;
+          return next;
+        });
+        setSummaryErr(null);
+      })
+      .catch((e) => {
+        if (!cancelled) setSummaryErr(e instanceof Error ? e.message : "Could not load the memberships.");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [pageKey, summaries, summaryRetry]);
 
   return (
     <div>
@@ -435,12 +531,14 @@ function UsersAdminPageInner() {
           canManage ? (
             <>
               <SecondaryButton onClick={() => setImportOpen(true)}>Import CSV</SecondaryButton>
-              <PrimaryButton onClick={openCreate}>New User</PrimaryButton>
+              <SecondaryButton onClick={openCreate}>New User</SecondaryButton>
+              <PrimaryButton onClick={() => setAddOpen(true)}>Add member</PrimaryButton>
             </>
           ) : undefined
         }
       />
       <UsersImportModal open={importOpen} onClose={() => setImportOpen(false)} onImported={load} />
+      <AddMemberModal open={addOpen} onClose={() => setAddOpen(false)} onRegistered={registered} canSell={canAssign} />
 
       {notice && (
         <div
@@ -468,18 +566,80 @@ function UsersAdminPageInner() {
             value={query}
             onChange={(v) => {
               setQuery(v);
+              setPage(1);
               replaceParams({ q: v });
             }}
             placeholder="Name, email, username, phone or member code"
           />
         </div>
-        {allTags.length > 0 && (
-          <div className="w-48">
-            <SelectField label="Tag" value={tagFilter} onChange={setTagFilter} options={allTags.map((t) => ({ value: t, label: t }))} placeholder="All tags" />
+        <div className="w-40">
+          <SelectField
+            label="Show"
+            value={view}
+            allowClear={false}
+            onChange={(v) => {
+              setView(v === "staff" || v === "all" ? v : "members");
+              setPage(1);
+            }}
+            options={[
+              { value: "members", label: "Members" },
+              { value: "staff", label: "Staff" },
+              { value: "all", label: "Everyone" },
+            ]}
+          />
+        </div>
+        <div className="w-36">
+          <SelectField
+            label="Status"
+            value={activeFilter}
+            onChange={(v) => {
+              setActiveFilter(v === "active" || v === "inactive" ? v : "");
+              setPage(1);
+            }}
+            options={[
+              { value: "active", label: "Active" },
+              { value: "inactive", label: "Inactive" },
+            ]}
+            placeholder="All"
+          />
+        </div>
+        {showMemberships && (
+          <div className="w-52">
+            <SelectField
+              label="Membership (this page)"
+              value={membershipFilter}
+              onChange={(v) => setMembershipFilter(v as MembershipFilter)}
+              options={MEMBERSHIP_FILTER_OPTIONS}
+              placeholder="Any"
+            />
           </div>
         )}
-        <p className="pb-2 text-xs text-neutral-500">{visible.length} of {list.length}</p>
+        {allTags.length > 0 && (
+          <div className="w-48">
+            <SelectField
+              label="Tag"
+              value={tagFilter}
+              onChange={(v) => {
+                setTagFilter(v);
+                setPage(1);
+              }}
+              options={allTags.map((t) => ({ value: t, label: t }))}
+              placeholder="All tags"
+            />
+          </div>
+        )}
+        <p className="pb-2 text-xs text-neutral-500">
+          {visible.length} of {list.length}
+          {showMemberships && membershipFilter ? ` · ${shownRows.length} of ${pageRows.length} on this page match` : ""}
+        </p>
       </div>
+
+      {showMemberships && summaryErr && (
+        <div className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-rose-200 bg-rose-50 px-4 py-2 text-sm text-rose-800">
+          <span>Memberships could not be loaded: {summaryErr}</span>
+          <SecondaryButton onClick={() => setSummaryRetry((n) => n + 1)}>Try again</SecondaryButton>
+        </div>
+      )}
 
       {loading ? (
         <Spinner />
@@ -487,8 +647,14 @@ function UsersAdminPageInner() {
         <ErrorState message={loadErr} onRetry={load} />
       ) : (
         <Table
-          columns={["Name", "Member ID", "Email", "Phone", "Username", "Role", "Status", "Joined", "Actions"]}
-          rows={visible.map((u) => [
+          // Members see what they hold instead of a role (every one of them
+          // is a member).
+          columns={
+            showMemberships
+              ? ["Name", "Member ID", "Email", "Phone", "Username", "Package", "Next expiry", "Paid", "Discount", "Balance due", "Status", "Joined", "Actions"]
+              : ["Name", "Member ID", "Email", "Phone", "Username", "Role", "Status", "Joined", "Actions"]
+          }
+          rows={shownRows.map((u) => [
             <div key="n">
               <p className="font-medium text-neutral-900">{[u.firstName, u.lastName].filter(Boolean).join(" ") || "—"}</p>
               {(u.tags || []).length > 0 && (
@@ -514,7 +680,15 @@ function UsersAdminPageInner() {
               onNotice={(tone, text) => setNotice({ tone, text })}
               onEdit={() => setUsernameFor({ endpoint: `${API_BASE}/admin/users/${u._id}/username`, who: displayName(u), current: u.username })}
             />,
-            <Badge key="r" color={u.role === "admin" ? "blue" : "neutral"}>{roleNames.get(u.role || "user") || u.role || "user"}</Badge>,
+            ...(showMemberships
+              ? [
+                  <PackageCell key="pk" m={summaries[u._id]} />,
+                  <ExpiryCell key="ex" m={summaries[u._id]} />,
+                  <PaidCell key="pd" m={summaries[u._id]} />,
+                  <DiscountCell key="dc" m={summaries[u._id]} />,
+                  <BalanceCell key="bd" m={summaries[u._id]} />,
+                ]
+              : [<Badge key="r" color={u.role === "admin" ? "blue" : "neutral"}>{roleNames.get(u.role || "user") || u.role || "user"}</Badge>]),
             // `isActive` is what the account model stores and what sign-in
             // checks; an account from before the field is active.
             <Badge key="s" color={u.isActive === false ? "rose" : "green"}>{u.isActive === false ? "inactive" : "active"}</Badge>,
@@ -572,9 +746,16 @@ function UsersAdminPageInner() {
               )}
             </div>,
           ])}
-          empty="No users yet."
+          empty={
+            !list.length
+              ? "No users yet."
+              : pageRows.length
+                ? "No one on this page matches that membership filter."
+                : "Nobody matches these filters."
+          }
         />
       )}
+      {!loading && !loadErr && <Pager page={currentPage} pages={pages} total={visible.length} onChange={setPage} />}
 
       <Modal open={createOpen} onClose={() => setCreateOpen(false)} title="Create User" size="md">
         <div className="space-y-4">
@@ -707,12 +888,7 @@ function UsersAdminPageInner() {
                 label="Payment Method"
                 value={assignDraft.paymentMethod}
                 onChange={(v) => setAssignDraft({ ...assignDraft, paymentMethod: v })}
-                options={[
-                  { value: "cash", label: "Cash" },
-                  { value: "bank_transfer", label: "Bank Transfer" },
-                  { value: "card", label: "Card" },
-                  { value: "stripe", label: "Stripe" },
-                ]}
+                options={DESK_METHOD_OPTIONS}
               />
               <SelectField
                 label="Mark as Paid"

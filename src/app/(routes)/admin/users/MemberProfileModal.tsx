@@ -34,7 +34,9 @@ interface Profile {
   medicalNotes: string;
   waiver: { required: boolean; version: string; text: string; signed: { signedAt: string; version: string; signature: string; source: string } | null; needs_signature: boolean };
   documents: { id: string; name: string; url: string; mimeType: string; size: number; uploadedAt: string }[];
-  membership: { status: string; packageName?: string; endDate?: string | null; daysLeft?: number | null; sessionsLeft?: number | null } | null;
+  // `startsOn`: a paid membership that has not started yet reads `pending`
+  // with the day it begins (peopleDirectory.membershipFor).
+  membership: { status: string; packageName?: string; endDate?: string | null; daysLeft?: number | null; sessionsLeft?: number | null; startsOn?: string | null } | null;
   lastVisit: string | null;
 }
 
@@ -42,6 +44,14 @@ type TabKey = "details" | "health" | "documents" | "notes";
 
 function dateInput(v?: string | null) {
   return v ? String(v).slice(0, 10) : "";
+}
+
+// A day the API sent: a bare YYYY-MM-DD is that calendar day (read as UTC it
+// would show the day before west of Greenwich); anything else is an instant.
+function dayLabel(value: string) {
+  const bare = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  const date = bare ? new Date(Number(bare[1]), Number(bare[2]) - 1, Number(bare[3])) : new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString();
 }
 
 export default function MemberProfileModal({ userId, onClose, onSaved }: { userId: string | null; onClose: () => void; onSaved?: () => void }) {
@@ -192,7 +202,12 @@ export default function MemberProfileModal({ userId, onClose, onSaved }: { userI
                 {profile.lastVisit ? ` · last visit ${new Date(profile.lastVisit).toLocaleDateString()}` : " · no visits yet"}
               </p>
               <div className="mt-1 flex flex-wrap gap-1.5">
-                {profile.membership && <Badge color={profile.membership.status === "active" ? "green" : profile.membership.status === "expired" ? "amber" : "neutral"}>{profile.membership.packageName ? `${profile.membership.packageName} · ` : ""}{profile.membership.status}</Badge>}
+                {profile.membership && (
+                  <Badge color={profile.membership.startsOn ? "blue" : profile.membership.status === "active" ? "green" : profile.membership.status === "expired" ? "amber" : "neutral"}>
+                    {profile.membership.packageName ? `${profile.membership.packageName} · ` : ""}
+                    {profile.membership.startsOn ? `Starts on ${dayLabel(profile.membership.startsOn)}` : profile.membership.status}
+                  </Badge>
+                )}
                 {profile.waiver.required && <Badge color={profile.waiver.needs_signature ? "rose" : "green"}>{profile.waiver.needs_signature ? "Agreement unsigned" : "Agreement signed"}</Badge>}
                 {profile.medical.parq.flagged && <Badge color="rose">PAR-Q flagged</Badge>}
               </div>
