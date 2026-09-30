@@ -33,7 +33,13 @@ interface PackageOption {
   currency?: string;
   period?: string;
   kind?: string;
+  joiningFee?: number;
   billing?: { mode: string; interval: string; intervalCount: number };
+}
+
+interface TrainerOption {
+  _id: string;
+  name: string;
 }
 
 interface PackageOrder {
@@ -183,7 +189,28 @@ function PackageOrdersAdminPageInner() {
   const [assignOpen, setAssignOpen] = useState(false);
   const [assignMember, setAssignMember] = useState<MemberOption | null>(null);
   const [packages, setPackages] = useState<PackageOption[]>([]);
-  const emptyAssign = { packageId: "", paymentMethod: "cash", markPaid: "yes", durationMonths: "", notes: "", couponCode: "", amount: "" };
+  const [trainers, setTrainers] = useState<TrainerOption[]>([]);
+  const emptyAssign = {
+    packageId: "",
+    paymentMethod: "cash",
+    markPaid: "yes",
+    durationMonths: "",
+    notes: "",
+    couponCode: "",
+    amount: "",
+    // When the term starts: "" = when the current membership ends (or now),
+    // "date" = on startDate, "days" = startAfterDays from today.
+    startMode: "",
+    startDate: "",
+    startAfterDays: "",
+    discountAmount: "",
+    discountNote: "",
+    waiveJoiningFee: "no",
+    trainerId: "",
+    trainerFee: "",
+    trainerCommissionType: "percent",
+    trainerCommissionValue: "",
+  };
   const [assignDraft, setAssignDraft] = useState(emptyAssign);
 
   // Paged: a fixed limit of 200 used to cut the list off without saying so
@@ -241,6 +268,9 @@ function PackageOrdersAdminPageInner() {
         apiGet<{ data?: PackageOption[] }>(`${GYMFOLIO_API}/packages/active`)
       );
       setPackages(p.data || []);
+      // The trainers who can be sold with a membership: the active ones.
+      const t = await apiGet<{ data?: TrainerOption[] }>(`${GYMFOLIO_API}/trainers/active`).catch(() => ({ data: [] as TrainerOption[] }));
+      setTrainers(t.data || []);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load packages.");
     }
@@ -274,15 +304,28 @@ function PackageOrdersAdminPageInner() {
   const assignPackage = () =>
     run("Package assigned.", async () => {
       if (!assignMember || !assignDraft.packageId) throw new Error("Choose both a member and a package.");
+      const d = assignDraft;
+      const withTrainer = !!d.trainerId;
+      // Amounts go as typed: the API reads "5,000" as readily as 5000, and
+      // says which field it could not read.
       const res = await apiJson<{ message: string }>(`${GYMFOLIO_API}/package-orders/assign`, "POST", {
         userId: assignMember.id,
-        packageId: assignDraft.packageId,
-        paymentMethod: assignDraft.paymentMethod,
-        markPaid: assignDraft.markPaid === "yes",
-        durationMonths: assignDraft.durationMonths ? Number(assignDraft.durationMonths) : undefined,
-        notes: assignDraft.notes || undefined,
-        couponCode: assignDraft.couponCode || undefined,
-        amount: assignDraft.amount || undefined,
+        packageId: d.packageId,
+        paymentMethod: d.paymentMethod,
+        markPaid: d.markPaid === "yes",
+        durationMonths: d.durationMonths ? Number(d.durationMonths) : undefined,
+        notes: d.notes || undefined,
+        couponCode: d.couponCode || undefined,
+        amountOverride: d.amount || undefined,
+        startDate: d.startMode === "date" ? d.startDate || undefined : undefined,
+        startAfterDays: d.startMode === "days" && d.startAfterDays !== "" ? Number(d.startAfterDays) : undefined,
+        discountAmount: d.discountAmount || undefined,
+        discountNote: d.discountNote || undefined,
+        waiveJoiningFee: d.waiveJoiningFee === "yes" || undefined,
+        trainerId: d.trainerId || undefined,
+        trainerFee: withTrainer ? d.trainerFee || undefined : undefined,
+        trainerCommissionType: withTrainer ? d.trainerCommissionType : undefined,
+        trainerCommissionValue: withTrainer ? d.trainerCommissionValue || undefined : undefined,
       });
       setAssignOpen(false);
       return res;
@@ -292,7 +335,21 @@ function PackageOrdersAdminPageInner() {
   const openOrder = (o: PackageOrder, a: PanelAction) => {
     setSelected(o);
     setAction(a);
-    setDraft({ status: o.status, days: "7", reason: "", immediate: "no", paymentMethod: "cash", markPaid: "yes", months: "", packageId: "", amount: "" });
+    setDraft({
+      status: o.status,
+      days: "7",
+      reason: "",
+      immediate: "no",
+      paymentMethod: "cash",
+      markPaid: "yes",
+      months: "",
+      packageId: "",
+      amount: "",
+      amountOverride: "",
+      startDate: "",
+      discountAmount: "",
+      discountNote: "",
+    });
   };
 
   const openAction = async (o: PackageOrder, a: typeof action) => {
@@ -478,7 +535,7 @@ function PackageOrdersAdminPageInner() {
       <Pager page={page} pages={pages} total={total} onChange={setPage} disabled={loading} />
 
       {/* ---- Assign ---- */}
-      <Modal open={assignOpen} onClose={() => setAssignOpen(false)} title="Assign Package to Member" size="md">
+      <Modal open={assignOpen} onClose={() => setAssignOpen(false)} title="Assign Package to Member" size="lg">
         <div className="space-y-4">
           <p className="text-sm text-neutral-500">Creates a membership without going through checkout — for payments taken in person or a comped package.</p>
           <MemberPicker label="Member" value={assignMember} onChange={setAssignMember} />
@@ -504,12 +561,79 @@ function PackageOrdersAdminPageInner() {
                 { value: "no", label: "No — leave pending" },
               ]}
             />
+            <SelectField
+              label="Starts"
+              value={assignDraft.startMode}
+              allowClear={false}
+              onChange={(v) => setAssignDraft({ ...assignDraft, startMode: v })}
+              options={[
+                { value: "", label: "Now (or when their current membership ends)" },
+                { value: "date", label: "On a date" },
+                { value: "days", label: "In a number of days" },
+              ]}
+            />
+            {assignDraft.startMode === "date" ? (
+              <TextField label="Start date" type="date" value={assignDraft.startDate} onChange={(v) => setAssignDraft({ ...assignDraft, startDate: v })} />
+            ) : assignDraft.startMode === "days" ? (
+              <TextField label="Starts in (days from today)" type="number" value={assignDraft.startAfterDays} onChange={(v) => setAssignDraft({ ...assignDraft, startAfterDays: v })} placeholder="e.g. 3" />
+            ) : (
+              <TextField label="Duration in months (optional)" type="number" value={assignDraft.durationMonths} onChange={(v) => setAssignDraft({ ...assignDraft, durationMonths: v })} placeholder="Defaults to the package period" />
+            )}
+            <TextField label="Discount (off the package price)" type="number" value={assignDraft.discountAmount} onChange={(v) => setAssignDraft({ ...assignDraft, discountAmount: v })} />
+            <TextField label="Discount note" value={assignDraft.discountNote} onChange={(v) => setAssignDraft({ ...assignDraft, discountNote: v })} placeholder="Student, family, promotion…" />
             <TextField label="Coupon code (optional)" value={assignDraft.couponCode} onChange={(v) => setAssignDraft({ ...assignDraft, couponCode: v.toUpperCase() })} />
             <TextField label="Override amount (optional)" type="number" value={assignDraft.amount} onChange={(v) => setAssignDraft({ ...assignDraft, amount: v })} placeholder="Charged as-is" />
+            {(packages.find((p) => p._id === assignDraft.packageId)?.joiningFee || 0) > 0 && (
+              <SelectField
+                label="Joining fee"
+                value={assignDraft.waiveJoiningFee}
+                allowClear={false}
+                onChange={(v) => setAssignDraft({ ...assignDraft, waiveJoiningFee: v })}
+                options={[
+                  { value: "no", label: "Charge it (first membership only)" },
+                  { value: "yes", label: "Waive it" },
+                ]}
+              />
+            )}
           </div>
-          <TextField label="Duration in months (optional)" type="number" value={assignDraft.durationMonths} onChange={(v) => setAssignDraft({ ...assignDraft, durationMonths: v })} placeholder="Defaults to the package period" />
+          <div className="rounded-lg border border-neutral-200 p-4">
+            <p className="text-xs font-semibold text-neutral-700">Personal trainer (optional)</p>
+            <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <SelectField
+                label="Trainer"
+                value={assignDraft.trainerId}
+                onChange={(v) => setAssignDraft({ ...assignDraft, trainerId: v })}
+                options={trainers.map((t) => ({ value: t._id, label: t.name }))}
+                placeholder="No trainer"
+              />
+              {assignDraft.trainerId && (
+                <>
+                  <TextField label="Trainer fee (charged to the member)" type="number" value={assignDraft.trainerFee} onChange={(v) => setAssignDraft({ ...assignDraft, trainerFee: v })} />
+                  <SelectField
+                    label="Trainer's commission"
+                    value={assignDraft.trainerCommissionType}
+                    allowClear={false}
+                    onChange={(v) => setAssignDraft({ ...assignDraft, trainerCommissionType: v })}
+                    options={[
+                      { value: "percent", label: "Percent of the trainer fee" },
+                      { value: "amount", label: "Fixed amount" },
+                    ]}
+                  />
+                  <TextField
+                    label={assignDraft.trainerCommissionType === "percent" ? "Commission (%)" : "Commission (amount)"}
+                    type="number"
+                    value={assignDraft.trainerCommissionValue}
+                    onChange={(v) => setAssignDraft({ ...assignDraft, trainerCommissionValue: v })}
+                  />
+                </>
+              )}
+            </div>
+            {assignDraft.trainerId && <p className="mt-2 text-xs text-neutral-500">The member&apos;s assigned trainer becomes this one.</p>}
+          </div>
           <TextField label="Notes (optional)" value={assignDraft.notes} onChange={(v) => setAssignDraft({ ...assignDraft, notes: v })} />
-          <p className="text-xs text-neutral-500">If the member already has a live membership, the new one starts when it ends.</p>
+          <p className="text-xs text-neutral-500">
+            Unless a start is chosen, a membership bought while another is live starts when that one ends. The joining fee is added only to a member&apos;s first membership.
+          </p>
           {error && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>}
           <div className="flex justify-end gap-2 pt-2">
             <SecondaryButton onClick={() => setAssignOpen(false)}>Cancel</SecondaryButton>
@@ -739,8 +863,28 @@ function PackageOrdersAdminPageInner() {
                   ]}
                 />
                 <TextField label="Months (optional)" type="number" value={draft.months} onChange={(v) => setDraft({ ...draft, months: v })} placeholder="Defaults to one term" />
-                <div className="flex items-end justify-end">
-                  <PrimaryButton disabled={busy} onClick={() => run("Renewed.", () => post(selected, "renew", { paymentMethod: draft.paymentMethod, markPaid: draft.markPaid === "yes", months: draft.months || undefined }))}>
+                <TextField label="Start date (optional)" type="date" value={draft.startDate} onChange={(v) => setDraft({ ...draft, startDate: v })} />
+                <TextField label="Discount (optional)" type="number" value={draft.discountAmount} onChange={(v) => setDraft({ ...draft, discountAmount: v })} />
+                <TextField label="Discount note" value={draft.discountNote} onChange={(v) => setDraft({ ...draft, discountNote: v })} />
+                <TextField label="Override amount (optional)" type="number" value={draft.amountOverride} onChange={(v) => setDraft({ ...draft, amountOverride: v })} placeholder="Charged as-is" />
+                <p className="sm:col-span-2 text-xs text-neutral-500">Without a start date the new term starts when the current one ends (today, if it has ended). No joining fee on a renewal.</p>
+                <div className="sm:col-span-2 flex items-end justify-end">
+                  <PrimaryButton
+                    disabled={busy}
+                    onClick={() =>
+                      run("Renewed.", () =>
+                        post(selected, "renew", {
+                          paymentMethod: draft.paymentMethod,
+                          markPaid: draft.markPaid === "yes",
+                          months: draft.months || undefined,
+                          startDate: draft.startDate || undefined,
+                          discountAmount: draft.discountAmount || undefined,
+                          discountNote: draft.discountNote || undefined,
+                          amountOverride: draft.amountOverride || undefined,
+                        })
+                      )
+                    }
+                  >
                     Renew
                   </PrimaryButton>
                 </div>
