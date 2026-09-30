@@ -932,7 +932,13 @@ function AccountsAdminPageInner() {
                   type="text"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Name, vendor or reference…"
+                  placeholder={
+                    tab === "sales"
+                      ? "Name, email, phone, member ID or order…"
+                      : tab === "assets"
+                      ? "Name, tag, supplier, serial or location…"
+                      : "Title, vendor or reference…"
+                  }
                   className={`${fieldCls} pl-9`}
                 />
               </div>
