@@ -186,12 +186,14 @@ function Member({ name, email }: { name: string; email: string }) {
   );
 }
 
-// Collect fees for the member. A guest checkout has no account to collect
-// against, so its order is opened instead, where a payment can be recorded.
-function Collect({ memberId, orderId }: { memberId: string | null; orderId?: string }) {
+// Collect fees for the member, with the fee desk's form already open:
+// renewal for the expiring and expired lists, dues for the dues list. A guest
+// checkout has no account to collect against, so its order is opened instead,
+// where a payment can be recorded.
+function Collect({ memberId, orderId, action }: { memberId: string | null; orderId?: string; action: "renew" | "dues" }) {
   if (memberId) {
     return (
-      <Link href={`/admin/fee-collection?member=${encodeURIComponent(memberId)}`} className={ACTION}>
+      <Link href={`/admin/fee-collection?member=${encodeURIComponent(memberId)}&action=${action}`} className={ACTION}>
         Collect
       </Link>
     );
@@ -671,7 +673,7 @@ function FeeExpiryPageInner() {
                         {r.autoRenews && owed(r) <= 0 ? (
                           <span className="whitespace-nowrap text-xs text-neutral-500">Renews by card</span>
                         ) : (
-                          <Collect memberId={r.memberId} orderId={r.orderId} />
+                          <Collect memberId={r.memberId} orderId={r.orderId} action="renew" />
                         )}
                       </td>
                     )}
@@ -719,7 +721,7 @@ function DuesRows({ row, open, onToggle, manage }: { row: DuesRow; open: boolean
         <td className={`${TD} whitespace-nowrap font-medium text-amber-700`}>{money(row.balanceDue, row.currency)}</td>
         {manage && (
           <td data-print-hide className={TD}>
-            <Collect memberId={row.memberId} orderId={row.orders[0]?.orderId} />
+            <Collect memberId={row.memberId} orderId={row.orders[0]?.orderId} action="dues" />
           </td>
         )}
       </tr>
