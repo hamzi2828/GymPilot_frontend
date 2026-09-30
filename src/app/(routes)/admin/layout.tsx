@@ -18,6 +18,7 @@ const ROUTE_TABS: { prefix: string; tab: string }[] = [
   { prefix: "/admin/trainers", tab: "trainers" },
   { prefix: "/admin/packages", tab: "packages" },
   { prefix: "/admin/package-orders", tab: "package-orders" },
+  { prefix: "/admin/fee-expiry", tab: "package-orders" },
   { prefix: "/admin/package-registrations", tab: "registrations" },
   { prefix: "/admin/coupons", tab: "coupons" },
   { prefix: "/admin/pos", tab: "pos" },
