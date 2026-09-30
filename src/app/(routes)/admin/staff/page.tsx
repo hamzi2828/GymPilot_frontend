@@ -63,7 +63,8 @@ interface StaffMember {
   name: string;
   first_name: string;
   last_name: string;
-  email: string;
+  /** Absent for an account without one, e.g. a phone-only member moved onto the staff. */
+  email?: string;
   /** Signs in instead of the email: website, desk and phone app. */
   username?: string;
   phone: string;
@@ -397,7 +398,8 @@ function StaffAdminPageInner() {
     setDraft({
       firstName: member.first_name,
       lastName: member.last_name,
-      email: member.email,
+      // The draft's fields are always strings: save() trims them.
+      email: member.email || "",
       phone: member.phone,
       role: member.role,
       jobTitle: member.job_title,
@@ -830,7 +832,7 @@ function StaffAdminPageInner() {
                 <div>
                   <span className="text-xs font-semibold text-neutral-700">Email</span>
                   <p className="mt-1 flex h-9 items-center rounded-lg bg-neutral-50 px-3 text-sm text-neutral-500">
-                    {editing.email}
+                    {editing.email || "No email on file"}
                   </p>
                 </div>
               ) : (
