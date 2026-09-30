@@ -21,6 +21,15 @@ import {
   Select2,
 } from "../_shared/ui";
 import { API_BASE, apiGet, apiJson, isPlanLimitError, replaceParams } from "../_shared/api";
+import {
+  CredentialsChoice,
+  PasswordReveal,
+  SetPasswordModal,
+  MIN_PASSWORD_LENGTH,
+  type CredentialMode,
+  type PasswordTarget,
+  type RevealedPassword,
+} from "../users/PasswordDialogs";
 import { currencyOptions } from "@/data/countries";
 
 const CURRENCY_OPTIONS = currencyOptions();
@@ -291,6 +300,12 @@ function StaffAdminPageInner() {
   const [saving, setSaving] = useState(false);
   const [formErr, setFormErr] = useState<string | null>(null);
   const [formLimit, setFormLimit] = useState(false);
+  // How a new staff member gets their first password, and "Set password"
+  // on a row. A generated password is shown once, then gone.
+  const [credentials, setCredentials] = useState<CredentialMode>("email");
+  const [chosenPassword, setChosenPassword] = useState("");
+  const [passwordFor, setPasswordFor] = useState<PasswordTarget | null>(null);
+  const [reveal, setReveal] = useState<RevealedPassword | null>(null);
 
   useEffect(() => {
     const timer = setTimeout(() => setQ(search.trim()), 350);
@@ -366,6 +381,8 @@ function StaffAdminPageInner() {
     // suggest whatever sorts first -- which is Administrator.
     setDraft({ ...emptyDraft });
     setShifts([]);
+    setCredentials("email");
+    setChosenPassword("");
     setFormErr(null);
     setFormLimit(false);
     setOpen(true);
@@ -472,6 +489,10 @@ function StaffAdminPageInner() {
       setFormErr("Choose a role.");
       return;
     }
+    if (!editing && credentials === "set" && chosenPassword.length < MIN_PASSWORD_LENGTH) {
+      setFormErr(`The password needs at least ${MIN_PASSWORD_LENGTH} characters.`);
+      return;
+    }
 
     setSaving(true);
     setFormErr(null);
@@ -481,12 +502,23 @@ function StaffAdminPageInner() {
         await apiJson(`${API_BASE}/staff/${editing.id}`, "PUT", payload());
         setNotice(`${draft.firstName} updated.`);
       } else {
-        const res = await apiJson<{ message: string; emailed?: boolean }>(
+        const res = await apiJson<{ message: string; emailed?: boolean; emailError?: string; credentials?: CredentialMode; password?: string }>(
           `${API_BASE}/staff`,
           "POST",
-          payload()
+          { ...payload(), credentials, ...(credentials === "set" ? { password: chosenPassword } : {}) }
         );
+        setChosenPassword("");
         setNotice(res.message);
+        if (res.password) {
+          const who = `${draft.firstName.trim()} ${draft.lastName.trim()}`.trim();
+          setReveal({
+            who,
+            password: res.password,
+            note: res.credentials === "email"
+              ? `The email to ${draft.email.trim()} could not be sent${res.emailError ? ` (${res.emailError})` : ""}, so hand this to ${who} yourself.`
+              : undefined,
+          });
+        }
       }
       setOpen(false);
       await load();
@@ -734,6 +766,13 @@ function StaffAdminPageInner() {
                       {editable && (
                         <div className="flex items-center justify-end gap-2">
                           <SecondaryButton onClick={() => openEdit(member)}>Edit</SecondaryButton>
+                          <SecondaryButton
+                            onClick={() =>
+                              setPasswordFor({ endpoint: `${API_BASE}/staff/${member.id}/password`, who: member.name })
+                            }
+                          >
+                            Set password
+                          </SecondaryButton>
                           {member.is_active ? (
                             <DangerButton onClick={() => setStatus(member, false)}>Deactivate</DangerButton>
                           ) : (
@@ -796,9 +835,9 @@ function StaffAdminPageInner() {
               <TextField label="Phone" value={draft.phone} onChange={(v) => setDraft({ ...draft, phone: v })} />
             </div>
             {!editing && (
-              <p className="mt-2 text-[12px] text-neutral-400">
-                A password is generated and emailed to them — it is never typed or shown here.
-              </p>
+              <div className="mt-4">
+                <CredentialsChoice mode={credentials} onMode={setCredentials} password={chosenPassword} onPassword={setChosenPassword} />
+              </div>
             )}
           </section>
 
@@ -1056,6 +1095,9 @@ function StaffAdminPageInner() {
           </div>
         </div>
       </Modal>
+
+      <SetPasswordModal target={passwordFor} onClose={() => setPasswordFor(null)} onDone={setNotice} />
+      <PasswordReveal reveal={reveal} onClose={() => setReveal(null)} />
     </div>
   );
 }

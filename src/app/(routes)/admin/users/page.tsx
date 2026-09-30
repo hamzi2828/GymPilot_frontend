@@ -20,6 +20,15 @@ import { API_BASE, GYMFOLIO_API, apiGet, apiJson, isPlanLimitError, replaceParam
 import { usePermissions } from "@/components/admin/PermissionsProvider";
 import UsersImportModal from "./UsersImportModal";
 import MemberProfileModal from "./MemberProfileModal";
+import {
+  CredentialsChoice,
+  PasswordReveal,
+  SetPasswordModal,
+  MIN_PASSWORD_LENGTH,
+  type CredentialMode,
+  type PasswordTarget,
+  type RevealedPassword,
+} from "./PasswordDialogs";
 
 interface User {
   _id: string;
@@ -160,6 +169,13 @@ function UsersAdminPageInner() {
   const [notice, setNotice] = useState<{ tone: "ok" | "warn"; text: string } | null>(null);
   const emptyDraft = { firstName: "", lastName: "", email: "", phone: "", role: "user" };
   const [draft, setDraft] = useState(emptyDraft);
+  // How the new account's first password reaches them, and the one typed
+  // when the admin chooses it. Never kept past the request.
+  const [credentials, setCredentials] = useState<CredentialMode>("email");
+  const [chosenPassword, setChosenPassword] = useState("");
+  // "Set password" on a row, and a generated password to show once.
+  const [passwordFor, setPasswordFor] = useState<PasswordTarget | null>(null);
+  const [reveal, setReveal] = useState<RevealedPassword | null>(null);
 
   // --- Assign a package to a specific member -----------------------------
   const [assignFor, setAssignFor] = useState<User | null>(null);
@@ -207,6 +223,8 @@ function UsersAdminPageInner() {
 
   const openCreate = () => {
     setDraft(emptyDraft);
+    setCredentials("email");
+    setChosenPassword("");
     setCreateErr(null);
     setCreateLimit(false);
     setCreateOpen(true);
@@ -217,28 +235,54 @@ function UsersAdminPageInner() {
       setCreateErr("First name, last name and email are all required.");
       return;
     }
+    if (credentials === "set" && chosenPassword.length < MIN_PASSWORD_LENGTH) {
+      setCreateErr(`The password needs at least ${MIN_PASSWORD_LENGTH} characters.`);
+      return;
+    }
     setCreating(true);
     setCreateErr(null);
     setCreateLimit(false);
     try {
-      // The password is generated server-side and emailed — it is never sent
-      // from or shown in the browser.
-      const res = await apiJson<{ message: string; emailed?: boolean; emailError?: string; data?: { username?: string } }>(
-        `${API_BASE}/admin/users`,
-        "POST",
-        draft
-      );
+      // Emailed by default. A generated password comes back only when the
+      // admin asked to see it or the email could not be sent, and is shown
+      // once (PasswordReveal); a typed one is never sent back.
+      const res = await apiJson<{
+        message: string;
+        emailed?: boolean;
+        emailError?: string;
+        credentials?: CredentialMode;
+        password?: string;
+        data?: { username?: string };
+      }>(`${API_BASE}/admin/users`, "POST", {
+        ...draft,
+        credentials,
+        ...(credentials === "set" ? { password: chosenPassword } : {}),
+      });
       setCreateOpen(false);
-      const appLogin = res.data?.username ? ` Their phone app username is ${res.data.username}.` : "";
+      setChosenPassword("");
+      const who = `${draft.firstName.trim()} ${draft.lastName.trim()}`.trim() || draft.email;
+      const appLogin = res.data?.username ? ` Their username is ${res.data.username}.` : "";
+      if (res.password) {
+        setReveal({
+          who,
+          password: res.password,
+          username: res.data?.username,
+          note: res.credentials === "email"
+            ? `The email to ${draft.email} could not be sent${res.emailError ? ` (${res.emailError})` : ""}, so hand this to ${who} yourself.`
+            : undefined,
+        });
+      }
       setNotice(
         res.emailed
           ? { tone: "ok", text: `${draft.email} was created and their password emailed.${appLogin}` }
-          : {
-              tone: "warn",
-              text: `${draft.email} was created, but the password email failed${
-                res.emailError ? ` (${res.emailError})` : ""
-              }. Check the SMTP settings.${appLogin}`,
-            }
+          : res.credentials === "email"
+            ? {
+                tone: "warn",
+                text: `${draft.email} was created, but the password email failed${
+                  res.emailError ? ` (${res.emailError})` : ""
+                }. Check the SMTP settings.${appLogin}`,
+              }
+            : { tone: "ok", text: `${who} was created.${appLogin}` }
       );
       await load();
     } catch (e) {
@@ -422,6 +466,17 @@ function UsersAdminPageInner() {
                 <>
                   <SecondaryButton onClick={() => { setSelected(u); setRole(u.role || "user"); }}>Role</SecondaryButton>
                   <SecondaryButton
+                    onClick={() =>
+                      setPasswordFor({
+                        endpoint: `${API_BASE}/admin/users/${u._id}/password`,
+                        who: [u.firstName, u.lastName].filter(Boolean).join(" ") || u.email,
+                        username: u.username,
+                      })
+                    }
+                  >
+                    Set password
+                  </SecondaryButton>
+                  <SecondaryButton
                     onClick={async () => {
                       if (!confirm(`Record that ${u.email} has consented to fingerprint storage (signed form)?`)) return;
                       try {
@@ -464,8 +519,8 @@ function UsersAdminPageInner() {
       <Modal open={createOpen} onClose={() => setCreateOpen(false)} title="Create User" size="sm">
         <div className="space-y-4">
           <p className="text-sm text-neutral-500">
-            A secure password is generated automatically and emailed to the user. You will not
-            need to share it yourself.
+            Choose how they get their first password below: emailed, shown to you once to hand
+            over, or typed by you.
           </p>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -480,6 +535,7 @@ function UsersAdminPageInner() {
             onChange={(v) => setDraft({ ...draft, role: v })}
             options={roleOptions}
           />
+          <CredentialsChoice mode={credentials} onMode={setCredentials} password={chosenPassword} onPassword={setChosenPassword} />
 
           {createErr && (
             <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
@@ -491,7 +547,7 @@ function UsersAdminPageInner() {
           <div className="flex justify-end gap-2 pt-2">
             <SecondaryButton onClick={() => setCreateOpen(false)}>Cancel</SecondaryButton>
             <PrimaryButton onClick={createUser} disabled={creating}>
-              {creating ? "Creating..." : "Create & Email Password"}
+              {creating ? "Creating..." : credentials === "email" ? "Create & Email Password" : "Create User"}
             </PrimaryButton>
           </div>
         </div>
@@ -575,6 +631,9 @@ function UsersAdminPageInner() {
       </Modal>
 
       <MemberProfileModal userId={profileId} onClose={() => setProfileId(null)} onSaved={load} />
+
+      <SetPasswordModal target={passwordFor} onClose={() => setPasswordFor(null)} onDone={(text) => setNotice({ tone: "ok", text })} />
+      <PasswordReveal reveal={reveal} onClose={() => setReveal(null)} />
 
       <Modal open={!!selected} onClose={() => setSelected(null)} title="Update Role" size="sm">
         {selected && (
