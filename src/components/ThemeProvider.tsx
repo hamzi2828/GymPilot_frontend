@@ -28,6 +28,7 @@ type SiteSettings = {
   // "not configured" — callers hide the element rather than linking nowhere.
   mobileNumber: string;
   address: string;
+  contactEmail: string;
   facebookUrl: string;
   instagramUrl: string;
   youtubeUrl: string;
@@ -57,6 +58,7 @@ const DEFAULTS: SiteSettings = {
   footerLogoHeight: 40,
   mobileNumber: "",
   address: "",
+  contactEmail: "",
   facebookUrl: "",
   instagramUrl: "",
   youtubeUrl: "",
@@ -166,6 +168,7 @@ export default function ThemeProvider({ children }: { children: React.ReactNode 
           footerLogoHeight: Number(d.footerLogoHeight) || DEFAULTS.footerLogoHeight,
           mobileNumber: d.mobileNumber || "",
           address: d.address || "",
+          contactEmail: d.contactEmail || "",
           facebookUrl: d.facebookUrl || "",
           instagramUrl: d.instagramUrl || "",
           youtubeUrl: d.youtubeUrl || "",

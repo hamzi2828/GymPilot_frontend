@@ -25,6 +25,7 @@ import { setActiveTheme } from "@/components/ThemeProvider";
 import MessagingSettings, { type MessagingConfig } from "./MessagingSettings";
 import WebsiteSettings from "./WebsiteSettings";
 import BillingSettings from "./BillingSettings";
+import BackupSettings from "./BackupSettings";
 
 interface StripeConfig {
   publishableKey?: string;
@@ -71,15 +72,16 @@ interface Settings {
   stripeWebhookUrl?: string;
   invoice?: InvoiceConfig;
   membership?: MembershipConfig;
+  // Same names the API, the public site and the phone app use.
   siteDescription?: string;
   contactEmail?: string;
-  contactPhone?: string;
+  mobileNumber?: string;
   address?: string;
-  facebook?: string;
-  instagram?: string;
-  twitter?: string;
-  youtube?: string;
-  linkedin?: string;
+  facebookUrl?: string;
+  instagramUrl?: string;
+  twitterUrl?: string;
+  youtubeUrl?: string;
+  tiktokUrl?: string;
   theme?: string;
   logoUrl?: string;
   logoWidth?: number;
@@ -149,7 +151,7 @@ function absoluteAsset(url: string) {
 }
 const BANKS_API = `${API_BASE}/banks`;
 
-type TabKey = "general" | "logo" | "stripe" | "smtp" | "messaging" | "banks" | "theme" | "billing";
+type TabKey = "general" | "logo" | "stripe" | "smtp" | "messaging" | "banks" | "theme" | "billing" | "backup";
 
 const TABS: { key: TabKey; label: string; hint: string }[] = [
   { key: "general", label: "General", hint: "Business, money and time, memberships, bookings, website" },
@@ -160,6 +162,7 @@ const TABS: { key: TabKey; label: string; hint: string }[] = [
   { key: "banks", label: "Banks", hint: "Bank accounts and payment barcodes" },
   { key: "theme", label: "Colour Scheme", hint: "Public site palette" },
   { key: "billing", label: "Billing", hint: "Your GymPilot plan and payments" },
+  { key: "backup", label: "Data & backup", hint: "Download, daily backups and restore" },
 ];
 
 // The General tab is five screens, not one long one. The active section
@@ -548,6 +551,17 @@ function SettingsAdminPageInner() {
     );
   }
 
+  // Data & backup reads its own endpoints too.
+  if (tab === "backup") {
+    return (
+      <div>
+        <PageHeader title="Settings" />
+        {tabStrip}
+        <BackupSettings />
+      </div>
+    );
+  }
+
   if (loading) return <Spinner />;
 
   if (!settings) {
@@ -636,16 +650,17 @@ function SettingsAdminPageInner() {
             {section === "business" && (
               <>
                 <Card className="p-6">
-                  <SectionHeading title="Business Information" hint="Shown across the public site, the admin panel and in emails." />
+                  <SectionHeading title="Business Information" hint="Shown across the public site, the admin panel, the member app and in emails." />
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
                     <TextField label="Business Name" value={settings.siteName} onChange={(v) => setSettings({ ...settings, siteName: v })} />
-                    <TextField label="Contact Email" type="email" value={settings.contactEmail} onChange={(v) => setSettings({ ...settings, contactEmail: v })} />
-                    <TextField label="Contact Phone" value={settings.contactPhone} onChange={(v) => setSettings({ ...settings, contactPhone: v })} />
+                    <TextField label="Contact Email" type="email" value={settings.contactEmail} onChange={(v) => setSettings({ ...settings, contactEmail: v })} placeholder="hello@yourgym.com" />
+                    <TextField label="Contact Phone" value={settings.mobileNumber} onChange={(v) => setSettings({ ...settings, mobileNumber: v })} />
                     <div className="md:col-span-2 xl:col-span-3">
                       <TextField label="Address" value={settings.address} onChange={(v) => setSettings({ ...settings, address: v })} />
                     </div>
                     <div className="md:col-span-2 xl:col-span-3">
                       <TextArea label="Site Description" value={settings.siteDescription} onChange={(v) => setSettings({ ...settings, siteDescription: v })} />
+                      <p className="mt-1 text-[11px] text-neutral-500">Used in search results and link previews unless you write a search description under Website.</p>
                     </div>
                   </div>
                 </Card>
@@ -653,11 +668,11 @@ function SettingsAdminPageInner() {
                 <Card className="p-6">
                   <SectionHeading title="Social Links" hint="Shown in the website footer. Leave blank to hide a network." />
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-                    <TextField label="Facebook" value={settings.facebook} onChange={(v) => setSettings({ ...settings, facebook: v })} />
-                    <TextField label="Instagram" value={settings.instagram} onChange={(v) => setSettings({ ...settings, instagram: v })} />
-                    <TextField label="Twitter" value={settings.twitter} onChange={(v) => setSettings({ ...settings, twitter: v })} />
-                    <TextField label="YouTube" value={settings.youtube} onChange={(v) => setSettings({ ...settings, youtube: v })} />
-                    <TextField label="LinkedIn" value={settings.linkedin} onChange={(v) => setSettings({ ...settings, linkedin: v })} />
+                    <TextField label="Facebook" value={settings.facebookUrl} onChange={(v) => setSettings({ ...settings, facebookUrl: v })} placeholder="https://facebook.com/yourgym" />
+                    <TextField label="Instagram" value={settings.instagramUrl} onChange={(v) => setSettings({ ...settings, instagramUrl: v })} placeholder="https://instagram.com/yourgym" />
+                    <TextField label="X (Twitter)" value={settings.twitterUrl} onChange={(v) => setSettings({ ...settings, twitterUrl: v })} placeholder="https://x.com/yourgym" />
+                    <TextField label="YouTube" value={settings.youtubeUrl} onChange={(v) => setSettings({ ...settings, youtubeUrl: v })} placeholder="https://youtube.com/@yourgym" />
+                    <TextField label="TikTok" value={settings.tiktokUrl} onChange={(v) => setSettings({ ...settings, tiktokUrl: v })} placeholder="https://tiktok.com/@yourgym" />
                   </div>
                 </Card>
               </>

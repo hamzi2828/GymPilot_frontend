@@ -20,7 +20,7 @@ export async function generateMetadata(): Promise<Metadata> {
   const settings = await getSiteSettings();
   const { siteName, siteUrl } = settings;
   const seo = settings.seo || {};
-  const description = seo.description || "Train with expert coaches in a fully equipped gym. Browse classes, meet our trainers and pick the membership that fits you.";
+  const description = seo.description || settings.siteDescription || "Train with expert coaches in a fully equipped gym. Browse classes, meet our trainers and pick the membership that fits you.";
 
   return {
     // `template` lets every page set just its own name — "Classes" becomes
