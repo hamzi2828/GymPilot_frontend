@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { FiAlertTriangle, FiDownload, FiRefreshCw, FiSearch } from "react-icons/fi";
 import {
   PageHeader,
@@ -16,9 +17,10 @@ import {
   EmptyState,
   Select2,
 } from "../_shared/ui";
-import { ACCOUNTS_API, apiGet, apiJson } from "../_shared/api";
+import { ACCOUNTS_API, apiGet, apiJson, replaceParams } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
 import { TrendChart, CategoryBars, useMoneyFormatter, SERIES_IN, SERIES_OUT, TrendPoint } from "./_charts";
+import { ManageHeadsModal } from "./_heads";
 
 // ---------------------------------------------------------------------------
 // Shapes, as /api/accounts returns them.
@@ -46,11 +48,38 @@ interface CurrencyNotice {
   message: string;
 }
 
+/** One line of the profit and loss, in every currency it was recorded in. */
+type PnlLine = Totals & {
+  key: string;
+  label: string;
+  /** Taken off revenue (refunds). */
+  deducted?: boolean;
+  /** Trainer commission only: the part from memberships and from PT sessions. */
+  memberships?: Totals;
+  personal_training?: Totals;
+};
+
 interface Overview {
   base_currency: string;
   currency_notice: CurrencyNotice | null;
   range: { from: string; to: string; label: string; today: string };
-  income: Totals & { refunds: Totals; orders: number; source: string };
+  income: Totals & { refunds: Totals; shop?: Totals; orders: number; source: string };
+  /**
+   * Revenue and outflow line by line, each cost counted once: a paid
+   * payslip's salary expense and an asset's purchase expense stand aside
+   * (set_aside) for the payslip and the asset.
+   */
+  profit_and_loss?: {
+    currency: string;
+    revenue: PnlLine[];
+    outflow: PnlLine[];
+    total_revenue: number;
+    total_outflow: number;
+    net_profit: number;
+    margin: number | null;
+    mixed_currencies: boolean;
+    set_aside: { payslip_expenses: number; asset_purchase_expenses: number };
+  };
   spending: {
     paid: Totals;
     pending: Totals;
@@ -62,8 +91,9 @@ interface Overview {
     hourly: number;
     headcount: number;
     hours: number;
-    people: { id: string; name: string; job_title: string; basis: string; currency: string; hours: number | null; cost: number }[];
-    /** Active trainers with no staff account, so no pay rate to cost them at. */
+    /** `trainer`: costed at the salary on a trainer record with no staff account. */
+    people: { id: string; name: string; job_title: string; basis: string; currency: string; hours: number | null; cost: number; trainer?: boolean }[];
+    /** Active trainers with no staff account and no salary: nothing to cost them at. */
     unlinked_trainers?: number;
     note: string;
   };
@@ -138,7 +168,10 @@ interface ExpensesResponse {
   record_currency?: string;
   currency_notice: CurrencyNotice | null;
   range: { from: string; to: string; label: string };
+  /** The heads a new expense can be filed under: built-in and the gym's own. */
   categories: { key: string; label: string }[];
+  /** The gym's archived heads: still on old rows, so still in the filter. */
+  archived_categories?: { key: string; label: string }[];
   methods: string[];
   summary: {
     paid: Totals;
@@ -159,9 +192,13 @@ interface AssetRow {
   unit_cost: number;
   total_cost: number;
   currency: string;
+  /** The gym-local 'YYYY-MM-DD' (or ''), what a date input holds. */
+  purchased_date: string;
   purchased_label: string | null;
   supplier: string;
+  invoice_no: string;
   serial_number: string;
+  warranty_date: string;
   warranty_label: string | null;
   warranty_active: boolean;
   location: string;
@@ -172,6 +209,7 @@ interface AssetRow {
   age_years: number | null;
   depreciation: number;
   book_value: number;
+  last_serviced_date: string;
   last_serviced_label: string | null;
   next_service_label: string | null;
   service_interval_days: number;
@@ -182,10 +220,15 @@ interface AssetRow {
 
 interface AssetsResponse {
   base_currency: string;
+  /** The purchase dates the register is narrowed to; null for every date. */
+  purchased?: { from: string; to: string; label: string } | null;
+  /** How far ahead the bell looks: services due, warranties ending. */
+  reminder_windows?: { service_due_days: number; warranty_days: number };
   /** What a new asset is recorded in: the Settings currency. */
   record_currency?: string;
   currency_notice: CurrencyNotice | null;
   categories: { key: string; label: string; default_life: number }[];
+  archived_categories?: { key: string; label: string }[];
   conditions: string[];
   statuses: string[];
   summary: {
@@ -196,12 +239,34 @@ interface AssetsResponse {
     service_overdue: number;
     service_soon: number;
     needs_attention: number;
+    service_due?: number;
+    warranty_ending?: number;
     by_category: { category: string; label: string; count: number; totals: Totals }[];
   };
   assets: AssetRow[];
 }
 
 type Tab = "overview" | "sales" | "expenses" | "assets";
+const TABS: Tab[] = ["overview", "sales", "expenses", "assets"];
+
+// A filter's head options: the ones in use, then the archived ones -- old rows
+// are still filed under those.
+function headFilterOptions(active?: { key: string; label: string }[], archived?: { key: string; label: string }[]) {
+  return [
+    { value: "all", label: "All categories" },
+    ...(active || []).map((entry) => ({ value: entry.key, label: entry.label })),
+    ...(archived || []).map((entry) => ({ value: entry.key, label: `${entry.label} (archived)` })),
+  ];
+}
+
+// A form's head options: the ones in use, plus the archived head the row being
+// edited is already filed under, so opening it does not quietly move it.
+function headFormOptions(active: { key: string; label: string }[] | undefined, archived: { key: string; label: string }[] | undefined, current: string) {
+  const options = (active || []).map((entry) => ({ value: entry.key, label: entry.label }));
+  const kept = (archived || []).find((entry) => entry.key === current);
+  if (kept) options.push({ value: kept.key, label: `${kept.label} (archived)` });
+  return options;
+}
 
 const CONDITION_TONE: Record<string, string> = {
   new: "bg-emerald-50 text-emerald-700 ring-emerald-600/15",
@@ -238,6 +303,7 @@ function presetsFor(today: string) {
   const prevEnd = shiftKey(lastMonthEnd, -1);
 
   return [
+    { id: "today", label: "Today", from: today, to: today },
     { id: "mtd", label: "This month", from: monthStart(today), to: today },
     { id: "last", label: "Last month", from: monthStart(prevEnd), to: prevEnd },
     { id: "90", label: "Last 90 days", from: shiftKey(today, -89), to: today },
@@ -325,13 +391,25 @@ const emptyAsset = {
   recordExpense: true,
 };
 
-export default function AccountsAdminPage() {
+function AccountsAdminPageInner() {
   const { can } = usePermissions();
   const editable = can("accounts", "manage");
 
-  const [tab, setTab] = useState<Tab>("overview");
+  // The address can open a tab already filtered (?tab=assets&service=due,
+  // from the admin bell), read again whenever it changes.
+  const searchParams = useSearchParams();
+  const urlTab = TABS.find((entry) => entry === searchParams.get("tab")) || null;
+  const urlService = ["overdue", "soon", "due"].find((entry) => entry === searchParams.get("service")) || null;
+  const urlWarranty = searchParams.get("warranty") === "ending" ? "ending" : null;
+
+  const [tab, setTab] = useState<Tab>(urlTab || "overview");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
+  // The register's purchase dates, apart from the money tabs' period: it
+  // opens on every date, since a register showing only this month's
+  // purchases would look as if the gym owned nothing.
+  const [assetFrom, setAssetFrom] = useState("");
+  const [assetTo, setAssetTo] = useState("");
   const [today, setToday] = useState(() => new Date().toISOString().slice(0, 10));
 
   const [loading, setLoading] = useState(true);
@@ -348,7 +426,14 @@ export default function AccountsAdminPage() {
   const [expenseStatus, setExpenseStatus] = useState("all");
   const [assetCategory, setAssetCategory] = useState("all");
   const [assetStatus, setAssetStatus] = useState("all");
-  const [assetService, setAssetService] = useState("all");
+  const [assetService, setAssetService] = useState(urlService || "all");
+  const [assetWarranty, setAssetWarranty] = useState(urlWarranty || "all");
+
+  useEffect(() => {
+    if (urlTab) setTab(urlTab);
+    if (urlService) setAssetService(urlService);
+    if (urlWarranty) setAssetWarranty(urlWarranty);
+  }, [urlTab, urlService, urlWarranty]);
 
   const [search, setSearch] = useState("");
   const [q, setQ] = useState("");
@@ -363,6 +448,7 @@ export default function AccountsAdminPage() {
 
   const [saving, setSaving] = useState(false);
   const [formErr, setFormErr] = useState<string | null>(null);
+  const [headsOpen, setHeadsOpen] = useState(false);
 
   const base = overview?.base_currency || sales?.base_currency || expenses?.base_currency || assets?.base_currency || "USD";
   const currencyNotice =
@@ -406,9 +492,15 @@ export default function AccountsAdminPage() {
         if (!from) setFrom(res.range.from);
         if (!to) setTo(res.range.to);
       } else {
+        // Purchase dates, not the money tabs' period; none means every date.
+        params.delete("from");
+        params.delete("to");
+        if (assetFrom) params.set("from", assetFrom);
+        if (assetTo) params.set("to", assetTo);
         if (assetCategory !== "all") params.set("category", assetCategory);
         if (assetStatus !== "all") params.set("status", assetStatus);
         if (assetService !== "all") params.set("service", assetService);
+        if (assetWarranty !== "all") params.set("warranty", assetWarranty);
         const res = await apiGet<AssetsResponse>(`${ACCOUNTS_API}/assets?${params}`);
         setAssets(res);
       }
@@ -417,14 +509,24 @@ export default function AccountsAdminPage() {
     } finally {
       setLoading(false);
     }
-  }, [tab, from, to, q, salesStatus, expenseCategory, expenseStatus, assetCategory, assetStatus, assetService]);
+  }, [tab, from, to, assetFrom, assetTo, q, salesStatus, expenseCategory, expenseStatus, assetCategory, assetStatus, assetService, assetWarranty]);
 
   useEffect(() => {
     load();
   }, [load]);
 
-  const presets = useMemo(() => presetsFor(today), [today]);
-  const activePreset = presets.find((preset) => preset.from === from && preset.to === to)?.id || "custom";
+  // The date row drives the period on the money tabs and the purchase dates
+  // on the register, which alone can be cleared to every date.
+  const onAssets = tab === "assets";
+  const shownFrom = onAssets ? assetFrom : from;
+  const shownTo = onAssets ? assetTo : to;
+  const setShownFrom = onAssets ? setAssetFrom : setFrom;
+  const setShownTo = onAssets ? setAssetTo : setTo;
+  const presets = useMemo(
+    () => (onAssets ? [{ id: "any", label: "Any date", from: "", to: "" }, ...presetsFor(today)] : presetsFor(today)),
+    [today, onAssets]
+  );
+  const activePreset = presets.find((preset) => preset.from === shownFrom && preset.to === shownTo)?.id || "custom";
 
   // ---- Expense form -------------------------------------------------------
 
@@ -504,6 +606,9 @@ export default function AccountsAdminPage() {
 
   // ---- Asset form ---------------------------------------------------------
 
+  // Every field is filled from the row. The save sends the whole form, and
+  // the server reads a blank as "clear it" -- so a field left empty here used
+  // to wipe the warranty date and invoice number on every unrelated edit.
   const openAsset = (row?: AssetRow) => {
     if (row) {
       setEditingAsset(row);
@@ -513,18 +618,18 @@ export default function AccountsAdminPage() {
         quantity: String(row.quantity),
         unitCost: String(row.unit_cost),
         currency: row.currency,
-        purchasedOn: "",
+        purchasedOn: row.purchased_date || "",
         supplier: row.supplier,
-        invoiceNo: "",
+        invoiceNo: row.invoice_no || "",
         serialNumber: row.serial_number,
-        warrantyUntil: "",
+        warrantyUntil: row.warranty_date || "",
         location: row.location,
         condition: row.condition,
         status: row.status,
         usefulLifeYears: String(row.useful_life_years || ""),
         salvageValue: String(row.salvage_value || ""),
         serviceIntervalDays: String(row.service_interval_days || ""),
-        lastServicedOn: "",
+        lastServicedOn: row.last_serviced_date || "",
         notes: row.notes,
         recordExpense: false,
       });
@@ -597,16 +702,26 @@ export default function AccountsAdminPage() {
         row.currency, row.status, row.payment_method, row.vendor,
       ]);
     } else if (tab === "assets" && assets) {
-      header = ["Tag", "Name", "Category", "Qty", "Cost", "Book value", "Currency", "Condition", "Status", "Location", "Next service"];
+      header = ["Tag", "Name", "Category", "Qty", "Cost", "Book value", "Currency", "Condition", "Status", "Location", "Bought", "Invoice", "Warranty until", "Next service"];
       lines = assets.assets.map((row) => [
         row.tag, row.name, row.category_label, String(row.quantity), String(row.total_cost),
-        String(row.book_value), row.currency, row.condition, row.status, row.location, row.next_service_label || "",
+        String(row.book_value), row.currency, row.condition, row.status, row.location, row.purchased_date,
+        row.invoice_no, row.warranty_date, row.next_service_label || "",
       ]);
     } else if (overview) {
       header = ["Period", "Money in", "Money out", "Net"];
       lines = overview.trend.points.map((point) => [
         point.label, String(point.revenue), String(point.expense), String(point.net),
       ]);
+      // The profit and loss after the trend, in the base currency like it.
+      const pnl = overview.profit_and_loss;
+      if (pnl) {
+        lines.push([], ["Profit and loss", "Amount", "Currency", ""]);
+        for (const line of pnl.revenue) lines.push([line.deducted ? `Less ${line.label.toLowerCase()}` : line.label, String(line.deducted ? -line.base_amount : line.base_amount), pnl.currency, ""]);
+        lines.push(["Total revenue", String(pnl.total_revenue), pnl.currency, ""]);
+        for (const line of pnl.outflow) lines.push([line.label, String(line.base_amount), pnl.currency, ""]);
+        lines.push(["Total outflow", String(pnl.total_outflow), pnl.currency, ""], ["Net profit", String(pnl.net_profit), pnl.currency, ""]);
+      }
     }
 
     const csv = [header, ...lines].map((row) => row.map(escape).join(",")).join("\r\n");
@@ -614,12 +729,13 @@ export default function AccountsAdminPage() {
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = `accounts-${tab}-${from || today}-to-${to || today}.csv`;
+    anchor.download =
+      tab === "assets"
+        ? `accounts-assets-${assetFrom || assetTo ? `${assetFrom || "start"}-to-${assetTo || today}` : "all-dates"}.csv`
+        : `accounts-${tab}-${from || today}-to-${to || today}.csv`;
     anchor.click();
     URL.revokeObjectURL(url);
   };
-
-  const showDates = tab !== "assets";
 
   return (
     <div>
@@ -634,6 +750,9 @@ export default function AccountsAdminPage() {
             <SecondaryButton onClick={load} disabled={loading}>
               <FiRefreshCw className={`mr-1.5 h-4 w-4 ${loading ? "animate-spin" : ""}`} /> Refresh
             </SecondaryButton>
+            {editable && (tab === "expenses" || tab === "assets") && (
+              <SecondaryButton onClick={() => setHeadsOpen(true)}>Manage heads</SecondaryButton>
+            )}
             {editable && tab === "expenses" && <PrimaryButton onClick={() => openExpense()}>Add Expense</PrimaryButton>}
             {editable && tab === "assets" && <PrimaryButton onClick={() => openAsset()}>Add Asset</PrimaryButton>}
           </>
@@ -663,44 +782,42 @@ export default function AccountsAdminPage() {
 
       {/* One filter row above everything it scopes -- never a filter inside a card. */}
       <Card className="mb-6 p-4">
-        {showDates && (
-          <div className="mb-4 flex flex-wrap items-center gap-2">
-            {presets.map((preset) => (
-              <button
-                key={preset.id}
-                type="button"
-                onClick={() => {
-                  setFrom(preset.from);
-                  setTo(preset.to);
-                }}
-                className={`h-8 rounded-lg px-3 text-[13px] font-medium transition-colors ${
-                  activePreset === preset.id
-                    ? "bg-neutral-900 text-white"
-                    : "border border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900"
-                }`}
-              >
-                {preset.label}
-              </button>
-            ))}
-            <span className="ml-auto text-[12px] text-neutral-400">
-              {overview?.range.label || sales?.range.label || expenses?.range.label}
-            </span>
-          </div>
-        )}
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          {presets.map((preset) => (
+            <button
+              key={preset.id}
+              type="button"
+              onClick={() => {
+                setShownFrom(preset.from);
+                setShownTo(preset.to);
+              }}
+              className={`h-8 rounded-lg px-3 text-[13px] font-medium transition-colors ${
+                activePreset === preset.id
+                  ? "bg-neutral-900 text-white"
+                  : "border border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900"
+              }`}
+            >
+              {preset.label}
+            </button>
+          ))}
+          <span className="ml-auto text-[12px] text-neutral-400">
+            {onAssets
+              ? assets?.purchased
+                ? `Bought ${assets.purchased.label}`
+                : "Bought on any date"
+              : overview?.range.label || sales?.range.label || expenses?.range.label}
+          </span>
+        </div>
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {showDates && (
-            <>
-              <label className="block">
-                <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-neutral-500">From</span>
-                <input type="date" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} className={fieldCls} />
-              </label>
-              <label className="block">
-                <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-neutral-500">To</span>
-                <input type="date" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} className={fieldCls} />
-              </label>
-            </>
-          )}
+          <label className="block">
+            <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-neutral-500">{onAssets ? "Bought from" : "From"}</span>
+            <input type="date" value={shownFrom} max={shownTo || undefined} onChange={(e) => setShownFrom(e.target.value)} className={fieldCls} />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-neutral-500">{onAssets ? "Bought to" : "To"}</span>
+            <input type="date" value={shownTo} min={shownFrom || undefined} onChange={(e) => setShownTo(e.target.value)} className={fieldCls} />
+          </label>
 
           {tab === "sales" && (
             <label className="block">
@@ -728,10 +845,7 @@ export default function AccountsAdminPage() {
                   ariaLabel="Category"
                   value={expenseCategory}
                   onChange={setExpenseCategory}
-                  options={[
-                    { value: "all", label: "All categories" },
-                    ...(expenses?.categories || []).map((entry) => ({ value: entry.key, label: entry.label })),
-                  ]}
+                  options={headFilterOptions(expenses?.categories, expenses?.archived_categories)}
                 />
               </label>
               <label className="block">
@@ -759,10 +873,7 @@ export default function AccountsAdminPage() {
                   ariaLabel="Asset category"
                   value={assetCategory}
                   onChange={setAssetCategory}
-                  options={[
-                    { value: "all", label: "All categories" },
-                    ...(assets?.categories || []).map((entry) => ({ value: entry.key, label: entry.label })),
-                  ]}
+                  options={headFilterOptions(assets?.categories, assets?.archived_categories)}
                 />
               </label>
               <label className="block">
@@ -782,11 +893,30 @@ export default function AccountsAdminPage() {
                 <Select2
                   ariaLabel="Servicing"
                   value={assetService}
-                  onChange={setAssetService}
+                  onChange={(v) => {
+                    setAssetService(v);
+                    replaceParams({ service: v === "all" ? null : v });
+                  }}
                   options={[
                     { value: "all", label: "Everything" },
                     { value: "overdue", label: "Service overdue" },
+                    { value: "due", label: `Due within ${assets?.reminder_windows?.service_due_days ?? 7} days or overdue` },
                     { value: "soon", label: "Due within 30 days" },
+                  ]}
+                />
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-neutral-500">Warranty</span>
+                <Select2
+                  ariaLabel="Warranty"
+                  value={assetWarranty}
+                  onChange={(v) => {
+                    setAssetWarranty(v);
+                    replaceParams({ warranty: v === "all" ? null : v });
+                  }}
+                  options={[
+                    { value: "all", label: "Any" },
+                    { value: "ending", label: `Ending within ${assets?.reminder_windows?.warranty_days ?? 30} days` },
                   ]}
                 />
               </label>
@@ -802,7 +932,13 @@ export default function AccountsAdminPage() {
                   type="text"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Name, vendor or reference…"
+                  placeholder={
+                    tab === "sales"
+                      ? "Name, email, phone, member ID or order…"
+                      : tab === "assets"
+                      ? "Name, tag, supplier, serial or location…"
+                      : "Title, vendor or reference…"
+                  }
                   className={`${fieldCls} pl-9`}
                 />
               </div>
@@ -821,7 +957,10 @@ export default function AccountsAdminPage() {
           <button
             key={entry.id}
             type="button"
-            onClick={() => setTab(entry.id)}
+            onClick={() => {
+              setTab(entry.id);
+              replaceParams({ tab: entry.id === "overview" ? null : entry.id });
+            }}
             className={`-mb-px border-b-2 px-4 py-2.5 text-sm font-medium transition-colors ${
               tab === entry.id
                 ? "border-[var(--accent)] text-neutral-900"
@@ -874,7 +1013,7 @@ export default function AccountsAdminPage() {
                   ariaLabel="Category"
                   value={expenseDraft.category}
                   onChange={(v) => setExpenseDraft({ ...expenseDraft, category: v })}
-                  options={(expenses?.categories || []).map((entry) => ({ value: entry.key, label: entry.label }))}
+                  options={headFormOptions(expenses?.categories, expenses?.archived_categories, expenseDraft.category)}
                 />
               </div>
             </div>
@@ -944,6 +1083,13 @@ export default function AccountsAdminPage() {
         </div>
       </Modal>
 
+      <ManageHeadsModal
+        open={headsOpen}
+        kind={tab === "assets" ? "asset" : "expense"}
+        onClose={() => setHeadsOpen(false)}
+        onChanged={load}
+      />
+
       {/* ---- Asset dialog ---- */}
       <Modal open={assetOpen} onClose={() => setAssetOpen(false)} title={editingAsset ? `Edit ${editingAsset.tag}` : "Add asset"} size="lg">
         <div className="space-y-4">
@@ -959,7 +1105,7 @@ export default function AccountsAdminPage() {
                     const life = (assets?.categories || []).find((entry) => entry.key === v)?.default_life;
                     setAssetDraft({ ...assetDraft, category: v, usefulLifeYears: life ? String(life) : assetDraft.usefulLifeYears });
                   }}
-                  options={(assets?.categories || []).map((entry) => ({ value: entry.key, label: entry.label }))}
+                  options={headFormOptions(assets?.categories, assets?.archived_categories, assetDraft.category)}
                 />
               </div>
             </div>
@@ -968,6 +1114,7 @@ export default function AccountsAdminPage() {
             <TextField label="Currency" value={assetDraft.currency} onChange={(v) => setAssetDraft({ ...assetDraft, currency: v })} />
             <TextField label="Bought on" type="date" value={assetDraft.purchasedOn} onChange={(v) => setAssetDraft({ ...assetDraft, purchasedOn: v })} />
             <TextField label="Supplier" value={assetDraft.supplier} onChange={(v) => setAssetDraft({ ...assetDraft, supplier: v })} />
+            <TextField label="Invoice no." value={assetDraft.invoiceNo} onChange={(v) => setAssetDraft({ ...assetDraft, invoiceNo: v })} />
             <TextField label="Where it lives" value={assetDraft.location} onChange={(v) => setAssetDraft({ ...assetDraft, location: v })} placeholder="Cardio floor" />
             <TextField label="Serial number" value={assetDraft.serialNumber} onChange={(v) => setAssetDraft({ ...assetDraft, serialNumber: v })} />
             <TextField label="Warranty until" type="date" value={assetDraft.warrantyUntil} onChange={(v) => setAssetDraft({ ...assetDraft, warrantyUntil: v })} />
@@ -1028,6 +1175,15 @@ export default function AccountsAdminPage() {
   );
 }
 
+export default function AccountsAdminPage() {
+  // useSearchParams requires a Suspense boundary during prerender.
+  return (
+    <Suspense fallback={<Spinner />}>
+      <AccountsAdminPageInner />
+    </Suspense>
+  );
+}
+
 const fieldCls =
   "h-9 w-full rounded-lg border border-neutral-200 bg-white px-3 text-sm text-neutral-800 transition-colors focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[color-mix(in_srgb,var(--accent)_25%,transparent)]";
 
@@ -1055,19 +1211,19 @@ function OverviewTab({ data, format }: { data: Overview | null; format: (v: numb
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         <Stat
-          label="Money in"
+          label="Revenue"
           value={format(data.result.gross_income, data.base_currency)}
-          hint={`${data.income.orders} sale${data.income.orders === 1 ? "" : "s"}`}
+          hint={`${data.income.orders} sale${data.income.orders === 1 ? "" : "s"} · after refunds`}
           accent={SERIES_IN}
         />
         <Stat
-          label="Money out"
+          label="Outflow"
           value={format(data.result.expenses, data.base_currency)}
-          hint={`${data.spending.entries} entr${data.spending.entries === 1 ? "y" : "ies"}`}
+          hint="commission, expenses, assets, salaries"
           accent={SERIES_OUT}
         />
         <Stat
-          label="Net"
+          label="Net profit"
           value={format(net, data.base_currency)}
           tone={net >= 0 ? "good" : "bad"}
           hint={data.result.margin !== null ? `${data.result.margin}% margin` : undefined}
@@ -1095,6 +1251,8 @@ function OverviewTab({ data, format }: { data: Overview | null; format: (v: numb
         </p>
         <TrendChart points={data.trend.points} currency={data.base_currency} format={format} />
       </Card>
+
+      {data.profit_and_loss && <ProfitAndLoss pnl={data.profit_and_loss} format={format} />}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <Card className="p-5">
@@ -1134,9 +1292,9 @@ function OverviewTab({ data, format }: { data: Overview | null; format: (v: numb
           {!!data.payroll.unlinked_trainers && (
             <p className="mt-3 text-[12px] text-amber-700">
               {data.payroll.unlinked_trainers} active{" "}
-              {data.payroll.unlinked_trainers === 1 ? "trainer is" : "trainers are"} not
-              linked to a staff account, so their hours are recorded but their pay is
-              not in this total. Link them on the Trainers screen to include them.
+              {data.payroll.unlinked_trainers === 1 ? "trainer has" : "trainers have"} no staff
+              account and no salary set, so their pay is not in this total. Link them to a
+              staff account or set a salary on the Trainers screen to include them.
             </p>
           )}
         </Card>
@@ -1154,6 +1312,10 @@ function OverviewTab({ data, format }: { data: Overview | null; format: (v: numb
             <dd className="text-neutral-800">{format(data.income.refunds.base_amount, data.base_currency)}</dd>
           </div>
           <div className="flex justify-between border-b border-neutral-100 py-1.5">
+            <dt className="text-neutral-500">Shop / POS takings</dt>
+            <dd className="text-neutral-800">{format(data.income.shop?.base_amount ?? 0, data.base_currency)}</dd>
+          </div>
+          <div className="flex justify-between border-b border-neutral-100 py-1.5">
             <dt className="text-neutral-500">Unpaid bills outstanding</dt>
             <dd className="text-neutral-800">
               {format(data.spending.pending.headline_amount, data.spending.pending.headline_currency)}
@@ -1168,11 +1330,74 @@ function OverviewTab({ data, format }: { data: Overview | null; format: (v: numb
           </div>
         </dl>
         <p className="mt-3 text-[12px] text-neutral-400">
-          Day passes, personal training and counter sales are not included — they are not recorded in
-          this system yet.
+          Unpaid bills are not in the outflow until they are paid. Day passes and personal training paid
+          at the desk are not included — they are not recorded as sales in this system yet.
         </p>
       </Card>
     </div>
+  );
+}
+
+// The profit and loss, line by line: revenue less refunds, less every outflow
+// line, in the base currency, with any other currency noted on its line.
+function ProfitAndLoss({ pnl, format }: { pnl: NonNullable<Overview["profit_and_loss"]>; format: (v: number, c?: string) => string }) {
+  const row = (line: PnlLine) => (
+    <div key={line.key} className="flex items-baseline justify-between border-b border-neutral-100 py-1.5">
+      <dt className="text-neutral-600">
+        {line.deducted ? `Less ${line.label.toLowerCase()}` : line.label}
+        {line.key === "trainer_commission" && line.memberships && line.personal_training && (
+          <span className="ml-1 text-[11px] text-neutral-400">
+            memberships {format(line.memberships.base_amount, pnl.currency)} · PT {format(line.personal_training.base_amount, pnl.currency)}
+          </span>
+        )}
+      </dt>
+      <dd className="whitespace-nowrap tabular-nums text-neutral-800">
+        {line.deducted && line.base_amount ? "−" : ""}
+        {format(line.base_amount, pnl.currency)}
+        <MixedNote totals={line} format={format} />
+      </dd>
+    </div>
+  );
+  const total = (label: string, value: number, tone?: "good" | "bad") => (
+    <div className="flex items-baseline justify-between py-2 font-semibold">
+      <dt className="text-neutral-900">{label}</dt>
+      <dd className={`tabular-nums ${tone === "good" ? "text-emerald-700" : tone === "bad" ? "text-rose-600" : "text-neutral-900"}`}>{format(value, pnl.currency)}</dd>
+    </div>
+  );
+  const setAside = pnl.set_aside.payslip_expenses + pnl.set_aside.asset_purchase_expenses;
+
+  return (
+    <Card className="p-5">
+      <h2 className="mb-1 text-sm font-semibold text-neutral-900">Profit and loss</h2>
+      <p className="mb-4 text-[12px] text-neutral-500">
+        {pnl.currency} · each cost counted once
+        {setAside > 0 &&
+          ` · ${setAside} expense${setAside === 1 ? "" : "s"} counted under salaries or asset purchases instead`}
+      </p>
+      <div className="grid grid-cols-1 gap-x-8 gap-y-4 text-[13px] lg:grid-cols-2">
+        <div>
+          <h3 className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-neutral-500">Revenue</h3>
+          <dl>
+            {pnl.revenue.map(row)}
+            {total("Total revenue", pnl.total_revenue)}
+          </dl>
+        </div>
+        <div>
+          <h3 className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-neutral-500">Outflow</h3>
+          <dl>
+            {pnl.outflow.map(row)}
+            {total("Total outflow", pnl.total_outflow)}
+          </dl>
+        </div>
+      </div>
+      <dl className="mt-2 border-t border-neutral-200">
+        {total(
+          pnl.margin !== null ? `Net profit · ${pnl.margin}% margin` : "Net profit",
+          pnl.net_profit,
+          pnl.net_profit >= 0 ? "good" : "bad"
+        )}
+      </dl>
+    </Card>
   );
 }
 
@@ -1446,6 +1671,9 @@ function AssetsTab({
                       <div className="text-[11px] text-neutral-400">
                         {[row.tag, row.location, row.purchased_label ? `bought ${row.purchased_label}` : ""].filter(Boolean).join(" · ")}
                       </div>
+                      {row.warranty_active && row.warranty_label && (
+                        <div className="text-[11px] text-neutral-400">warranty until {row.warranty_label}</div>
+                      )}
                     </td>
                     <td className="px-5 py-3 text-neutral-700">{row.category_label}</td>
                     <td className="whitespace-nowrap px-5 py-3 tabular-nums text-neutral-700">{format(row.total_cost, row.currency)}</td>

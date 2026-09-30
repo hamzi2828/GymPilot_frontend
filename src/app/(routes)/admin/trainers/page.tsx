@@ -59,6 +59,32 @@ interface Trainer {
   acceptsPt?: boolean;
   ptRate?: number;
   commissionPercent?: number | null;
+  /**
+   * Their cut of a completed session: a percent of what it was worth, or a
+   * fixed amount per session. null = the gym's default percent.
+   */
+  commissionType?: "percent" | "amount" | null;
+  commissionValue?: number | null;
+  /**
+   * Salary per pay cycle, used while the trainer has no staff account (a
+   * linked one is paid by the account's pay rate). null = not set; 0 =
+   * commission only. Only the admin list returns it.
+   */
+  salary?: number | null;
+  salaryCycle?: "monthly" | "biweekly" | "weekly";
+}
+
+const CYCLE_LABEL: Record<string, string> = { monthly: "month", biweekly: "fortnight", weekly: "week" };
+
+// "31,000 / month · 500 per session", for the list.
+function payLabel(t: Trainer) {
+  const parts: string[] = [];
+  if (t.userId) parts.push("Staff pay rate");
+  else if (t.salary !== null && t.salary !== undefined) parts.push(t.salary ? `${t.salary.toLocaleString()} / ${CYCLE_LABEL[t.salaryCycle || "monthly"]}` : "No salary");
+  if (t.commissionType === "amount" && t.commissionValue !== null && t.commissionValue !== undefined) parts.push(`${t.commissionValue.toLocaleString()} per session`);
+  else if (t.commissionType === "percent" && t.commissionValue !== null && t.commissionValue !== undefined) parts.push(`${t.commissionValue}% of session`);
+  else if (t.commissionPercent !== null && t.commissionPercent !== undefined) parts.push(`${t.commissionPercent}% of session`);
+  return parts.join(" · ") || "—";
 }
 
 function TrainersAdminPageInner() {
@@ -122,7 +148,14 @@ function TrainersAdminPageInner() {
 
   const openEdit = (t: Trainer) => {
     setEditing(t);
-    setForm(t);
+    // A trainer given a percent before the fixed amount existed carries only
+    // commissionPercent: shown (and saved) as the percent it is, not as the
+    // gym's default.
+    const legacyPercent =
+      !t.commissionType && t.commissionPercent !== null && t.commissionPercent !== undefined
+        ? { commissionType: "percent" as const, commissionValue: t.commissionPercent }
+        : {};
+    setForm({ ...t, ...legacyPercent });
     setAvailability(
       (t.availability || []).map((row) => ({
         day: row.day,
@@ -142,9 +175,11 @@ function TrainersAdminPageInner() {
     if (!urlId) return;
     replaceParams({ id: null });
     if (!editable) return;
-    apiGet<{ data?: Trainer }>(`${GYMFOLIO_API}/trainers/${encodeURIComponent(urlId)}`)
+    // The admin list narrowed to one: the public read by id leaves the pay
+    // terms out.
+    apiGet<{ data?: Trainer[] }>(`${GYMFOLIO_API}/trainers?id=${encodeURIComponent(urlId)}`)
       .then((r) => {
-        if (r.data) openEdit(r.data);
+        if (r.data && r.data[0]) openEdit(r.data[0]);
       })
       .catch((e) => alert(e instanceof Error ? e.message : "Could not open that trainer"));
   }, [urlId, editable]);
@@ -163,8 +198,8 @@ function TrainersAdminPageInner() {
         // userId is handled below: it is the one field whose null is
         // meaningful, and skipping it here would make "unlink" impossible.
         if (k === "userId") return;
-        // Same for the commission: blank means "use the gym's default".
-        if (k === "commissionPercent") return;
+        // Pay terms are sent below, where a blank means something.
+        if (["commissionPercent", "commissionType", "commissionValue", "salary", "salaryCycle"].includes(k)) return;
         // Sent as JSON below.
         if (k === "availability") return;
         if (v === undefined || v === null) return;
@@ -176,7 +211,12 @@ function TrainersAdminPageInner() {
       // never undo it -- the field simply would not be in the request, and the
       // server would keep whatever it had.
       fd.append("userId", form.userId || "");
-      fd.append("commissionPercent", form.commissionPercent === null || form.commissionPercent === undefined ? "" : String(form.commissionPercent));
+      // Always sent: an empty type is "the gym's default", an empty salary is
+      // "none set" (0 is a real salary: commission only).
+      fd.append("commissionType", form.commissionType || "");
+      fd.append("commissionValue", form.commissionType && form.commissionValue !== null && form.commissionValue !== undefined ? String(form.commissionValue) : "");
+      fd.append("salary", form.salary === null || form.salary === undefined ? "" : String(form.salary));
+      fd.append("salaryCycle", form.salaryCycle || "monthly");
       // Always sent, so clearing every shift really clears the roster.
       fd.append(
         "availability",
@@ -242,7 +282,7 @@ function TrainersAdminPageInner() {
         <Spinner />
       ) : error && !list.length ? null : (
         <Table
-          columns={["", "Name", "Role", "Experience", "Email", "Status", "Actions"]}
+          columns={["", "Name", "Role", "Experience", "Email", "Pay", "Status", "Actions"]}
           rows={list.map((t) => [
             t.image ? (
               <Image
@@ -260,6 +300,7 @@ function TrainersAdminPageInner() {
             t.role,
             t.experience ? `${t.experience} yrs` : "—",
             t.email || "—",
+            <span key="p" className="text-xs text-neutral-600">{payLabel(t)}</span>,
             <button key="b" onClick={() => toggleActive(t)} disabled={!editable} className="disabled:cursor-default">
               <Badge color={t.isActive ? "green" : "neutral"}>
                 {t.isActive ? "Active" : "Inactive"}
@@ -293,7 +334,58 @@ function TrainersAdminPageInner() {
           <TextField label="Phone" value={form.phone} onChange={(v) => setForm({ ...form, phone: v })} />
           <TextField label="Experience (years)" type="number" value={form.experience} onChange={(v) => setForm({ ...form, experience: Number(v) })} />
           <TextField label="PT rate per session (0 = pack only)" type="number" value={form.ptRate ?? 0} onChange={(v) => setForm({ ...form, ptRate: Number(v) || 0 })} />
-          <TextField label="PT commission % (blank = gym default)" type="number" value={form.commissionPercent ?? ""} onChange={(v) => setForm({ ...form, commissionPercent: v === "" ? null : Number(v) })} />
+          <SelectField
+            label="PT commission"
+            value={form.commissionType || ""}
+            onChange={(v) => {
+              const type = v === "percent" || v === "amount" ? v : null;
+              // A new kind of commission starts blank: 15 meant 15%, not 15 per session.
+              setForm({ ...form, commissionType: type, commissionValue: type && type === form.commissionType ? form.commissionValue ?? null : null });
+            }}
+            placeholder="Gym default (Settings)"
+            options={[
+              { value: "percent", label: "Percent of each session" },
+              { value: "amount", label: "Fixed amount per session" },
+            ]}
+          />
+          {form.commissionType ? (
+            <TextField
+              label={form.commissionType === "percent" ? "Commission %" : "Commission per session"}
+              type="number"
+              value={form.commissionValue ?? ""}
+              onChange={(v) => setForm({ ...form, commissionValue: v === "" ? null : Number(v) })}
+            />
+          ) : (
+            <div />
+          )}
+          <TextField
+            label="Salary per cycle (blank = none, 0 = commission only)"
+            type="number"
+            value={form.salary ?? ""}
+            onChange={(v) => setForm({ ...form, salary: v === "" ? null : Number(v) })}
+          />
+          <SelectField
+            label="Pay cycle"
+            value={form.salaryCycle || "monthly"}
+            allowClear={false}
+            onChange={(v) => setForm({ ...form, salaryCycle: (v || "monthly") as Trainer["salaryCycle"] })}
+            options={[
+              { value: "monthly", label: "Monthly" },
+              { value: "biweekly", label: "Every two weeks" },
+              { value: "weekly", label: "Weekly" },
+            ]}
+          />
+          {form.userId ? (
+            <p className="md:col-span-2 -mt-2 text-[12px] text-neutral-500">
+              Linked to a staff account: payslips and the wage bill use that account&apos;s pay rate, and the
+              commission is paid on the payslip. The salary here counts only while the trainer is unlinked.
+            </p>
+          ) : (
+            <p className="md:col-span-2 -mt-2 text-[12px] text-neutral-500">
+              With no staff account the salary here is the trainer&apos;s wage cost on Accounts, and their PT
+              commission shows as payable on the Personal Training page.
+            </p>
+          )}
           <Toggle label="Takes personal training bookings" checked={form.acceptsPt !== false} onChange={(v) => setForm({ ...form, acceptsPt: v })} />
           <div className="md:col-span-2">
             <SelectField
