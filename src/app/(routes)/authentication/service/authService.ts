@@ -29,6 +29,7 @@ export async function signUp(payload: SignUpPayload) {
 }
 
 export interface LoginPayload {
+  /** What was typed into "Email or username": the API accepts either. */
   email: string;
   password: string;
   /** "Remember me": the API issues a 30-day session instead of 7 days. */

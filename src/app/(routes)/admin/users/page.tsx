@@ -10,6 +10,7 @@ import {
   DangerButton,
   SelectField,
   TextField,
+  TextArea,
   Badge,
   Spinner,
   Table,
@@ -20,21 +21,41 @@ import { API_BASE, GYMFOLIO_API, apiGet, apiJson, isPlanLimitError, replaceParam
 import { usePermissions } from "@/components/admin/PermissionsProvider";
 import UsersImportModal from "./UsersImportModal";
 import MemberProfileModal from "./MemberProfileModal";
+import UsernameModal, { type UsernameTarget } from "./UsernameModal";
+import {
+  CredentialsChoice,
+  PasswordReveal,
+  SetPasswordModal,
+  MIN_PASSWORD_LENGTH,
+  type CredentialMode,
+  type PasswordTarget,
+  type RevealedPassword,
+} from "./PasswordDialogs";
 
 interface User {
   _id: string;
   firstName?: string;
   lastName?: string;
-  email: string;
+  /** Absent for a member who has no email address (they sign in with their username). */
+  email?: string | null;
   // A role slug; roles are documents now, so any string a gym has created.
   role?: string;
   createdAt?: string;
   phone?: string | null;
   tags?: string[];
+  /** "GP-0012": given when a member's account is created; staff have none. */
   memberCode?: string | null;
   isActive?: boolean;
-  /** What the member types into the phone app. Their name plus three digits. */
+  /**
+   * What they can sign in with instead of an email -- the website, the desk
+   * and the phone app. Their name plus three digits unless staff chose one.
+   */
   username?: string | null;
+}
+
+// Who a row is, in words: a member may have no email, so the name comes first.
+function displayName(user: Pick<User, "firstName" | "lastName" | "email" | "username">) {
+  return [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email || user.username || "this member";
 }
 
 // The gym reads this out to the member, so it needs to be easy to copy and,
@@ -44,11 +65,14 @@ function UsernameCell({
   canManage,
   onRegenerated,
   onNotice,
+  onEdit,
 }: {
   user: User;
   canManage: boolean;
   onRegenerated: () => void;
   onNotice: (tone: "ok" | "warn", text: string) => void;
+  /** Opens the dialog to type a username of the gym's choosing. */
+  onEdit: () => void;
 }) {
   const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -68,11 +92,11 @@ function UsernameCell({
   };
 
   const regenerate = async () => {
-    if (!confirm(`Give ${user.email} a new app username? The one they have now stops working straight away, so you will need to tell them.`)) return;
+    if (!confirm(`Give ${displayName(user)} a new username? The one they have now stops working straight away, so you will need to tell them.`)) return;
     setBusy(true);
     try {
       const r = await apiJson<{ data: { username: string } }>(`${API_BASE}/admin/users/${user._id}/username`, "POST");
-      onNotice("ok", `New username for ${user.email}: ${r.data.username}`);
+      onNotice("ok", `New username for ${displayName(user)}: ${r.data.username}`);
       onRegenerated();
     } catch (e) {
       onNotice("warn", e instanceof Error ? e.message : "Could not issue a new username");
@@ -93,15 +117,25 @@ function UsernameCell({
         {copied ? "copied" : "copy"}
       </button>
       {canManage && (
-        <button
-          type="button"
-          onClick={regenerate}
-          disabled={busy}
-          title="Issue a new username"
-          className="rounded px-1 py-0.5 text-[11px] font-medium text-neutral-400 hover:bg-neutral-100 hover:text-neutral-800 disabled:opacity-50"
-        >
-          {busy ? "…" : "new"}
-        </button>
+        <>
+          <button
+            type="button"
+            onClick={onEdit}
+            title="Choose their username"
+            className="rounded px-1 py-0.5 text-[11px] font-medium text-neutral-400 hover:bg-neutral-100 hover:text-neutral-800"
+          >
+            edit
+          </button>
+          <button
+            type="button"
+            onClick={regenerate}
+            disabled={busy}
+            title="Issue a new generated username"
+            className="rounded px-1 py-0.5 text-[11px] font-medium text-neutral-400 hover:bg-neutral-100 hover:text-neutral-800 disabled:opacity-50"
+          >
+            {busy ? "…" : "new"}
+          </button>
+        </>
       )}
     </div>
   );
@@ -158,8 +192,28 @@ function UsersAdminPageInner() {
   const [createErr, setCreateErr] = useState<string | null>(null);
   const [createLimit, setCreateLimit] = useState(false);
   const [notice, setNotice] = useState<{ tone: "ok" | "warn"; text: string } | null>(null);
-  const emptyDraft = { firstName: "", lastName: "", email: "", phone: "", role: "user" };
+  // The details the desk takes down at the counter; the rest of the profile
+  // (health, emergency contact, documents) is filled in afterwards.
+  const emptyDraft = {
+    firstName: "",
+    lastName: "",
+    email: "",
+    phone: "",
+    role: "user",
+    gender: "",
+    dateOfBirth: "",
+    address: "",
+    staffNotes: "",
+  };
   const [draft, setDraft] = useState(emptyDraft);
+  // How the new account's first password reaches them, and the one typed
+  // when the admin chooses it. Never kept past the request.
+  const [credentials, setCredentials] = useState<CredentialMode>("email");
+  const [chosenPassword, setChosenPassword] = useState("");
+  // "Set password" on a row, and a generated password to show once.
+  const [passwordFor, setPasswordFor] = useState<PasswordTarget | null>(null);
+  const [reveal, setReveal] = useState<RevealedPassword | null>(null);
+  const [usernameFor, setUsernameFor] = useState<UsernameTarget | null>(null);
 
   // --- Assign a package to a specific member -----------------------------
   const [assignFor, setAssignFor] = useState<User | null>(null);
@@ -207,38 +261,75 @@ function UsersAdminPageInner() {
 
   const openCreate = () => {
     setDraft(emptyDraft);
+    setCredentials("email");
+    setChosenPassword("");
     setCreateErr(null);
     setCreateLimit(false);
     setCreateOpen(true);
   };
 
   const createUser = async () => {
-    if (!draft.firstName.trim() || !draft.lastName.trim() || !draft.email.trim()) {
-      setCreateErr("First name, last name and email are all required.");
+    if (!draft.firstName.trim() || !draft.lastName.trim()) {
+      setCreateErr("First name and last name are both required.");
+      return;
+    }
+    // No email is fine -- they sign in with their username -- but then the
+    // gym needs a phone number to reach them.
+    if (!draft.email.trim() && !draft.phone.trim()) {
+      setCreateErr("Give an email address or a phone number.");
+      return;
+    }
+    if (credentials === "set" && chosenPassword.length < MIN_PASSWORD_LENGTH) {
+      setCreateErr(`The password needs at least ${MIN_PASSWORD_LENGTH} characters.`);
       return;
     }
     setCreating(true);
     setCreateErr(null);
     setCreateLimit(false);
     try {
-      // The password is generated server-side and emailed — it is never sent
-      // from or shown in the browser.
-      const res = await apiJson<{ message: string; emailed?: boolean; emailError?: string; data?: { username?: string } }>(
-        `${API_BASE}/admin/users`,
-        "POST",
-        draft
-      );
+      // Emailed by default. A generated password comes back only when the
+      // admin asked to see it or the email could not be sent, and is shown
+      // once (PasswordReveal); a typed one is never sent back.
+      const res = await apiJson<{
+        message: string;
+        emailed?: boolean;
+        emailError?: string;
+        credentials?: CredentialMode;
+        password?: string;
+        data?: { username?: string; memberCode?: string | null };
+      }>(`${API_BASE}/admin/users`, "POST", {
+        ...draft,
+        credentials,
+        ...(credentials === "set" ? { password: chosenPassword } : {}),
+      });
       setCreateOpen(false);
-      const appLogin = res.data?.username ? ` Their phone app username is ${res.data.username}.` : "";
+      setChosenPassword("");
+      const who = `${draft.firstName.trim()} ${draft.lastName.trim()}`.trim() || draft.email;
+      const label = draft.email.trim() || who;
+      const appLogin =
+        (res.data?.memberCode ? ` Member ID ${res.data.memberCode}.` : "") +
+        (res.data?.username ? ` Their username is ${res.data.username}.` : "");
+      if (res.password) {
+        setReveal({
+          who,
+          password: res.password,
+          username: res.data?.username,
+          note: res.credentials === "email"
+            ? `The email to ${draft.email} could not be sent${res.emailError ? ` (${res.emailError})` : ""}, so hand this to ${who} yourself.`
+            : undefined,
+        });
+      }
       setNotice(
         res.emailed
-          ? { tone: "ok", text: `${draft.email} was created and their password emailed.${appLogin}` }
-          : {
-              tone: "warn",
-              text: `${draft.email} was created, but the password email failed${
-                res.emailError ? ` (${res.emailError})` : ""
-              }. Check the SMTP settings.${appLogin}`,
-            }
+          ? { tone: "ok", text: `${label} was created and their password emailed.${appLogin}` }
+          : res.credentials === "email"
+            ? {
+                tone: "warn",
+                text: `${label} was created, but the password email failed${
+                  res.emailError ? ` (${res.emailError})` : ""
+                }. Check the SMTP settings.${appLogin}`,
+              }
+            : { tone: "ok", text: `${who} was created.${appLogin}` }
       );
       await load();
     } catch (e) {
@@ -296,7 +387,7 @@ function UsersAdminPageInner() {
   // Deactivating signs the account out and keeps it out until reactivated;
   // the backend refuses switching yourself or the last administrator off.
   const setActive = async (u: User, isActive: boolean) => {
-    if (!isActive && !confirm(`Deactivate ${u.email}? They are signed out and cannot sign in until reactivated.`)) return;
+    if (!isActive && !confirm(`Deactivate ${displayName(u)}? They are signed out and cannot sign in until reactivated.`)) return;
     try {
       const r = await apiJson<{ message: string }>(`${API_BASE}/update/status/${u._id}`, "PUT", { isActive });
       setNotice({ tone: "ok", text: r.message || (isActive ? "Account reactivated." : "Account deactivated.") });
@@ -332,7 +423,7 @@ function UsersAdminPageInner() {
   const visible = list.filter((u) => {
     if (tagFilter && !(u.tags || []).includes(tagFilter)) return false;
     if (!q) return true;
-    return `${u.firstName || ""} ${u.lastName || ""} ${u.email} ${u.username || ""} ${u.phone || ""} ${u.memberCode || ""}`.toLowerCase().includes(q);
+    return `${u.firstName || ""} ${u.lastName || ""} ${u.email || ""} ${u.username || ""} ${u.phone || ""} ${u.memberCode || ""}`.toLowerCase().includes(q);
   });
 
   return (
@@ -396,7 +487,7 @@ function UsersAdminPageInner() {
         <ErrorState message={loadErr} onRetry={load} />
       ) : (
         <Table
-          columns={["Name", "Email", "App username", "Role", "Status", "Joined", "Actions"]}
+          columns={["Name", "Member ID", "Email", "Phone", "Username", "Role", "Status", "Joined", "Actions"]}
           rows={visible.map((u) => [
             <div key="n">
               <p className="font-medium text-neutral-900">{[u.firstName, u.lastName].filter(Boolean).join(" ") || "—"}</p>
@@ -408,8 +499,21 @@ function UsersAdminPageInner() {
                 </p>
               )}
             </div>,
-            u.email,
-            <UsernameCell key="u" user={u} canManage={canManage} onRegenerated={load} onNotice={(tone, text) => setNotice({ tone, text })} />,
+            u.memberCode ? (
+              <span key="c" className="whitespace-nowrap font-mono text-xs text-neutral-800">{u.memberCode}</span>
+            ) : (
+              <span key="c" className="text-xs text-neutral-400">—</span>
+            ),
+            u.email || <span key="e" className="text-xs text-neutral-400">no email</span>,
+            u.phone ? <span key="p" className="whitespace-nowrap">{u.phone}</span> : <span key="p" className="text-xs text-neutral-400">—</span>,
+            <UsernameCell
+              key="u"
+              user={u}
+              canManage={canManage}
+              onRegenerated={load}
+              onNotice={(tone, text) => setNotice({ tone, text })}
+              onEdit={() => setUsernameFor({ endpoint: `${API_BASE}/admin/users/${u._id}/username`, who: displayName(u), current: u.username })}
+            />,
             <Badge key="r" color={u.role === "admin" ? "blue" : "neutral"}>{roleNames.get(u.role || "user") || u.role || "user"}</Badge>,
             // `isActive` is what the account model stores and what sign-in
             // checks; an account from before the field is active.
@@ -422,8 +526,19 @@ function UsersAdminPageInner() {
                 <>
                   <SecondaryButton onClick={() => { setSelected(u); setRole(u.role || "user"); }}>Role</SecondaryButton>
                   <SecondaryButton
+                    onClick={() =>
+                      setPasswordFor({
+                        endpoint: `${API_BASE}/admin/users/${u._id}/password`,
+                        who: displayName(u),
+                        username: u.username,
+                      })
+                    }
+                  >
+                    Set password
+                  </SecondaryButton>
+                  <SecondaryButton
                     onClick={async () => {
-                      if (!confirm(`Record that ${u.email} has consented to fingerprint storage (signed form)?`)) return;
+                      if (!confirm(`Record that ${displayName(u)} has consented to fingerprint storage (signed form)?`)) return;
                       try {
                         const r = await apiJson<{ message: string }>(`${API_BASE}/admin/users/${u._id}/consent`, "PUT", { biometric: true });
                         setNotice({ tone: "ok", text: r.message });
@@ -436,7 +551,7 @@ function UsersAdminPageInner() {
                   </SecondaryButton>
                   <SecondaryButton
                     onClick={async () => {
-                      if (!confirm(`Sign ${u.email} out of every device?`)) return;
+                      if (!confirm(`Sign ${displayName(u)} out of every device?`)) return;
                       try {
                         const r = await apiJson<{ message: string }>(`${API_BASE}/admin/users/${u._id}/logout-all`, "POST");
                         setNotice({ tone: "ok", text: r.message });
@@ -461,24 +576,82 @@ function UsersAdminPageInner() {
         />
       )}
 
-      <Modal open={createOpen} onClose={() => setCreateOpen(false)} title="Create User" size="sm">
+      <Modal open={createOpen} onClose={() => setCreateOpen(false)} title="Create User" size="md">
         <div className="space-y-4">
           <p className="text-sm text-neutral-500">
-            A secure password is generated automatically and emailed to the user. You will not
-            need to share it yourself.
+            Choose how they get their first password below: emailed, shown to you once to hand
+            over, or typed by you.
           </p>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <TextField label="First Name" value={draft.firstName} onChange={(v) => setDraft({ ...draft, firstName: v })} />
             <TextField label="Last Name" value={draft.lastName} onChange={(v) => setDraft({ ...draft, lastName: v })} />
           </div>
-          <TextField label="Email" type="email" value={draft.email} onChange={(v) => setDraft({ ...draft, email: v })} />
-          <TextField label="Phone (optional)" value={draft.phone} onChange={(v) => setDraft({ ...draft, phone: v })} />
+          <TextField
+            label="Email (optional)"
+            type="email"
+            value={draft.email}
+            onChange={(v) => {
+              setDraft({ ...draft, email: v });
+              // Nowhere to email a password without an address.
+              if (!v.trim() && credentials === "email") setCredentials("show");
+            }}
+            placeholder="Leave empty if they have none"
+          />
+          <TextField
+            label={draft.email.trim() ? "Phone (optional)" : "Phone"}
+            value={draft.phone}
+            onChange={(v) => setDraft({ ...draft, phone: v })}
+            required={!draft.email.trim()}
+          />
+          {!draft.email.trim() && (
+            <p className="-mt-2 text-xs text-neutral-500">
+              Without an email they sign in with their username, and you give them their password.
+            </p>
+          )}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <SelectField
+              label="Gender (optional)"
+              value={draft.gender}
+              onChange={(v) => setDraft({ ...draft, gender: v })}
+              options={[
+                { value: "male", label: "Male" },
+                { value: "female", label: "Female" },
+                { value: "other", label: "Other" },
+              ]}
+              placeholder="Not given"
+            />
+            <TextField
+              label="Date of birth (optional)"
+              type="date"
+              value={draft.dateOfBirth}
+              onChange={(v) => setDraft({ ...draft, dateOfBirth: v })}
+            />
+          </div>
+          <TextField
+            label="Address (optional)"
+            value={draft.address}
+            onChange={(v) => setDraft({ ...draft, address: v })}
+            placeholder="House, street, town"
+          />
+          <TextArea
+            label="Staff notes (optional, never shown to the member)"
+            value={draft.staffNotes}
+            onChange={(v) => setDraft({ ...draft, staffNotes: v })}
+            rows={2}
+          />
           <SelectField
             label="Role"
             value={draft.role}
             onChange={(v) => setDraft({ ...draft, role: v })}
             options={roleOptions}
+          />
+          <CredentialsChoice
+            mode={credentials}
+            onMode={setCredentials}
+            password={chosenPassword}
+            onPassword={setChosenPassword}
+            hasEmail={!!draft.email.trim()}
           />
 
           {createErr && (
@@ -491,7 +664,7 @@ function UsersAdminPageInner() {
           <div className="flex justify-end gap-2 pt-2">
             <SecondaryButton onClick={() => setCreateOpen(false)}>Cancel</SecondaryButton>
             <PrimaryButton onClick={createUser} disabled={creating}>
-              {creating ? "Creating..." : "Create & Email Password"}
+              {creating ? "Creating..." : credentials === "email" ? "Create & Email Password" : "Create User"}
             </PrimaryButton>
           </div>
         </div>
@@ -507,9 +680,9 @@ function UsersAdminPageInner() {
           <div className="space-y-4">
             <div className="text-sm">
               <p className="font-medium text-neutral-900">
-                {[assignFor.firstName, assignFor.lastName].filter(Boolean).join(" ") || assignFor.email}
+                {displayName(assignFor)}
               </p>
-              <p className="text-neutral-500">{assignFor.email}</p>
+              <p className="text-neutral-500">{assignFor.email || assignFor.phone || ""}</p>
             </div>
 
             <p className="text-sm text-neutral-500">
@@ -576,12 +749,23 @@ function UsersAdminPageInner() {
 
       <MemberProfileModal userId={profileId} onClose={() => setProfileId(null)} onSaved={load} />
 
+      <SetPasswordModal target={passwordFor} onClose={() => setPasswordFor(null)} onDone={(text) => setNotice({ tone: "ok", text })} />
+      <PasswordReveal reveal={reveal} onClose={() => setReveal(null)} />
+      <UsernameModal
+        target={usernameFor}
+        onClose={() => setUsernameFor(null)}
+        onDone={(text) => {
+          setNotice({ tone: "ok", text });
+          load();
+        }}
+      />
+
       <Modal open={!!selected} onClose={() => setSelected(null)} title="Update Role" size="sm">
         {selected && (
           <div className="space-y-4">
             <div className="text-sm">
-              <p className="text-neutral-900 font-medium">{[selected.firstName, selected.lastName].filter(Boolean).join(" ") || selected.email}</p>
-              <p className="text-neutral-500">{selected.email}</p>
+              <p className="text-neutral-900 font-medium">{displayName(selected)}</p>
+              <p className="text-neutral-500">{selected.email || selected.phone || ""}</p>
             </div>
             <SelectField
               label="Role"

@@ -163,7 +163,10 @@ const AuthPage: React.FC = () => {
 
     // Email is required everywhere except the reset screen, where the account
     // is identified by the token in the link rather than by anything typed.
-    if (!isReset && !formData.email.trim()) newErrors.email = "Email is required";
+    // Signing in, the same box takes a username (members without an email).
+    if (!isReset && !formData.email.trim()) {
+      newErrors.email = isSignUp || isForgot ? "Email is required" : "Email or username is required";
+    }
 
     // 'forgot' collects an address and nothing else -- there is no password to
     // set until the person has proved they can read that mailbox.
