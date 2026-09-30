@@ -305,7 +305,8 @@ function ReportsPageInner() {
             </Card>
             <Card className="p-5">
               <h2 className="mb-3 text-sm font-semibold text-neutral-900">Shop: top products ({data.kpis.shop_sales} sales)</h2>
-              <HBarList rows={data.top_products.map((p) => ({ label: p.name, value: p.total, hint: `(${p.quantity} sold · margin ${money(p.margin)})` }))} valueLabel={money} />
+              {/* `margin` is the till's profit on the product (tax and discounts out), so it is called what the POS screen calls it. */}
+              <HBarList rows={data.top_products.map((p) => ({ label: p.name, value: p.total, hint: `(${p.quantity} sold · profit ${money(p.margin)})` }))} valueLabel={money} />
             </Card>
             <Card className="p-5">
               <h2 className="mb-3 text-sm font-semibold text-neutral-900">Classes by demand</h2>
