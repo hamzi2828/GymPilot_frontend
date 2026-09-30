@@ -64,8 +64,9 @@ interface Overview {
     hourly: number;
     headcount: number;
     hours: number;
-    people: { id: string; name: string; job_title: string; basis: string; currency: string; hours: number | null; cost: number }[];
-    /** Active trainers with no staff account, so no pay rate to cost them at. */
+    /** `trainer`: costed at the salary on a trainer record with no staff account. */
+    people: { id: string; name: string; job_title: string; basis: string; currency: string; hours: number | null; cost: number; trainer?: boolean }[];
+    /** Active trainers with no staff account and no salary: nothing to cost them at. */
     unlinked_trainers?: number;
     note: string;
   };
@@ -1246,9 +1247,9 @@ function OverviewTab({ data, format }: { data: Overview | null; format: (v: numb
           {!!data.payroll.unlinked_trainers && (
             <p className="mt-3 text-[12px] text-amber-700">
               {data.payroll.unlinked_trainers} active{" "}
-              {data.payroll.unlinked_trainers === 1 ? "trainer is" : "trainers are"} not
-              linked to a staff account, so their hours are recorded but their pay is
-              not in this total. Link them on the Trainers screen to include them.
+              {data.payroll.unlinked_trainers === 1 ? "trainer has" : "trainers have"} no staff
+              account and no salary set, so their pay is not in this total. Link them to a
+              staff account or set a salary on the Trainers screen to include them.
             </p>
           )}
         </Card>

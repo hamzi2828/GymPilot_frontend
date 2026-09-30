@@ -27,7 +27,8 @@ interface Session {
   credit_used: boolean;
   price: number;
   currency: string;
-  commission: { percent: number; amount: number };
+  /** basis: a percent of the session, or a fixed amount per session. */
+  commission: { basis?: "percent" | "amount"; percent: number; amount: number };
   booked_by: string;
   late_cancel: boolean;
   notes: string;
@@ -45,6 +46,15 @@ interface Summary {
   no_show: number;
   value: number;
   commission: number;
+  /** What each completed session earns them. */
+  commission_terms?: { basis: "percent" | "amount"; value: number };
+  /** Paid on a payslip (linked to a staff account) or by hand. */
+  paid_by?: "payslip" | "direct";
+}
+
+function termsLabel(terms?: Summary["commission_terms"]) {
+  if (!terms) return "";
+  return terms.basis === "amount" ? `${terms.value} per session` : `${terms.value}% of each session`;
 }
 interface Slot {
   date: string;
@@ -187,7 +197,12 @@ export default function PtAdminPage() {
                 {t.completed} done · {t.scheduled} upcoming · {t.no_show} missed
               </p>
               <p className="mt-2 text-sm text-neutral-700">
-                Value {t.value.toFixed(0)} · commission <span className="font-semibold">{t.commission.toFixed(0)}</span>
+                Value {t.value.toFixed(0)} · commission payable <span className="font-semibold">{t.commission.toFixed(0)}</span>
+              </p>
+              <p className="mt-1 text-[11px] text-neutral-500">
+                {[termsLabel(t.commission_terms), t.paid_by === "direct" ? "no staff account: pay directly" : t.paid_by === "payslip" ? "paid on the payslip" : ""]
+                  .filter(Boolean)
+                  .join(" · ")}
               </p>
             </div>
           ))}
@@ -210,7 +225,11 @@ export default function PtAdminPage() {
             </div>,
             <span key="p" className="text-xs text-neutral-600">
               {s.credit_used ? "Session pack" : s.price ? `${s.currency} ${s.price} at reception` : "—"}
-              {s.status === "completed" && s.commission.amount ? <span className="block text-[11px] text-neutral-400">commission {s.commission.percent}% = {s.commission.amount}</span> : null}
+              {s.status === "completed" && s.commission.amount ? (
+                <span className="block text-[11px] text-neutral-400">
+                  {s.commission.basis === "amount" ? `commission ${s.commission.amount} (fixed)` : `commission ${s.commission.percent}% = ${s.commission.amount}`}
+                </span>
+              ) : null}
             </span>,
             <div key="s">
               <Badge color={STATUS_TONE[s.status]}>{s.status.replace("_", " ")}</Badge>
