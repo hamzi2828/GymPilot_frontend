@@ -11,7 +11,8 @@ interface Profile {
   id: string;
   firstName: string;
   lastName: string;
-  email: string;
+  /** Empty for a member with no email address. */
+  email?: string | null;
   phone: string;
   dateOfBirth: string | null;
   gender: string;
@@ -162,7 +163,7 @@ export default function MemberProfileModal({ userId, onClose, onSaved }: { userI
     }
   };
 
-  const name = profile ? [profile.firstName, profile.lastName].filter(Boolean).join(" ") || profile.email : "Member";
+  const name = profile ? [profile.firstName, profile.lastName].filter(Boolean).join(" ") || profile.email || "Member" : "Member";
 
   return (
     <Modal open={!!userId} onClose={onClose} title={name} size="xl">
@@ -180,7 +181,9 @@ export default function MemberProfileModal({ userId, onClose, onSaved }: { userI
               )}
             </div>
             <div className="min-w-0 flex-1 text-sm">
-              <p className="font-semibold text-neutral-900">{profile.email}</p>
+              <p className="font-semibold text-neutral-900">
+                {profile.email || <span className="font-normal text-neutral-500">No email address{profile.phone ? ` · ${profile.phone}` : ""}</span>}
+              </p>
               <p className="text-xs text-neutral-500">
                 {profile.memberCode ? `${profile.memberCode} · ` : ""}joined {new Date(profile.createdAt).toLocaleDateString()}
                 {profile.lastVisit ? ` · last visit ${new Date(profile.lastVisit).toLocaleDateString()}` : " · no visits yet"}

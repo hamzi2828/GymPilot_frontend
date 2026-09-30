@@ -34,7 +34,8 @@ interface User {
   _id: string;
   firstName?: string;
   lastName?: string;
-  email: string;
+  /** Absent for a member who has no email address (they sign in with their username). */
+  email?: string | null;
   // A role slug; roles are documents now, so any string a gym has created.
   role?: string;
   createdAt?: string;
@@ -44,6 +45,11 @@ interface User {
   isActive?: boolean;
   /** What the member types into the phone app. Their name plus three digits. */
   username?: string | null;
+}
+
+// Who a row is, in words: a member may have no email, so the name comes first.
+function displayName(user: Pick<User, "firstName" | "lastName" | "email" | "username">) {
+  return [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email || user.username || "this member";
 }
 
 // The gym reads this out to the member, so it needs to be easy to copy and,
@@ -77,11 +83,11 @@ function UsernameCell({
   };
 
   const regenerate = async () => {
-    if (!confirm(`Give ${user.email} a new app username? The one they have now stops working straight away, so you will need to tell them.`)) return;
+    if (!confirm(`Give ${displayName(user)} a new username? The one they have now stops working straight away, so you will need to tell them.`)) return;
     setBusy(true);
     try {
       const r = await apiJson<{ data: { username: string } }>(`${API_BASE}/admin/users/${user._id}/username`, "POST");
-      onNotice("ok", `New username for ${user.email}: ${r.data.username}`);
+      onNotice("ok", `New username for ${displayName(user)}: ${r.data.username}`);
       onRegenerated();
     } catch (e) {
       onNotice("warn", e instanceof Error ? e.message : "Could not issue a new username");
@@ -231,8 +237,14 @@ function UsersAdminPageInner() {
   };
 
   const createUser = async () => {
-    if (!draft.firstName.trim() || !draft.lastName.trim() || !draft.email.trim()) {
-      setCreateErr("First name, last name and email are all required.");
+    if (!draft.firstName.trim() || !draft.lastName.trim()) {
+      setCreateErr("First name and last name are both required.");
+      return;
+    }
+    // No email is fine -- they sign in with their username -- but then the
+    // gym needs a phone number to reach them.
+    if (!draft.email.trim() && !draft.phone.trim()) {
+      setCreateErr("Give an email address or a phone number.");
       return;
     }
     if (credentials === "set" && chosenPassword.length < MIN_PASSWORD_LENGTH) {
@@ -261,6 +273,7 @@ function UsersAdminPageInner() {
       setCreateOpen(false);
       setChosenPassword("");
       const who = `${draft.firstName.trim()} ${draft.lastName.trim()}`.trim() || draft.email;
+      const label = draft.email.trim() || who;
       const appLogin = res.data?.username ? ` Their username is ${res.data.username}.` : "";
       if (res.password) {
         setReveal({
@@ -274,11 +287,11 @@ function UsersAdminPageInner() {
       }
       setNotice(
         res.emailed
-          ? { tone: "ok", text: `${draft.email} was created and their password emailed.${appLogin}` }
+          ? { tone: "ok", text: `${label} was created and their password emailed.${appLogin}` }
           : res.credentials === "email"
             ? {
                 tone: "warn",
-                text: `${draft.email} was created, but the password email failed${
+                text: `${label} was created, but the password email failed${
                   res.emailError ? ` (${res.emailError})` : ""
                 }. Check the SMTP settings.${appLogin}`,
               }
@@ -340,7 +353,7 @@ function UsersAdminPageInner() {
   // Deactivating signs the account out and keeps it out until reactivated;
   // the backend refuses switching yourself or the last administrator off.
   const setActive = async (u: User, isActive: boolean) => {
-    if (!isActive && !confirm(`Deactivate ${u.email}? They are signed out and cannot sign in until reactivated.`)) return;
+    if (!isActive && !confirm(`Deactivate ${displayName(u)}? They are signed out and cannot sign in until reactivated.`)) return;
     try {
       const r = await apiJson<{ message: string }>(`${API_BASE}/update/status/${u._id}`, "PUT", { isActive });
       setNotice({ tone: "ok", text: r.message || (isActive ? "Account reactivated." : "Account deactivated.") });
@@ -376,7 +389,7 @@ function UsersAdminPageInner() {
   const visible = list.filter((u) => {
     if (tagFilter && !(u.tags || []).includes(tagFilter)) return false;
     if (!q) return true;
-    return `${u.firstName || ""} ${u.lastName || ""} ${u.email} ${u.username || ""} ${u.phone || ""} ${u.memberCode || ""}`.toLowerCase().includes(q);
+    return `${u.firstName || ""} ${u.lastName || ""} ${u.email || ""} ${u.username || ""} ${u.phone || ""} ${u.memberCode || ""}`.toLowerCase().includes(q);
   });
 
   return (
@@ -452,7 +465,7 @@ function UsersAdminPageInner() {
                 </p>
               )}
             </div>,
-            u.email,
+            u.email || <span key="e" className="text-xs text-neutral-400">no email</span>,
             <UsernameCell key="u" user={u} canManage={canManage} onRegenerated={load} onNotice={(tone, text) => setNotice({ tone, text })} />,
             <Badge key="r" color={u.role === "admin" ? "blue" : "neutral"}>{roleNames.get(u.role || "user") || u.role || "user"}</Badge>,
             // `isActive` is what the account model stores and what sign-in
@@ -469,7 +482,7 @@ function UsersAdminPageInner() {
                     onClick={() =>
                       setPasswordFor({
                         endpoint: `${API_BASE}/admin/users/${u._id}/password`,
-                        who: [u.firstName, u.lastName].filter(Boolean).join(" ") || u.email,
+                        who: displayName(u),
                         username: u.username,
                       })
                     }
@@ -478,7 +491,7 @@ function UsersAdminPageInner() {
                   </SecondaryButton>
                   <SecondaryButton
                     onClick={async () => {
-                      if (!confirm(`Record that ${u.email} has consented to fingerprint storage (signed form)?`)) return;
+                      if (!confirm(`Record that ${displayName(u)} has consented to fingerprint storage (signed form)?`)) return;
                       try {
                         const r = await apiJson<{ message: string }>(`${API_BASE}/admin/users/${u._id}/consent`, "PUT", { biometric: true });
                         setNotice({ tone: "ok", text: r.message });
@@ -491,7 +504,7 @@ function UsersAdminPageInner() {
                   </SecondaryButton>
                   <SecondaryButton
                     onClick={async () => {
-                      if (!confirm(`Sign ${u.email} out of every device?`)) return;
+                      if (!confirm(`Sign ${displayName(u)} out of every device?`)) return;
                       try {
                         const r = await apiJson<{ message: string }>(`${API_BASE}/admin/users/${u._id}/logout-all`, "POST");
                         setNotice({ tone: "ok", text: r.message });
@@ -527,15 +540,41 @@ function UsersAdminPageInner() {
             <TextField label="First Name" value={draft.firstName} onChange={(v) => setDraft({ ...draft, firstName: v })} />
             <TextField label="Last Name" value={draft.lastName} onChange={(v) => setDraft({ ...draft, lastName: v })} />
           </div>
-          <TextField label="Email" type="email" value={draft.email} onChange={(v) => setDraft({ ...draft, email: v })} />
-          <TextField label="Phone (optional)" value={draft.phone} onChange={(v) => setDraft({ ...draft, phone: v })} />
+          <TextField
+            label="Email (optional)"
+            type="email"
+            value={draft.email}
+            onChange={(v) => {
+              setDraft({ ...draft, email: v });
+              // Nowhere to email a password without an address.
+              if (!v.trim() && credentials === "email") setCredentials("show");
+            }}
+            placeholder="Leave empty if they have none"
+          />
+          <TextField
+            label={draft.email.trim() ? "Phone (optional)" : "Phone"}
+            value={draft.phone}
+            onChange={(v) => setDraft({ ...draft, phone: v })}
+            required={!draft.email.trim()}
+          />
+          {!draft.email.trim() && (
+            <p className="-mt-2 text-xs text-neutral-500">
+              Without an email they sign in with their username, and you give them their password.
+            </p>
+          )}
           <SelectField
             label="Role"
             value={draft.role}
             onChange={(v) => setDraft({ ...draft, role: v })}
             options={roleOptions}
           />
-          <CredentialsChoice mode={credentials} onMode={setCredentials} password={chosenPassword} onPassword={setChosenPassword} />
+          <CredentialsChoice
+            mode={credentials}
+            onMode={setCredentials}
+            password={chosenPassword}
+            onPassword={setChosenPassword}
+            hasEmail={!!draft.email.trim()}
+          />
 
           {createErr && (
             <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
@@ -563,9 +602,9 @@ function UsersAdminPageInner() {
           <div className="space-y-4">
             <div className="text-sm">
               <p className="font-medium text-neutral-900">
-                {[assignFor.firstName, assignFor.lastName].filter(Boolean).join(" ") || assignFor.email}
+                {displayName(assignFor)}
               </p>
-              <p className="text-neutral-500">{assignFor.email}</p>
+              <p className="text-neutral-500">{assignFor.email || assignFor.phone || ""}</p>
             </div>
 
             <p className="text-sm text-neutral-500">
@@ -639,8 +678,8 @@ function UsersAdminPageInner() {
         {selected && (
           <div className="space-y-4">
             <div className="text-sm">
-              <p className="text-neutral-900 font-medium">{[selected.firstName, selected.lastName].filter(Boolean).join(" ") || selected.email}</p>
-              <p className="text-neutral-500">{selected.email}</p>
+              <p className="text-neutral-900 font-medium">{displayName(selected)}</p>
+              <p className="text-neutral-500">{selected.email || selected.phone || ""}</p>
             </div>
             <SelectField
               label="Role"
