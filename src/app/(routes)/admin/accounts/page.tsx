@@ -159,9 +159,13 @@ interface AssetRow {
   unit_cost: number;
   total_cost: number;
   currency: string;
+  /** The gym-local 'YYYY-MM-DD' (or ''), what a date input holds. */
+  purchased_date: string;
   purchased_label: string | null;
   supplier: string;
+  invoice_no: string;
   serial_number: string;
+  warranty_date: string;
   warranty_label: string | null;
   warranty_active: boolean;
   location: string;
@@ -172,6 +176,7 @@ interface AssetRow {
   age_years: number | null;
   depreciation: number;
   book_value: number;
+  last_serviced_date: string;
   last_serviced_label: string | null;
   next_service_label: string | null;
   service_interval_days: number;
@@ -504,6 +509,9 @@ export default function AccountsAdminPage() {
 
   // ---- Asset form ---------------------------------------------------------
 
+  // Every field is filled from the row. The save sends the whole form, and
+  // the server reads a blank as "clear it" -- so a field left empty here used
+  // to wipe the warranty date and invoice number on every unrelated edit.
   const openAsset = (row?: AssetRow) => {
     if (row) {
       setEditingAsset(row);
@@ -513,18 +521,18 @@ export default function AccountsAdminPage() {
         quantity: String(row.quantity),
         unitCost: String(row.unit_cost),
         currency: row.currency,
-        purchasedOn: "",
+        purchasedOn: row.purchased_date || "",
         supplier: row.supplier,
-        invoiceNo: "",
+        invoiceNo: row.invoice_no || "",
         serialNumber: row.serial_number,
-        warrantyUntil: "",
+        warrantyUntil: row.warranty_date || "",
         location: row.location,
         condition: row.condition,
         status: row.status,
         usefulLifeYears: String(row.useful_life_years || ""),
         salvageValue: String(row.salvage_value || ""),
         serviceIntervalDays: String(row.service_interval_days || ""),
-        lastServicedOn: "",
+        lastServicedOn: row.last_serviced_date || "",
         notes: row.notes,
         recordExpense: false,
       });
@@ -968,6 +976,7 @@ export default function AccountsAdminPage() {
             <TextField label="Currency" value={assetDraft.currency} onChange={(v) => setAssetDraft({ ...assetDraft, currency: v })} />
             <TextField label="Bought on" type="date" value={assetDraft.purchasedOn} onChange={(v) => setAssetDraft({ ...assetDraft, purchasedOn: v })} />
             <TextField label="Supplier" value={assetDraft.supplier} onChange={(v) => setAssetDraft({ ...assetDraft, supplier: v })} />
+            <TextField label="Invoice no." value={assetDraft.invoiceNo} onChange={(v) => setAssetDraft({ ...assetDraft, invoiceNo: v })} />
             <TextField label="Where it lives" value={assetDraft.location} onChange={(v) => setAssetDraft({ ...assetDraft, location: v })} placeholder="Cardio floor" />
             <TextField label="Serial number" value={assetDraft.serialNumber} onChange={(v) => setAssetDraft({ ...assetDraft, serialNumber: v })} />
             <TextField label="Warranty until" type="date" value={assetDraft.warrantyUntil} onChange={(v) => setAssetDraft({ ...assetDraft, warrantyUntil: v })} />
