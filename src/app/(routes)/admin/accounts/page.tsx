@@ -48,11 +48,38 @@ interface CurrencyNotice {
   message: string;
 }
 
+/** One line of the profit and loss, in every currency it was recorded in. */
+type PnlLine = Totals & {
+  key: string;
+  label: string;
+  /** Taken off revenue (refunds). */
+  deducted?: boolean;
+  /** Trainer commission only: the part from memberships and from PT sessions. */
+  memberships?: Totals;
+  personal_training?: Totals;
+};
+
 interface Overview {
   base_currency: string;
   currency_notice: CurrencyNotice | null;
   range: { from: string; to: string; label: string; today: string };
-  income: Totals & { refunds: Totals; orders: number; source: string };
+  income: Totals & { refunds: Totals; shop?: Totals; orders: number; source: string };
+  /**
+   * Revenue and outflow line by line, each cost counted once: a paid
+   * payslip's salary expense and an asset's purchase expense stand aside
+   * (set_aside) for the payslip and the asset.
+   */
+  profit_and_loss?: {
+    currency: string;
+    revenue: PnlLine[];
+    outflow: PnlLine[];
+    total_revenue: number;
+    total_outflow: number;
+    net_profit: number;
+    margin: number | null;
+    mixed_currencies: boolean;
+    set_aside: { payslip_expenses: number; asset_purchase_expenses: number };
+  };
   spending: {
     paid: Totals;
     pending: Totals;
@@ -276,6 +303,7 @@ function presetsFor(today: string) {
   const prevEnd = shiftKey(lastMonthEnd, -1);
 
   return [
+    { id: "today", label: "Today", from: today, to: today },
     { id: "mtd", label: "This month", from: monthStart(today), to: today },
     { id: "last", label: "Last month", from: monthStart(prevEnd), to: prevEnd },
     { id: "90", label: "Last 90 days", from: shiftKey(today, -89), to: today },
@@ -685,6 +713,15 @@ function AccountsAdminPageInner() {
       lines = overview.trend.points.map((point) => [
         point.label, String(point.revenue), String(point.expense), String(point.net),
       ]);
+      // The profit and loss after the trend, in the base currency like it.
+      const pnl = overview.profit_and_loss;
+      if (pnl) {
+        lines.push([], ["Profit and loss", "Amount", "Currency", ""]);
+        for (const line of pnl.revenue) lines.push([line.deducted ? `Less ${line.label.toLowerCase()}` : line.label, String(line.deducted ? -line.base_amount : line.base_amount), pnl.currency, ""]);
+        lines.push(["Total revenue", String(pnl.total_revenue), pnl.currency, ""]);
+        for (const line of pnl.outflow) lines.push([line.label, String(line.base_amount), pnl.currency, ""]);
+        lines.push(["Total outflow", String(pnl.total_outflow), pnl.currency, ""], ["Net profit", String(pnl.net_profit), pnl.currency, ""]);
+      }
     }
 
     const csv = [header, ...lines].map((row) => row.map(escape).join(",")).join("\r\n");
@@ -1168,19 +1205,19 @@ function OverviewTab({ data, format }: { data: Overview | null; format: (v: numb
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         <Stat
-          label="Money in"
+          label="Revenue"
           value={format(data.result.gross_income, data.base_currency)}
-          hint={`${data.income.orders} sale${data.income.orders === 1 ? "" : "s"}`}
+          hint={`${data.income.orders} sale${data.income.orders === 1 ? "" : "s"} · after refunds`}
           accent={SERIES_IN}
         />
         <Stat
-          label="Money out"
+          label="Outflow"
           value={format(data.result.expenses, data.base_currency)}
-          hint={`${data.spending.entries} entr${data.spending.entries === 1 ? "y" : "ies"}`}
+          hint="commission, expenses, assets, salaries"
           accent={SERIES_OUT}
         />
         <Stat
-          label="Net"
+          label="Net profit"
           value={format(net, data.base_currency)}
           tone={net >= 0 ? "good" : "bad"}
           hint={data.result.margin !== null ? `${data.result.margin}% margin` : undefined}
@@ -1208,6 +1245,8 @@ function OverviewTab({ data, format }: { data: Overview | null; format: (v: numb
         </p>
         <TrendChart points={data.trend.points} currency={data.base_currency} format={format} />
       </Card>
+
+      {data.profit_and_loss && <ProfitAndLoss pnl={data.profit_and_loss} format={format} />}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <Card className="p-5">
@@ -1267,6 +1306,10 @@ function OverviewTab({ data, format }: { data: Overview | null; format: (v: numb
             <dd className="text-neutral-800">{format(data.income.refunds.base_amount, data.base_currency)}</dd>
           </div>
           <div className="flex justify-between border-b border-neutral-100 py-1.5">
+            <dt className="text-neutral-500">Shop / POS takings</dt>
+            <dd className="text-neutral-800">{format(data.income.shop?.base_amount ?? 0, data.base_currency)}</dd>
+          </div>
+          <div className="flex justify-between border-b border-neutral-100 py-1.5">
             <dt className="text-neutral-500">Unpaid bills outstanding</dt>
             <dd className="text-neutral-800">
               {format(data.spending.pending.headline_amount, data.spending.pending.headline_currency)}
@@ -1281,11 +1324,74 @@ function OverviewTab({ data, format }: { data: Overview | null; format: (v: numb
           </div>
         </dl>
         <p className="mt-3 text-[12px] text-neutral-400">
-          Day passes, personal training and counter sales are not included — they are not recorded in
-          this system yet.
+          Unpaid bills are not in the outflow until they are paid. Day passes and personal training paid
+          at the desk are not included — they are not recorded as sales in this system yet.
         </p>
       </Card>
     </div>
+  );
+}
+
+// The profit and loss, line by line: revenue less refunds, less every outflow
+// line, in the base currency, with any other currency noted on its line.
+function ProfitAndLoss({ pnl, format }: { pnl: NonNullable<Overview["profit_and_loss"]>; format: (v: number, c?: string) => string }) {
+  const row = (line: PnlLine) => (
+    <div key={line.key} className="flex items-baseline justify-between border-b border-neutral-100 py-1.5">
+      <dt className="text-neutral-600">
+        {line.deducted ? `Less ${line.label.toLowerCase()}` : line.label}
+        {line.key === "trainer_commission" && line.memberships && line.personal_training && (
+          <span className="ml-1 text-[11px] text-neutral-400">
+            memberships {format(line.memberships.base_amount, pnl.currency)} · PT {format(line.personal_training.base_amount, pnl.currency)}
+          </span>
+        )}
+      </dt>
+      <dd className="whitespace-nowrap tabular-nums text-neutral-800">
+        {line.deducted && line.base_amount ? "−" : ""}
+        {format(line.base_amount, pnl.currency)}
+        <MixedNote totals={line} format={format} />
+      </dd>
+    </div>
+  );
+  const total = (label: string, value: number, tone?: "good" | "bad") => (
+    <div className="flex items-baseline justify-between py-2 font-semibold">
+      <dt className="text-neutral-900">{label}</dt>
+      <dd className={`tabular-nums ${tone === "good" ? "text-emerald-700" : tone === "bad" ? "text-rose-600" : "text-neutral-900"}`}>{format(value, pnl.currency)}</dd>
+    </div>
+  );
+  const setAside = pnl.set_aside.payslip_expenses + pnl.set_aside.asset_purchase_expenses;
+
+  return (
+    <Card className="p-5">
+      <h2 className="mb-1 text-sm font-semibold text-neutral-900">Profit and loss</h2>
+      <p className="mb-4 text-[12px] text-neutral-500">
+        {pnl.currency} · each cost counted once
+        {setAside > 0 &&
+          ` · ${setAside} expense${setAside === 1 ? "" : "s"} counted under salaries or asset purchases instead`}
+      </p>
+      <div className="grid grid-cols-1 gap-x-8 gap-y-4 text-[13px] lg:grid-cols-2">
+        <div>
+          <h3 className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-neutral-500">Revenue</h3>
+          <dl>
+            {pnl.revenue.map(row)}
+            {total("Total revenue", pnl.total_revenue)}
+          </dl>
+        </div>
+        <div>
+          <h3 className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-neutral-500">Outflow</h3>
+          <dl>
+            {pnl.outflow.map(row)}
+            {total("Total outflow", pnl.total_outflow)}
+          </dl>
+        </div>
+      </div>
+      <dl className="mt-2 border-t border-neutral-200">
+        {total(
+          pnl.margin !== null ? `Net profit · ${pnl.margin}% margin` : "Net profit",
+          pnl.net_profit,
+          pnl.net_profit >= 0 ? "good" : "bad"
+        )}
+      </dl>
+    </Card>
   );
 }
 
