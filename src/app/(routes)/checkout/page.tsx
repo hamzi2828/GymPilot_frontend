@@ -29,6 +29,9 @@ const CheckoutPageContent = () => {
   const [methodsError, setMethodsError] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethodKey>("stripe");
   const [coupon, setCoupon] = useState<CouponPreview | null>(null);
+  // Whether the joining fee will be charged: only with a member's first
+  // membership. null when it is not known (the summary then says so).
+  const [joiningFeeDue, setJoiningFeeDue] = useState<boolean | null>(null);
 
   const retryMethods = async () => {
     setMethodsError(false);
@@ -52,10 +55,12 @@ const CheckoutPageContent = () => {
       }
 
       try {
-        const [packages, available] = await Promise.all([
+        const [packages, available, feeDue] = await Promise.all([
           packageId ? packageService.getActivePackages() : Promise.resolve([] as Package[]),
           checkoutService.getPaymentMethods().catch(() => null),
+          checkoutService.getJoiningFeeDue().catch(() => null),
         ]);
+        setJoiningFeeDue(feeDue);
         setMethods(available);
         setMethodsError(!available);
         if (available) setPaymentMethod(available.card ? "stripe" : "bank_transfer");
@@ -129,6 +134,7 @@ const CheckoutPageContent = () => {
               onPaymentMethodChange={setPaymentMethod}
               coupon={coupon}
               onCouponChange={setCoupon}
+              joiningFeeDue={joiningFeeDue}
             />
           </div>
         </div>
