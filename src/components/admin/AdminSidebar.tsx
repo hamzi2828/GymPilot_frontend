@@ -33,6 +33,7 @@ import {
   FiBarChart2,
   FiShoppingCart,
   FiArchive,
+  FiCreditCard,
 } from "react-icons/fi";
 // Feather has no fingerprint; this is the one entry drawn from another set.
 import { MdFingerprint } from "react-icons/md";
@@ -82,6 +83,8 @@ const sections: MenuSection[] = [
     heading: "Sales",
     items: [
       { name: "Package Orders", path: "/admin/package-orders", icon: <FiShoppingBag className={iconCls} />, tab: "package-orders" },
+      // The front desk's fee till: renewals, dues and first memberships.
+      { name: "Collect fees", path: "/admin/fee-collection", icon: <FiCreditCard className={iconCls} />, tab: "package-orders" },
       { name: "Fee expiry", path: "/admin/fee-expiry", icon: <FiWatch className={iconCls} />, tab: "package-orders" },
       { name: "Registrations", path: "/admin/package-registrations", icon: <FiClipboard className={iconCls} />, tab: "registrations" },
       { name: "Coupons", path: "/admin/coupons", icon: <FiTag className={iconCls} />, tab: "coupons" },
