@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { FiAlertTriangle, FiDownload, FiRefreshCw, FiSearch } from "react-icons/fi";
 import {
   PageHeader,
@@ -16,7 +17,7 @@ import {
   EmptyState,
   Select2,
 } from "../_shared/ui";
-import { ACCOUNTS_API, apiGet, apiJson } from "../_shared/api";
+import { ACCOUNTS_API, apiGet, apiJson, replaceParams } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
 import { TrendChart, CategoryBars, useMoneyFormatter, SERIES_IN, SERIES_OUT, TrendPoint } from "./_charts";
 import { ManageHeadsModal } from "./_heads";
@@ -191,6 +192,10 @@ interface AssetRow {
 
 interface AssetsResponse {
   base_currency: string;
+  /** The purchase dates the register is narrowed to; null for every date. */
+  purchased?: { from: string; to: string; label: string } | null;
+  /** How far ahead the bell looks: services due, warranties ending. */
+  reminder_windows?: { service_due_days: number; warranty_days: number };
   /** What a new asset is recorded in: the Settings currency. */
   record_currency?: string;
   currency_notice: CurrencyNotice | null;
@@ -206,12 +211,15 @@ interface AssetsResponse {
     service_overdue: number;
     service_soon: number;
     needs_attention: number;
+    service_due?: number;
+    warranty_ending?: number;
     by_category: { category: string; label: string; count: number; totals: Totals }[];
   };
   assets: AssetRow[];
 }
 
 type Tab = "overview" | "sales" | "expenses" | "assets";
+const TABS: Tab[] = ["overview", "sales", "expenses", "assets"];
 
 // A filter's head options: the ones in use, then the archived ones -- old rows
 // are still filed under those.
@@ -354,13 +362,25 @@ const emptyAsset = {
   recordExpense: true,
 };
 
-export default function AccountsAdminPage() {
+function AccountsAdminPageInner() {
   const { can } = usePermissions();
   const editable = can("accounts", "manage");
 
-  const [tab, setTab] = useState<Tab>("overview");
+  // The address can open a tab already filtered (?tab=assets&service=due,
+  // from the admin bell), read again whenever it changes.
+  const searchParams = useSearchParams();
+  const urlTab = TABS.find((entry) => entry === searchParams.get("tab")) || null;
+  const urlService = ["overdue", "soon", "due"].find((entry) => entry === searchParams.get("service")) || null;
+  const urlWarranty = searchParams.get("warranty") === "ending" ? "ending" : null;
+
+  const [tab, setTab] = useState<Tab>(urlTab || "overview");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
+  // The register's purchase dates, apart from the money tabs' period: it
+  // opens on every date, since a register showing only this month's
+  // purchases would look as if the gym owned nothing.
+  const [assetFrom, setAssetFrom] = useState("");
+  const [assetTo, setAssetTo] = useState("");
   const [today, setToday] = useState(() => new Date().toISOString().slice(0, 10));
 
   const [loading, setLoading] = useState(true);
@@ -377,7 +397,14 @@ export default function AccountsAdminPage() {
   const [expenseStatus, setExpenseStatus] = useState("all");
   const [assetCategory, setAssetCategory] = useState("all");
   const [assetStatus, setAssetStatus] = useState("all");
-  const [assetService, setAssetService] = useState("all");
+  const [assetService, setAssetService] = useState(urlService || "all");
+  const [assetWarranty, setAssetWarranty] = useState(urlWarranty || "all");
+
+  useEffect(() => {
+    if (urlTab) setTab(urlTab);
+    if (urlService) setAssetService(urlService);
+    if (urlWarranty) setAssetWarranty(urlWarranty);
+  }, [urlTab, urlService, urlWarranty]);
 
   const [search, setSearch] = useState("");
   const [q, setQ] = useState("");
@@ -436,9 +463,15 @@ export default function AccountsAdminPage() {
         if (!from) setFrom(res.range.from);
         if (!to) setTo(res.range.to);
       } else {
+        // Purchase dates, not the money tabs' period; none means every date.
+        params.delete("from");
+        params.delete("to");
+        if (assetFrom) params.set("from", assetFrom);
+        if (assetTo) params.set("to", assetTo);
         if (assetCategory !== "all") params.set("category", assetCategory);
         if (assetStatus !== "all") params.set("status", assetStatus);
         if (assetService !== "all") params.set("service", assetService);
+        if (assetWarranty !== "all") params.set("warranty", assetWarranty);
         const res = await apiGet<AssetsResponse>(`${ACCOUNTS_API}/assets?${params}`);
         setAssets(res);
       }
@@ -447,14 +480,24 @@ export default function AccountsAdminPage() {
     } finally {
       setLoading(false);
     }
-  }, [tab, from, to, q, salesStatus, expenseCategory, expenseStatus, assetCategory, assetStatus, assetService]);
+  }, [tab, from, to, assetFrom, assetTo, q, salesStatus, expenseCategory, expenseStatus, assetCategory, assetStatus, assetService, assetWarranty]);
 
   useEffect(() => {
     load();
   }, [load]);
 
-  const presets = useMemo(() => presetsFor(today), [today]);
-  const activePreset = presets.find((preset) => preset.from === from && preset.to === to)?.id || "custom";
+  // The date row drives the period on the money tabs and the purchase dates
+  // on the register, which alone can be cleared to every date.
+  const onAssets = tab === "assets";
+  const shownFrom = onAssets ? assetFrom : from;
+  const shownTo = onAssets ? assetTo : to;
+  const setShownFrom = onAssets ? setAssetFrom : setFrom;
+  const setShownTo = onAssets ? setAssetTo : setTo;
+  const presets = useMemo(
+    () => (onAssets ? [{ id: "any", label: "Any date", from: "", to: "" }, ...presetsFor(today)] : presetsFor(today)),
+    [today, onAssets]
+  );
+  const activePreset = presets.find((preset) => preset.from === shownFrom && preset.to === shownTo)?.id || "custom";
 
   // ---- Expense form -------------------------------------------------------
 
@@ -630,10 +673,11 @@ export default function AccountsAdminPage() {
         row.currency, row.status, row.payment_method, row.vendor,
       ]);
     } else if (tab === "assets" && assets) {
-      header = ["Tag", "Name", "Category", "Qty", "Cost", "Book value", "Currency", "Condition", "Status", "Location", "Next service"];
+      header = ["Tag", "Name", "Category", "Qty", "Cost", "Book value", "Currency", "Condition", "Status", "Location", "Bought", "Invoice", "Warranty until", "Next service"];
       lines = assets.assets.map((row) => [
         row.tag, row.name, row.category_label, String(row.quantity), String(row.total_cost),
-        String(row.book_value), row.currency, row.condition, row.status, row.location, row.next_service_label || "",
+        String(row.book_value), row.currency, row.condition, row.status, row.location, row.purchased_date,
+        row.invoice_no, row.warranty_date, row.next_service_label || "",
       ]);
     } else if (overview) {
       header = ["Period", "Money in", "Money out", "Net"];
@@ -647,12 +691,13 @@ export default function AccountsAdminPage() {
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = `accounts-${tab}-${from || today}-to-${to || today}.csv`;
+    anchor.download =
+      tab === "assets"
+        ? `accounts-assets-${assetFrom || assetTo ? `${assetFrom || "start"}-to-${assetTo || today}` : "all-dates"}.csv`
+        : `accounts-${tab}-${from || today}-to-${to || today}.csv`;
     anchor.click();
     URL.revokeObjectURL(url);
   };
-
-  const showDates = tab !== "assets";
 
   return (
     <div>
@@ -699,44 +744,42 @@ export default function AccountsAdminPage() {
 
       {/* One filter row above everything it scopes -- never a filter inside a card. */}
       <Card className="mb-6 p-4">
-        {showDates && (
-          <div className="mb-4 flex flex-wrap items-center gap-2">
-            {presets.map((preset) => (
-              <button
-                key={preset.id}
-                type="button"
-                onClick={() => {
-                  setFrom(preset.from);
-                  setTo(preset.to);
-                }}
-                className={`h-8 rounded-lg px-3 text-[13px] font-medium transition-colors ${
-                  activePreset === preset.id
-                    ? "bg-neutral-900 text-white"
-                    : "border border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900"
-                }`}
-              >
-                {preset.label}
-              </button>
-            ))}
-            <span className="ml-auto text-[12px] text-neutral-400">
-              {overview?.range.label || sales?.range.label || expenses?.range.label}
-            </span>
-          </div>
-        )}
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          {presets.map((preset) => (
+            <button
+              key={preset.id}
+              type="button"
+              onClick={() => {
+                setShownFrom(preset.from);
+                setShownTo(preset.to);
+              }}
+              className={`h-8 rounded-lg px-3 text-[13px] font-medium transition-colors ${
+                activePreset === preset.id
+                  ? "bg-neutral-900 text-white"
+                  : "border border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900"
+              }`}
+            >
+              {preset.label}
+            </button>
+          ))}
+          <span className="ml-auto text-[12px] text-neutral-400">
+            {onAssets
+              ? assets?.purchased
+                ? `Bought ${assets.purchased.label}`
+                : "Bought on any date"
+              : overview?.range.label || sales?.range.label || expenses?.range.label}
+          </span>
+        </div>
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {showDates && (
-            <>
-              <label className="block">
-                <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-neutral-500">From</span>
-                <input type="date" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} className={fieldCls} />
-              </label>
-              <label className="block">
-                <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-neutral-500">To</span>
-                <input type="date" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} className={fieldCls} />
-              </label>
-            </>
-          )}
+          <label className="block">
+            <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-neutral-500">{onAssets ? "Bought from" : "From"}</span>
+            <input type="date" value={shownFrom} max={shownTo || undefined} onChange={(e) => setShownFrom(e.target.value)} className={fieldCls} />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-neutral-500">{onAssets ? "Bought to" : "To"}</span>
+            <input type="date" value={shownTo} min={shownFrom || undefined} onChange={(e) => setShownTo(e.target.value)} className={fieldCls} />
+          </label>
 
           {tab === "sales" && (
             <label className="block">
@@ -812,11 +855,30 @@ export default function AccountsAdminPage() {
                 <Select2
                   ariaLabel="Servicing"
                   value={assetService}
-                  onChange={setAssetService}
+                  onChange={(v) => {
+                    setAssetService(v);
+                    replaceParams({ service: v === "all" ? null : v });
+                  }}
                   options={[
                     { value: "all", label: "Everything" },
                     { value: "overdue", label: "Service overdue" },
+                    { value: "due", label: `Due within ${assets?.reminder_windows?.service_due_days ?? 7} days or overdue` },
                     { value: "soon", label: "Due within 30 days" },
+                  ]}
+                />
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-neutral-500">Warranty</span>
+                <Select2
+                  ariaLabel="Warranty"
+                  value={assetWarranty}
+                  onChange={(v) => {
+                    setAssetWarranty(v);
+                    replaceParams({ warranty: v === "all" ? null : v });
+                  }}
+                  options={[
+                    { value: "all", label: "Any" },
+                    { value: "ending", label: `Ending within ${assets?.reminder_windows?.warranty_days ?? 30} days` },
                   ]}
                 />
               </label>
@@ -851,7 +913,10 @@ export default function AccountsAdminPage() {
           <button
             key={entry.id}
             type="button"
-            onClick={() => setTab(entry.id)}
+            onClick={() => {
+              setTab(entry.id);
+              replaceParams({ tab: entry.id === "overview" ? null : entry.id });
+            }}
             className={`-mb-px border-b-2 px-4 py-2.5 text-sm font-medium transition-colors ${
               tab === entry.id
                 ? "border-[var(--accent)] text-neutral-900"
@@ -1063,6 +1128,15 @@ export default function AccountsAdminPage() {
         </div>
       </Modal>
     </div>
+  );
+}
+
+export default function AccountsAdminPage() {
+  // useSearchParams requires a Suspense boundary during prerender.
+  return (
+    <Suspense fallback={<Spinner />}>
+      <AccountsAdminPageInner />
+    </Suspense>
   );
 }
 
@@ -1484,6 +1558,9 @@ function AssetsTab({
                       <div className="text-[11px] text-neutral-400">
                         {[row.tag, row.location, row.purchased_label ? `bought ${row.purchased_label}` : ""].filter(Boolean).join(" · ")}
                       </div>
+                      {row.warranty_active && row.warranty_label && (
+                        <div className="text-[11px] text-neutral-400">warranty until {row.warranty_label}</div>
+                      )}
                     </td>
                     <td className="px-5 py-3 text-neutral-700">{row.category_label}</td>
                     <td className="whitespace-nowrap px-5 py-3 tabular-nums text-neutral-700">{format(row.total_cost, row.currency)}</td>
