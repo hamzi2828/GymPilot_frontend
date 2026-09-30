@@ -47,7 +47,14 @@ interface Dashboard {
     new_this_month: number;
     expiring_window_days: number;
   };
-  attendance_today: { member: number; staff: number; still_in: number; paid: number; unpaid: number };
+  attendance_today: {
+    member: number;
+    staff: number;
+    still_in: number;
+    paid: number;
+    unpaid: number;
+    balance_due?: number;
+  };
   classes_today: {
     count: number;
     booked: number;
@@ -219,9 +226,11 @@ export default function AdminHomePage() {
         <Stat
           label="Members in today"
           value={data.attendance_today.member}
-          hint={`${data.attendance_today.paid} paid · ${data.attendance_today.unpaid} unpaid · ${
-            data.attendance_today.staff
-          } staff${data.attendance_today.still_in > 0 ? ` · ${data.attendance_today.still_in} still in` : ""}`}
+          hint={`${data.attendance_today.paid} paid${
+            data.attendance_today.balance_due ? ` (${data.attendance_today.balance_due} owing)` : ""
+          } · ${data.attendance_today.unpaid} unpaid · ${data.attendance_today.staff} staff${
+            data.attendance_today.still_in > 0 ? ` · ${data.attendance_today.still_in} still in` : ""
+          }`}
           href="/admin/attendance"
           tone={data.attendance_today.unpaid > 0 ? "warn" : "neutral"}
         />
