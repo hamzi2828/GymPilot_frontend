@@ -19,6 +19,7 @@ import {
 } from "../_shared/ui";
 import { ACCOUNTS_API, apiGet, apiJson, replaceParams } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
+import { useGymToday } from "@/components/ThemeProvider";
 import { TrendChart, CategoryBars, useMoneyFormatter, SERIES_IN, SERIES_OUT, TrendPoint } from "./_charts";
 import { ManageHeadsModal } from "./_heads";
 
@@ -410,7 +411,9 @@ function AccountsAdminPageInner() {
   // purchases would look as if the gym owned nothing.
   const [assetFrom, setAssetFrom] = useState("");
   const [assetTo, setAssetTo] = useState("");
-  const [today, setToday] = useState(() => new Date().toISOString().slice(0, 10));
+  // The gym's day until the overview answers with the server's own.
+  const gymToday = useGymToday();
+  const [today, setToday] = useState(() => gymToday());
 
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);

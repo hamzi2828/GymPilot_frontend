@@ -17,6 +17,29 @@ export function localDateKey(date: Date = new Date()): string {
 }
 
 /**
+ * Today's (or `date`'s) calendar date at the gym: in its IANA timezone (the
+ * public settings' `ianaTimezone`), which is the day the server files
+ * everything under, so an admin page's "Today" is the gym's day even from a
+ * laptop in another country.
+ *
+ * Until the zone is known -- or when this browser does not recognise it --
+ * the visitor's own calendar date, which for staff at the gym is the same.
+ */
+export function gymDateKey(timeZone?: string | null, date: Date = new Date()): string {
+  if (timeZone) {
+    try {
+      const parts = new Intl.DateTimeFormat("en-US", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(date);
+      const part = (type: string) => parts.find((entry) => entry.type === type)?.value;
+      const [y, m, d] = [part("year"), part("month"), part("day")];
+      if (y && m && d) return `${y}-${m}-${d}`;
+    } catch {
+      /* not a zone this browser knows: fall back below */
+    }
+  }
+  return localDateKey(date);
+}
+
+/**
  * A stored date as the value an <input type="date"> expects, or "" when there
  * is none. Empty must stay empty: filling in today would be saved as the
  * person's birthday the next time they edit anything else.

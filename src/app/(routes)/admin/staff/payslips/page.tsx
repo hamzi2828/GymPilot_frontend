@@ -8,6 +8,7 @@ import { useCallback, useEffect, useState } from "react";
 import { PageHeader, Card, PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, TextArea, SelectField, Badge, Spinner, Table, ErrorState } from "../../_shared/ui";
 import { API_BASE, apiGet, apiJson, authHeaders } from "../../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
+import { useGymToday } from "@/components/ThemeProvider";
 
 interface Line {
   id?: string;
@@ -38,7 +39,6 @@ interface Payslip {
   notes: string;
 }
 
-const today = () => new Date().toISOString().slice(0, 10);
 const monthStart = (key: string) => `${key.slice(0, 7)}-01`;
 const TONE: Record<Payslip["status"], "neutral" | "blue" | "green" | "rose"> = { draft: "neutral", issued: "blue", paid: "green", void: "rose" };
 const fmt = (n: number, c: string) => `${c} ${Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -54,6 +54,7 @@ const PAYMENT_METHODS = [
 ];
 
 export default function PayslipsPage() {
+  const today = useGymToday();
   const { can } = usePermissions();
   const editable = can("staff", "manage");
   const [from, setFrom] = useState(monthStart(today()));

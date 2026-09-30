@@ -9,6 +9,7 @@ import { FiPlus } from "react-icons/fi";
 import { PageHeader, PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, SelectField, Badge, Spinner, Table } from "../_shared/ui";
 import { GYMFOLIO_API, apiGet, apiJson } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
+import { useGymToday } from "@/components/ThemeProvider";
 
 interface Exception {
   id: string;
@@ -32,13 +33,13 @@ interface TrainerOption {
 }
 
 const ALL = 500;
-const today = () => new Date().toISOString().slice(0, 10);
 const weekdayOf = (key: string) => {
   const [y, m, d] = key.split("-").map(Number);
   return ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][new Date(Date.UTC(y, m - 1, d)).getUTCDay()];
 };
 
 export default function TimetableChangesPage() {
+  const today = useGymToday();
   const { can } = usePermissions();
   const editable = can("classes", "manage");
   const [rows, setRows] = useState<Exception[]>([]);
