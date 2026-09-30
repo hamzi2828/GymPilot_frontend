@@ -132,6 +132,8 @@ export interface RestoreResult {
   dropped: string[];
   kept: string[];
   safetyBackup: string;
+  /** Every session ended with the restore, this one included. */
+  signedOut?: boolean;
 }
 
 export async function previewRestore(backupId: string): Promise<RestorePreview> {

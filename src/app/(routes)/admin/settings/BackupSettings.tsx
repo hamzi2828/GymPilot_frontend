@@ -129,9 +129,13 @@ export default function BackupSettings() {
     setRestoring(null);
     setNotice({
       tone: "ok",
-      text: `Restored ${result.documents.toLocaleString()} records in ${result.collections.length} collections. The gym as it was just before is kept as a backup listed "Before a restore".`,
+      text: `Restored ${result.documents.toLocaleString()} records in ${result.collections.length} collections. The gym as it was just before is kept as a backup listed "Before a restore".${
+        result.signedOut ? " Everyone has been signed out, you included: sign in again to carry on." : ""
+      }`,
     });
-    await load();
+    // This session ended with the restore, so a reload would only find that
+    // out and leave for the sign-in page before the notice could be read.
+    if (!result.signedOut) await load();
   };
 
   if (loading) return <Spinner />;

@@ -91,7 +91,7 @@ export default function RestoreDialog({
                 <p className="mt-1 text-xs">
                   Members, memberships, bookings, payments, staff and settings go back to how they were on {when(preview.createdAt)}; anything
                   added since is removed. A backup of the gym as it is right now is taken first and listed as &ldquo;Before a restore&rdquo;. The
-                  audit log is kept as it is.
+                  audit log is kept as it is. Afterwards everyone is signed out, you and the front desk included, and signs in again.
                 </p>
                 {!preview.actorInBackup && (
                   <p className="mt-2 text-xs font-semibold">
