@@ -12,6 +12,8 @@ import { API_BASE, apiGet } from "../_shared/api";
 import { BarChart, LineChart, HBarList, type Point } from "../_shared/Charts";
 import { downloadExport, FORMAT_LABELS, type ExportFormat } from "./download";
 import DailySales from "./DailySales";
+import { PrintHeader, PrintStyles, printReport } from "./Print";
+import { useSiteSettings } from "@/components/ThemeProvider";
 
 interface Report {
   range: { from: string; to: string; label: string; grain: "day" | "month" };
@@ -179,11 +181,24 @@ function ReportsPageInner() {
 
   const money = (n: number) => `${data?.base_currency || ""} ${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
 
-  return (
-    <div>
-      <PageHeader eyebrow="Overview" title="Reports" />
+  const { siteName } = useSiteSettings();
+  const title = tab === "daily" ? "Daily sales" : "Reports";
+  const print = () => printReport(`${siteName ? `${siteName} ` : ""}${title} ${from === to ? from : `${from} to ${to}`}`);
 
-      <div className="mb-6 border-b border-neutral-200">
+  return (
+    <div data-print-root>
+      <PrintStyles />
+      <PrintHeader title={title} from={from} to={to} />
+
+      <div data-print-hide>
+        <PageHeader
+          eyebrow="Overview"
+          title="Reports"
+          actions={<SecondaryButton onClick={print}>Print / PDF</SecondaryButton>}
+        />
+      </div>
+
+      <div data-print-hide className="mb-6 border-b border-neutral-200">
         <div className="-mb-px flex gap-1 overflow-x-auto">
           {TABS.map((t) => (
             <button
@@ -203,53 +218,55 @@ function ReportsPageInner() {
         </div>
       </div>
 
-      <Card className="mb-6 p-4">
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="w-40">
-            <TextField label="From" type="date" value={from} onChange={setFrom} />
+      <div data-print-hide>
+        <Card className="mb-6 p-4">
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="w-40">
+              <TextField label="From" type="date" value={from} onChange={setFrom} />
+            </div>
+            <div className="w-40">
+              <TextField label="To" type="date" value={to} onChange={setTo} />
+            </div>
+            <div className="flex flex-wrap gap-1.5 pb-1">
+              <SecondaryButton onClick={() => preset(today(), today())}>Today</SecondaryButton>
+              <SecondaryButton onClick={() => preset(monthStart(today()), today())}>This month</SecondaryButton>
+              <SecondaryButton onClick={() => preset(shift(today(), -29), today())}>Last 30 days</SecondaryButton>
+              <SecondaryButton onClick={() => preset(shift(today(), -89), today())}>Last 90 days</SecondaryButton>
+              <SecondaryButton onClick={() => preset(monthStart(shift(today(), -364)), today())}>Last 12 months</SecondaryButton>
+            </div>
           </div>
-          <div className="w-40">
-            <TextField label="To" type="date" value={to} onChange={setTo} />
-          </div>
-          <div className="flex flex-wrap gap-1.5 pb-1">
-            <SecondaryButton onClick={() => preset(today(), today())}>Today</SecondaryButton>
-            <SecondaryButton onClick={() => preset(monthStart(today()), today())}>This month</SecondaryButton>
-            <SecondaryButton onClick={() => preset(shift(today(), -29), today())}>Last 30 days</SecondaryButton>
-            <SecondaryButton onClick={() => preset(shift(today(), -89), today())}>Last 90 days</SecondaryButton>
-            <SecondaryButton onClick={() => preset(monthStart(shift(today(), -364)), today())}>Last 12 months</SecondaryButton>
-          </div>
-        </div>
-        {tab === "overview" && (
-          <div className="mt-3 flex flex-wrap items-center gap-1.5 text-xs text-neutral-500">
-            <span className="mr-1">Export as CSV or Excel:</span>
-            {EXPORTS.map((item) => (
-              <span key={item.id} className="inline-flex items-center overflow-hidden rounded-md border border-neutral-200">
-                <span className="px-2 py-1 font-medium text-neutral-700">{item.label}</span>
-                {(["csv", "xlsx"] as const).map((format) => (
-                  <button
-                    key={format}
-                    type="button"
-                    onClick={() => download(item, format)}
-                    disabled={exporting === `${item.id}.${format}`}
-                    title={`${item.label} as ${format === "csv" ? "CSV" : "an Excel workbook (.xlsx)"}`}
-                    className="border-l border-neutral-200 px-1.5 py-1 font-semibold text-neutral-500 hover:bg-neutral-50 hover:text-neutral-900 disabled:opacity-50"
-                  >
-                    {exporting === `${item.id}.${format}` ? "…" : FORMAT_LABELS[format]}
-                  </button>
-                ))}
-              </span>
-            ))}
-          </div>
-        )}
-      </Card>
+          {tab === "overview" && (
+            <div className="mt-3 flex flex-wrap items-center gap-1.5 text-xs text-neutral-500">
+              <span className="mr-1">Export as CSV or Excel:</span>
+              {EXPORTS.map((item) => (
+                <span key={item.id} className="inline-flex items-center overflow-hidden rounded-md border border-neutral-200">
+                  <span className="px-2 py-1 font-medium text-neutral-700">{item.label}</span>
+                  {(["csv", "xlsx"] as const).map((format) => (
+                    <button
+                      key={format}
+                      type="button"
+                      onClick={() => download(item, format)}
+                      disabled={exporting === `${item.id}.${format}`}
+                      title={`${item.label} as ${format === "csv" ? "CSV" : "an Excel workbook (.xlsx)"}`}
+                      className="border-l border-neutral-200 px-1.5 py-1 font-semibold text-neutral-500 hover:bg-neutral-50 hover:text-neutral-900 disabled:opacity-50"
+                    >
+                      {exporting === `${item.id}.${format}` ? "…" : FORMAT_LABELS[format]}
+                    </button>
+                  ))}
+                </span>
+              ))}
+            </div>
+          )}
+        </Card>
+      </div>
 
       {tab === "daily" && <DailySales from={from} to={to} />}
-      {tab === "overview" && error && <p className="mb-4 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
+      {tab === "overview" && error && <p data-print-hide className="mb-4 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
       {tab !== "overview" ? null : loading || !data ? (
         <Spinner />
       ) : (
         <div className="space-y-6">
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-6">
+          <div data-print-cols="3" className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-6">
             <Kpi label="Revenue" value={money(data.kpis.revenue)} hint={`memberships ${money(data.kpis.membership_revenue)} · shop ${money(data.kpis.shop_revenue)}`} />
             <Kpi label="Expenses" value={money(data.kpis.expenses)} hint={data.kpis.expenses_pending ? `paid · ${money(data.kpis.expenses_pending)} pending, not deducted` : "paid"} />
             <Kpi label="Net" value={money(data.kpis.net)} tone={data.kpis.net >= 0 ? "text-emerald-700" : "text-rose-700"} hint="same as Accounts for this range" />
@@ -264,7 +281,7 @@ function ReportsPageInner() {
             <p className="text-xs text-neutral-500">Also taken in other currencies (not in the totals): {data.other_currencies.map((c) => `${c.currency} ${c.total.toLocaleString()} (${c.orders})`).join(", ")}</p>
           )}
 
-          <div className="grid gap-6 lg:grid-cols-2">
+          <div data-print-cols="2" className="grid gap-6 lg:grid-cols-2">
             <Card className="p-5">
               <h2 className="mb-3 text-sm font-semibold text-neutral-900">Revenue and expenses · {data.range.label}</h2>
               <LineChart series={[{ name: "Revenue", data: data.series.revenue }, { name: "Expenses", color: "#f43f5e", data: data.series.expenses }]} />

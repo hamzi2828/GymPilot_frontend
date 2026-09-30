@@ -89,13 +89,13 @@ export default function DailySales({ from, to }: { from: string; to: string }) {
 
   return (
     <div className="space-y-6">
-      {error && <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
+      {error && <p data-print-hide className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-sm font-semibold text-neutral-900">
           Daily sales · {data.range.label} <span className="font-normal text-neutral-500">({data.base_currency})</span>
         </h2>
-        <div className="flex flex-wrap items-center gap-3 text-xs">
+        <div data-print-hide className="flex flex-wrap items-center gap-3 text-xs">
           <Toggle label="Hide days with no sales" checked={hideQuiet} onChange={setHideQuiet} />
           <span className="inline-flex items-center overflow-hidden rounded-md border border-neutral-200">
             <span className="px-2 py-1 font-medium text-neutral-700">Download</span>
@@ -114,7 +114,7 @@ export default function DailySales({ from, to }: { from: string; to: string }) {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+      <div data-print-cols="4" className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <div className="rounded-lg border border-emerald-200 bg-emerald-50/40 p-4">
           <p className="text-[11px] font-medium uppercase tracking-wider text-neutral-500">Total taken</p>
           <p className="mt-1 text-2xl font-semibold text-neutral-900">{money(data.totals.total)}</p>
@@ -196,7 +196,7 @@ export default function DailySales({ from, to }: { from: string; to: string }) {
         </div>
       </Card>
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div data-print-cols="2" className="grid gap-6 lg:grid-cols-2">
         <Card className="p-5">
           <h3 className="mb-3 text-sm font-semibold text-neutral-900">By payment method</h3>
           {data.by_method.length === 0 ? (
