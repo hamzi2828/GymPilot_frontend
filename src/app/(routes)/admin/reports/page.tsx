@@ -39,6 +39,7 @@ interface Report {
   pt: { scheduled: number; completed: number; cancelled: number; no_show: number; value: number; commission: number };
   top_products: { name: string; quantity: number; total: number; margin: number }[];
   leads: { new: number; contacted: number; trial: number; won: number; lost: number; total: number };
+  registrations: { total: number; days: { date: string; label: string; count: number }[] };
 }
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -47,15 +48,18 @@ const shift = (key: string, n: number) => {
   return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
 };
 const monthStart = (key: string) => `${key.slice(0, 7)}-01`;
-const EXPORTS = [
-  ["members", "Members"],
-  ["orders", "Orders"],
-  ["attendance", "Attendance"],
-  ["bookings", "Bookings"],
-  ["leads", "Leads"],
-  ["pt-sessions", "PT sessions"],
-  ["expenses", "Expenses"],
-  ["payslips", "Payslips"],
+// Every export covers the chosen range; "All members" is the one that
+// ignores it.
+const EXPORTS: { id: string; kind: string; label: string; query?: string }[] = [
+  { id: "members", kind: "members", label: "Members joined" },
+  { id: "members-all", kind: "members", label: "All members", query: "all=1" },
+  { id: "orders", kind: "orders", label: "Orders" },
+  { id: "attendance", kind: "attendance", label: "Attendance" },
+  { id: "bookings", kind: "bookings", label: "Bookings" },
+  { id: "leads", kind: "leads", label: "Leads" },
+  { id: "pt-sessions", kind: "pt-sessions", label: "PT sessions" },
+  { id: "expenses", kind: "expenses", label: "Expenses" },
+  { id: "payslips", kind: "payslips", label: "Payslips" },
 ];
 
 function Kpi({ label, value, hint, tone }: { label: string; value: string | number; hint?: string; tone?: string }) {
@@ -65,6 +69,41 @@ function Kpi({ label, value, hint, tone }: { label: string; value: string | numb
       <p className={`mt-1 text-2xl font-semibold ${tone || "text-neutral-900"}`}>{value}</p>
       {hint && <p className="text-xs text-neutral-500">{hint}</p>}
     </div>
+  );
+}
+
+// The chart's bars as a list: each day somebody joined, and how many. The
+// "Members joined" export has the people behind each number.
+function Registrations({ data }: { data: Report["registrations"] }) {
+  if (!data.days.length) return <p className="mt-3 text-xs text-neutral-500">Nobody joined in this range.</p>;
+  return (
+    <>
+      <div className="mt-4 max-h-64 overflow-y-auto rounded-lg border border-neutral-200 print:max-h-none print:overflow-visible">
+        <table className="w-full text-sm">
+          <thead className="sticky top-0 bg-neutral-50">
+            <tr className="border-b border-neutral-200 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-neutral-500">
+              <th className="px-3 py-2">Date</th>
+              <th className="px-3 py-2 text-right">New members</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.days.map((day) => (
+              <tr key={day.date} className="border-b border-neutral-100 last:border-b-0">
+                <td className="px-3 py-1.5 text-neutral-700">{day.label}</td>
+                <td className="px-3 py-1.5 text-right font-medium text-neutral-900">{day.count}</td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr className="border-t border-neutral-200 bg-neutral-50 font-semibold text-neutral-900">
+              <td className="px-3 py-2">Total</td>
+              <td className="px-3 py-2 text-right">{data.total}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+      <p className="mt-2 text-xs text-neutral-500">Days with no sign-ups are not listed.</p>
+    </>
   );
 }
 
@@ -97,10 +136,10 @@ export default function ReportsPage() {
     setTo(t);
   };
 
-  const download = async (kind: string) => {
-    setExporting(kind);
+  const download = async ({ id, kind, query }: (typeof EXPORTS)[number]) => {
+    setExporting(id);
     try {
-      const res = await fetch(`${API_BASE}/admin/reports/export/${kind}?from=${from}&to=${to}`, { headers: authHeaders() });
+      const res = await fetch(`${API_BASE}/admin/reports/export/${kind}?from=${from}&to=${to}${query ? `&${query}` : ""}`, { headers: authHeaders() });
       if (!res.ok) throw new Error("Export failed");
       const blob = await res.blob();
       const name = (res.headers.get("Content-Disposition") || "").match(/filename="([^"]+)"/)?.[1] || `${kind}.csv`;
@@ -140,9 +179,9 @@ export default function ReportsPage() {
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-1.5 text-xs text-neutral-500">
           <span className="mr-1">Export CSV (opens in Excel):</span>
-          {EXPORTS.map(([kind, label]) => (
-            <button key={kind} type="button" onClick={() => download(kind)} disabled={exporting === kind} className="rounded-md border border-neutral-200 px-2 py-1 font-medium text-neutral-700 hover:bg-neutral-50 disabled:opacity-50">
-              {exporting === kind ? "…" : label}
+          {EXPORTS.map((item) => (
+            <button key={item.id} type="button" onClick={() => download(item)} disabled={exporting === item.id} className="rounded-md border border-neutral-200 px-2 py-1 font-medium text-neutral-700 hover:bg-neutral-50 disabled:opacity-50">
+              {exporting === item.id ? "…" : item.label}
             </button>
           ))}
         </div>
@@ -176,6 +215,7 @@ export default function ReportsPage() {
             <Card className="p-5">
               <h2 className="mb-3 text-sm font-semibold text-neutral-900">New members</h2>
               <BarChart data={data.series.new_members} />
+              <Registrations data={data.registrations} />
             </Card>
             <Card className="p-5">
               <h2 className="mb-3 text-sm font-semibold text-neutral-900">Member visits</h2>
