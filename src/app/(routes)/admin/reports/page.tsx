@@ -2,12 +2,14 @@
 
 // Reports: the business over a range -- revenue against expenses, new
 // members, visits and peak hours, classes by demand, memberships kept and
-// lost, leads and personal training -- with every list exportable as CSV.
+// lost, leads and personal training -- with every list exportable as CSV
+// or as an Excel workbook.
 
 import { useCallback, useEffect, useState } from "react";
 import { PageHeader, Card, SecondaryButton, TextField, Spinner } from "../_shared/ui";
-import { API_BASE, apiGet, authHeaders } from "../_shared/api";
+import { API_BASE, apiGet } from "../_shared/api";
 import { BarChart, LineChart, HBarList, type Point } from "../_shared/Charts";
+import { downloadExport, FORMAT_LABELS, type ExportFormat } from "./download";
 
 interface Report {
   range: { from: string; to: string; label: string; grain: "day" | "month" };
@@ -136,19 +138,11 @@ export default function ReportsPage() {
     setTo(t);
   };
 
-  const download = async ({ id, kind, query }: (typeof EXPORTS)[number]) => {
-    setExporting(id);
+  const download = async ({ id, kind, query }: (typeof EXPORTS)[number], format: ExportFormat) => {
+    setExporting(`${id}.${format}`);
     try {
-      const res = await fetch(`${API_BASE}/admin/reports/export/${kind}?from=${from}&to=${to}${query ? `&${query}` : ""}`, { headers: authHeaders() });
-      if (!res.ok) throw new Error("Export failed");
-      const blob = await res.blob();
-      const name = (res.headers.get("Content-Disposition") || "").match(/filename="([^"]+)"/)?.[1] || `${kind}.csv`;
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = name;
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(url), 30000);
+      const params = `from=${from}&to=${to}${query ? `&${query}` : ""}${format === "xlsx" ? "&format=xlsx" : ""}`;
+      await downloadExport(`${API_BASE}/admin/reports/export/${kind}?${params}`, `${kind}.${format}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Export failed");
     } finally {
@@ -178,11 +172,23 @@ export default function ReportsPage() {
           </div>
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-1.5 text-xs text-neutral-500">
-          <span className="mr-1">Export CSV (opens in Excel):</span>
+          <span className="mr-1">Export as CSV or Excel:</span>
           {EXPORTS.map((item) => (
-            <button key={item.id} type="button" onClick={() => download(item)} disabled={exporting === item.id} className="rounded-md border border-neutral-200 px-2 py-1 font-medium text-neutral-700 hover:bg-neutral-50 disabled:opacity-50">
-              {exporting === item.id ? "…" : item.label}
-            </button>
+            <span key={item.id} className="inline-flex items-center overflow-hidden rounded-md border border-neutral-200">
+              <span className="px-2 py-1 font-medium text-neutral-700">{item.label}</span>
+              {(["csv", "xlsx"] as const).map((format) => (
+                <button
+                  key={format}
+                  type="button"
+                  onClick={() => download(item, format)}
+                  disabled={exporting === `${item.id}.${format}`}
+                  title={`${item.label} as ${format === "csv" ? "CSV" : "an Excel workbook (.xlsx)"}`}
+                  className="border-l border-neutral-200 px-1.5 py-1 font-semibold text-neutral-500 hover:bg-neutral-50 hover:text-neutral-900 disabled:opacity-50"
+                >
+                  {exporting === `${item.id}.${format}` ? "…" : FORMAT_LABELS[format]}
+                </button>
+              ))}
+            </span>
           ))}
         </div>
       </Card>
