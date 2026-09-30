@@ -24,6 +24,8 @@ type PublicSettings = {
   logoUrl?: string;
   address?: string;
   mobileNumber?: string;
+  contactEmail?: string;
+  siteDescription?: string;
   facebookUrl?: string;
   instagramUrl?: string;
   youtubeUrl?: string;

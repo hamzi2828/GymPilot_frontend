@@ -9,7 +9,7 @@ import { useLanguage } from "@/i18n/LanguageProvider";
 
 const ContactUsPage = () => {
   // Phone and address come from admin settings, so they stay correct after a move.
-  const { mobileNumber, address, maps, openingHours } = useSiteSettings();
+  const { mobileNumber, contactEmail, address, maps, openingHours } = useSiteSettings();
   const { t } = useLanguage();
 
   const [formData, setFormData] = useState<ContactFormData>({
@@ -219,6 +219,14 @@ const ContactUsPage = () => {
                           <strong>Call us:</strong>{" "}
                           <a href={`tel:${mobileNumber.replace(/\s+/g, "")}`} className="underline hover:no-underline">
                             {mobileNumber}
+                          </a>
+                        </p>
+                      )}
+                      {contactEmail && (
+                        <p>
+                          <strong>Email us:</strong>{" "}
+                          <a href={`mailto:${contactEmail}`} className="underline hover:no-underline">
+                            {contactEmail}
                           </a>
                         </p>
                       )}

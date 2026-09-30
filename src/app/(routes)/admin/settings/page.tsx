@@ -71,15 +71,16 @@ interface Settings {
   stripeWebhookUrl?: string;
   invoice?: InvoiceConfig;
   membership?: MembershipConfig;
+  // Same names the API, the public site and the phone app use.
   siteDescription?: string;
   contactEmail?: string;
-  contactPhone?: string;
+  mobileNumber?: string;
   address?: string;
-  facebook?: string;
-  instagram?: string;
-  twitter?: string;
-  youtube?: string;
-  linkedin?: string;
+  facebookUrl?: string;
+  instagramUrl?: string;
+  twitterUrl?: string;
+  youtubeUrl?: string;
+  tiktokUrl?: string;
   theme?: string;
   logoUrl?: string;
   logoWidth?: number;
@@ -636,16 +637,17 @@ function SettingsAdminPageInner() {
             {section === "business" && (
               <>
                 <Card className="p-6">
-                  <SectionHeading title="Business Information" hint="Shown across the public site, the admin panel and in emails." />
+                  <SectionHeading title="Business Information" hint="Shown across the public site, the admin panel, the member app and in emails." />
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
                     <TextField label="Business Name" value={settings.siteName} onChange={(v) => setSettings({ ...settings, siteName: v })} />
-                    <TextField label="Contact Email" type="email" value={settings.contactEmail} onChange={(v) => setSettings({ ...settings, contactEmail: v })} />
-                    <TextField label="Contact Phone" value={settings.contactPhone} onChange={(v) => setSettings({ ...settings, contactPhone: v })} />
+                    <TextField label="Contact Email" type="email" value={settings.contactEmail} onChange={(v) => setSettings({ ...settings, contactEmail: v })} placeholder="hello@yourgym.com" />
+                    <TextField label="Contact Phone" value={settings.mobileNumber} onChange={(v) => setSettings({ ...settings, mobileNumber: v })} />
                     <div className="md:col-span-2 xl:col-span-3">
                       <TextField label="Address" value={settings.address} onChange={(v) => setSettings({ ...settings, address: v })} />
                     </div>
                     <div className="md:col-span-2 xl:col-span-3">
                       <TextArea label="Site Description" value={settings.siteDescription} onChange={(v) => setSettings({ ...settings, siteDescription: v })} />
+                      <p className="mt-1 text-[11px] text-neutral-500">Used in search results and link previews unless you write a search description under Website.</p>
                     </div>
                   </div>
                 </Card>
@@ -653,11 +655,11 @@ function SettingsAdminPageInner() {
                 <Card className="p-6">
                   <SectionHeading title="Social Links" hint="Shown in the website footer. Leave blank to hide a network." />
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-                    <TextField label="Facebook" value={settings.facebook} onChange={(v) => setSettings({ ...settings, facebook: v })} />
-                    <TextField label="Instagram" value={settings.instagram} onChange={(v) => setSettings({ ...settings, instagram: v })} />
-                    <TextField label="Twitter" value={settings.twitter} onChange={(v) => setSettings({ ...settings, twitter: v })} />
-                    <TextField label="YouTube" value={settings.youtube} onChange={(v) => setSettings({ ...settings, youtube: v })} />
-                    <TextField label="LinkedIn" value={settings.linkedin} onChange={(v) => setSettings({ ...settings, linkedin: v })} />
+                    <TextField label="Facebook" value={settings.facebookUrl} onChange={(v) => setSettings({ ...settings, facebookUrl: v })} placeholder="https://facebook.com/yourgym" />
+                    <TextField label="Instagram" value={settings.instagramUrl} onChange={(v) => setSettings({ ...settings, instagramUrl: v })} placeholder="https://instagram.com/yourgym" />
+                    <TextField label="X (Twitter)" value={settings.twitterUrl} onChange={(v) => setSettings({ ...settings, twitterUrl: v })} placeholder="https://x.com/yourgym" />
+                    <TextField label="YouTube" value={settings.youtubeUrl} onChange={(v) => setSettings({ ...settings, youtubeUrl: v })} placeholder="https://youtube.com/@yourgym" />
+                    <TextField label="TikTok" value={settings.tiktokUrl} onChange={(v) => setSettings({ ...settings, tiktokUrl: v })} placeholder="https://tiktok.com/@yourgym" />
                   </div>
                 </Card>
               </>
