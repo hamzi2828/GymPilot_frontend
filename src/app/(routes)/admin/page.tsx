@@ -31,6 +31,9 @@ interface Dashboard {
   revenue_today: Totals & {
     memberships: number;
     admission: number;
+    // Apart from memberships, as Daily sales shows them; missing from an
+    // older server's answer.
+    trainer_fees?: number;
     shop: number;
     payments: number;
     sales: number;
@@ -207,7 +210,11 @@ export default function AdminHomePage() {
           hint={`memberships ${money(data.revenue_today.memberships, data.base_currency)} · admission ${money(
             data.revenue_today.admission,
             data.base_currency
-          )} · shop ${money(data.revenue_today.shop, data.base_currency)}${
+          )}${
+            data.revenue_today.trainer_fees
+              ? ` · trainer fees ${money(data.revenue_today.trainer_fees, data.base_currency)}`
+              : ""
+          } · shop ${money(data.revenue_today.shop, data.base_currency)}${
             data.revenue_today.mixed ? " · other currencies not summed" : ""
           }`}
           href={`/admin/reports?tab=daily&from=${data.today}&to=${data.today}`}

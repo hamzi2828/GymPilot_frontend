@@ -434,8 +434,11 @@ function AccountsAdminPageInner() {
 
   useEffect(() => {
     if (urlTab) setTab(urlTab);
-    if (urlService) setAssetService(urlService);
-    if (urlWarranty) setAssetWarranty(urlWarranty);
+    // The address is the whole filter: one the new address leaves out is
+    // off, or following the bell's "services due" and then its "warranties
+    // ending" left both on and hid rows neither link asked to hide.
+    setAssetService(urlService || "all");
+    setAssetWarranty(urlWarranty || "all");
   }, [urlTab, urlService, urlWarranty]);
 
   const [search, setSearch] = useState("");

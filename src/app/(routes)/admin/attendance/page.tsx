@@ -1116,7 +1116,7 @@ export default function AttendanceAdminPage() {
             label="Balance due"
             value={live.counts.balance_due}
             tone={live.counts.balance_due ? "amber" : "neutral"}
-            hint="members still owing on their package"
+            hint="paid members still owing on their package"
           />
         </div>
       )}
