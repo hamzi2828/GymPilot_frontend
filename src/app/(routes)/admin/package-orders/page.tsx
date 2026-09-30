@@ -91,7 +91,21 @@ const statusColors: Record<string, "neutral" | "green" | "amber" | "rose" | "blu
   refunded: "neutral",
 };
 
-const METHOD_LABELS: Record<string, string> = { stripe: "Card (Stripe)", card: "Card (desk)", bank_transfer: "Bank transfer", cash: "Cash" };
+// The backend's services/paymentMethods.js, label for label.
+const METHOD_LABELS: Record<string, string> = {
+  stripe: "Card (Stripe)",
+  card: "Card",
+  bank_transfer: "Bank transfer",
+  cash: "Cash",
+  jazzcash: "JazzCash",
+  easypaisa: "Easypaisa",
+  wallet: "Other mobile wallet",
+};
+// What the desk records by hand: every method but Stripe, which is only ever
+// paid through online checkout (the API refuses it here with a 422).
+const DESK_METHOD_OPTIONS = Object.entries(METHOD_LABELS)
+  .filter(([value]) => value !== "stripe")
+  .map(([value, label]) => ({ value, label }));
 // Stripe subscription statuses that never charge again on their own (the
 // backend's reminderJobs reads them the same way).
 const NOT_RENEWING_STRIPE_STATUSES = ["canceled", "incomplete", "incomplete_expired", "unpaid", "paused"];
@@ -463,11 +477,7 @@ function PackageOrdersAdminPageInner() {
               label="Payment Method"
               value={assignDraft.paymentMethod}
               onChange={(v) => setAssignDraft({ ...assignDraft, paymentMethod: v })}
-              options={[
-                { value: "cash", label: "Cash" },
-                { value: "bank_transfer", label: "Bank Transfer" },
-                { value: "card", label: "Card (desk terminal)" },
-              ]}
+              options={DESK_METHOD_OPTIONS}
             />
             <SelectField
               label="Mark as Paid"
@@ -699,11 +709,7 @@ function PackageOrdersAdminPageInner() {
                   value={draft.paymentMethod}
                   allowClear={false}
                   onChange={(v) => setDraft({ ...draft, paymentMethod: v })}
-                  options={[
-                    { value: "cash", label: "Cash" },
-                    { value: "bank_transfer", label: "Bank transfer" },
-                    { value: "card", label: "Card (desk terminal)" },
-                  ]}
+                  options={DESK_METHOD_OPTIONS}
                 />
                 <SelectField
                   label="Mark as paid"
@@ -741,11 +747,7 @@ function PackageOrdersAdminPageInner() {
                   value={draft.paymentMethod}
                   allowClear={false}
                   onChange={(v) => setDraft({ ...draft, paymentMethod: v })}
-                  options={[
-                    { value: "cash", label: "Cash" },
-                    { value: "bank_transfer", label: "Bank transfer" },
-                    { value: "card", label: "Card (desk terminal)" },
-                  ]}
+                  options={DESK_METHOD_OPTIONS}
                 />
                 <div className="flex items-end justify-end">
                   <PrimaryButton disabled={busy || !draft.packageId} onClick={() => run("Package changed.", () => post(selected, "change-package", { packageId: draft.packageId, paymentMethod: draft.paymentMethod }))}>
