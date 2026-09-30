@@ -35,6 +35,7 @@ interface Product {
   track_stock: boolean;
   stock: number;
   low: boolean;
+  taxable: boolean;
   is_active: boolean;
 }
 interface Sale {
@@ -48,6 +49,8 @@ interface Sale {
   total: number;
   currency: string;
   payment_method: string;
+  tendered: number | null;
+  change: number | null;
   status: "paid" | "refunded";
   member_name: string;
   sold_by: string;
@@ -60,9 +63,14 @@ interface SalesResponse {
   data: Sale[];
 }
 
+// The same values the server accepts (posController METHODS); the mobile
+// wallets are the ones package orders take too.
 const METHODS = [
   { value: "cash", label: "Cash" },
   { value: "card", label: "Card" },
+  { value: "jazzcash", label: "JazzCash" },
+  { value: "easypaisa", label: "Easypaisa" },
+  { value: "wallet", label: "Other mobile wallet" },
   { value: "bank_transfer", label: "Bank transfer" },
   { value: "online", label: "Online" },
   { value: "account", label: "On account" },
@@ -71,6 +79,24 @@ const METHODS = [
 const methodLabel = (m: string) => METHODS.find((x) => x.value === m)?.label || m;
 const fmt = (n: number, c: string) => `${c} ${Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const RECEIPT_FOOTER_MAX = 300;
+const round2 = (n: number) => Math.round((Number(n) || 0) * 100) / 100;
+
+type BasketLine = { product: Product; quantity: number };
+
+// The basket's sums, worked out exactly as the server works out the sale
+// (posController.createSale), so the total shown before payment is the
+// total on the receipt: prices include tax, the discount comes off the
+// whole basket, and the tax is the included share of what is left on the
+// taxable lines.
+function basketTotals(basket: BasketLine[], discountInput: string, taxRate: number) {
+  const lines = basket.map((x) => ({ ...x, total: round2(x.product.price * x.quantity) }));
+  const subtotal = round2(lines.reduce((s, l) => s + l.total, 0));
+  const discount = Math.min(subtotal, Math.max(0, round2(Number(discountInput) || 0)));
+  const total = round2(subtotal - discount);
+  const taxableShare = subtotal ? lines.filter((l) => l.product.taxable !== false).reduce((s, l) => s + l.total, 0) / subtotal : 0;
+  const tax = taxRate > 0 ? round2(total * taxableShare - (total * taxableShare) / (1 + taxRate / 100)) : 0;
+  return { lines, subtotal, discount, total, tax };
+}
 
 // A sale as the receipt prints it.
 function receiptFor(s: Sale, profile: ReceiptProfile): ThermalReceiptProps {
@@ -89,7 +115,8 @@ function receiptFor(s: Sale, profile: ReceiptProfile): ThermalReceiptProps {
     taxRate: s.tax_rate,
     taxInclusive: true,
     total: s.total,
-    paid: s.total,
+    paid: s.tendered ?? s.total,
+    change: s.change ?? undefined,
     method: methodLabel(s.payment_method),
     notes: s.notes || undefined,
     status: s.status === "refunded" ? "Refunded" : undefined,
@@ -123,10 +150,12 @@ export default function PosPage() {
   const editable = can("pos", "manage");
   const [products, setProducts] = useState<Product[]>([]);
   const [currency, setCurrency] = useState("");
+  const [taxRate, setTaxRate] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [basket, setBasket] = useState<{ product: Product; quantity: number }[]>([]);
+  const [basket, setBasket] = useState<BasketLine[]>([]);
   const [discount, setDiscount] = useState("0");
   const [method, setMethod] = useState("cash");
+  const [tendered, setTendered] = useState("");
   const [member, setMember] = useState<MemberOption | null>(null);
   const [category, setCategory] = useState("");
   const [busy, setBusy] = useState(false);
@@ -142,9 +171,10 @@ export default function PosPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [p, s] = await Promise.all([apiGet<{ currency: string; data: Product[] }>(`${POS_API}/products`), apiGet<SalesResponse>(`${POS_API}/sales`)]);
+      const [p, s] = await Promise.all([apiGet<{ currency: string; tax_rate?: number; data: Product[] }>(`${POS_API}/products`), apiGet<SalesResponse>(`${POS_API}/sales`)]);
       setProducts(p.data || []);
       setCurrency(p.currency || "");
+      setTaxRate(Number(p.tax_rate) || 0);
       setSales(s);
     } catch (e) {
       setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not load the shop" });
@@ -205,8 +235,10 @@ export default function PosPage() {
   };
   const setQty = (id: string, qty: number) => setBasket((b) => b.map((x) => (x.product.id === id ? { ...x, quantity: Math.max(1, qty) } : x)));
   const remove = (id: string) => setBasket((b) => b.filter((x) => x.product.id !== id));
-  const subtotal = basket.reduce((s, x) => s + x.product.price * x.quantity, 0);
-  const total = Math.max(0, subtotal - (Number(discount) || 0));
+  const totals = basketTotals(basket, discount, taxRate);
+  const cashGiven = method === "cash" && tendered.trim() !== "" ? Number(tendered) : null;
+  const cashShort = cashGiven !== null && (!Number.isFinite(cashGiven) || round2(cashGiven) < totals.total);
+  const change = cashGiven !== null && !cashShort ? round2(cashGiven - totals.total) : null;
 
   const checkout = async () => {
     setBusy(true);
@@ -216,11 +248,13 @@ export default function PosPage() {
         items: basket.map((x) => ({ productId: x.product.id, quantity: x.quantity })),
         discount: Number(discount) || 0,
         paymentMethod: method,
+        tendered: cashGiven ?? undefined,
         memberId: member?.id || undefined,
       });
       setReceipt(res.data);
       setBasket([]);
       setDiscount("0");
+      setTendered("");
       setMember(null);
       await load();
     } catch (e) {
@@ -302,7 +336,7 @@ export default function PosPage() {
                   <h2 className="text-sm font-semibold text-neutral-900">Sales · {sales.range.label}</h2>
                   <p className="text-xs text-neutral-500">
                     {sales.summary.sales} sales · {sales.summary.items} items · {Object.entries(sales.summary.totals).map(([c, n]) => fmt(n, c)).join(", ") || "—"}
-                    {Object.keys(sales.summary.by_method).length ? ` (${Object.entries(sales.summary.by_method).map(([m, n]) => `${m} ${n}`).join(", ")})` : ""}
+                    {Object.keys(sales.summary.by_method).length ? ` (${Object.entries(sales.summary.by_method).map(([m, n]) => `${methodLabel(m)} ${n}`).join(", ")})` : ""}
                   </p>
                 </div>
                 {sales.data.length === 0 ? (
@@ -314,7 +348,7 @@ export default function PosPage() {
                         <div>
                           <span className="font-mono text-xs">{s.receipt_number}</span> · {s.items.map((i) => `${i.quantity}× ${i.name}`).join(", ")}
                           {s.member_name ? <span className="text-neutral-500"> · {s.member_name}</span> : null}
-                          <span className="block text-[11px] text-neutral-400">{new Date(s.paid_at).toLocaleString()} · {s.payment_method} · {s.sold_by}</span>
+                          <span className="block text-[11px] text-neutral-400">{new Date(s.paid_at).toLocaleString()} · {methodLabel(s.payment_method)} · {s.sold_by}</span>
                         </div>
                         <div className="flex items-center gap-2">
                           <span className="font-semibold">{fmt(s.total, s.currency)}</span>
@@ -336,17 +370,23 @@ export default function PosPage() {
               <p className="mt-2 text-sm text-neutral-500">Tap products to add them.</p>
             ) : (
               <div className="mt-3 divide-y divide-neutral-100">
-                {basket.map((x) => (
-                  <div key={x.product.id} className="flex items-center justify-between gap-2 py-2 text-sm">
-                    <div className="min-w-0">
-                      <p className="truncate font-medium text-neutral-900">{x.product.name}</p>
-                      <p className="text-xs text-neutral-500">{fmt(x.product.price, currency)} each</p>
+                {totals.lines.map((x) => (
+                  <div key={x.product.id} className="py-2 text-sm">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="min-w-0 truncate font-medium text-neutral-900">{x.product.name}</p>
+                      <span className="shrink-0 font-medium text-neutral-900">{fmt(x.total, currency)}</span>
                     </div>
-                    <div className="flex items-center gap-1">
-                      <button type="button" onClick={() => setQty(x.product.id, x.quantity - 1)} className="h-7 w-7 rounded-md border border-neutral-200">−</button>
-                      <span className="w-6 text-center">{x.quantity}</span>
-                      <button type="button" onClick={() => setQty(x.product.id, x.quantity + 1)} className="h-7 w-7 rounded-md border border-neutral-200">+</button>
-                      <button type="button" onClick={() => remove(x.product.id)} className="ml-1 text-neutral-400 hover:text-rose-600">×</button>
+                    <div className="mt-1 flex items-center justify-between gap-2">
+                      <p className="text-xs text-neutral-500">
+                        {x.quantity} × {fmt(x.product.price, currency)}
+                        {taxRate > 0 && !x.product.taxable ? " · no tax" : ""}
+                      </p>
+                      <div className="flex items-center gap-1">
+                        <button type="button" onClick={() => setQty(x.product.id, x.quantity - 1)} className="h-7 w-7 rounded-md border border-neutral-200">−</button>
+                        <span className="w-6 text-center">{x.quantity}</span>
+                        <button type="button" onClick={() => setQty(x.product.id, x.quantity + 1)} className="h-7 w-7 rounded-md border border-neutral-200">+</button>
+                        <button type="button" onClick={() => remove(x.product.id)} className="ml-1 text-neutral-400 hover:text-rose-600">×</button>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -356,11 +396,44 @@ export default function PosPage() {
               <MemberPicker label="Member (optional)" type="member" value={member} onChange={setMember} placeholder="Name, email or code" disabled={!editable} />
               <TextField label="Discount" type="number" value={discount} onChange={setDiscount} />
               <SelectField label="Payment" value={method} allowClear={false} onChange={setMethod} options={METHODS} />
-              <div className="flex items-center justify-between border-t border-neutral-200 pt-3 text-sm">
-                <span className="text-neutral-600">Total</span>
-                <span className="text-lg font-semibold text-neutral-900">{fmt(total, currency)}</span>
+              <div className="space-y-1 border-t border-neutral-200 pt-3 text-sm">
+                <div className="flex items-center justify-between text-neutral-600">
+                  <span>Subtotal</span>
+                  <span>{fmt(totals.subtotal, currency)}</span>
+                </div>
+                {totals.discount > 0 && (
+                  <div className="flex items-center justify-between text-neutral-600">
+                    <span>Discount</span>
+                    <span>−{fmt(totals.discount, currency)}</span>
+                  </div>
+                )}
+                <div className="flex items-center justify-between">
+                  <span className="text-neutral-600">Total</span>
+                  <span className="text-lg font-semibold text-neutral-900">{fmt(totals.total, currency)}</span>
+                </div>
+                {totals.tax > 0 && (
+                  <div className="flex items-center justify-between text-xs text-neutral-500">
+                    <span>
+                      Includes {profile.branding.taxLabel || "tax"} {taxRate}%
+                    </span>
+                    <span>{fmt(totals.tax, currency)}</span>
+                  </div>
+                )}
               </div>
-              <PrimaryButton onClick={checkout} disabled={!editable || busy || basket.length === 0}>
+              {method === "cash" && basket.length > 0 && (
+                <div>
+                  <TextField label="Cash received (optional)" type="number" value={tendered} onChange={setTendered} placeholder={totals.total.toFixed(2)} />
+                  {cashShort ? (
+                    <p className="mt-1 text-xs text-rose-600">Less than the total of {fmt(totals.total, currency)}.</p>
+                  ) : change !== null ? (
+                    <p className="mt-1 flex justify-between text-sm font-semibold text-neutral-900">
+                      <span>Change</span>
+                      <span>{fmt(change, currency)}</span>
+                    </p>
+                  ) : null}
+                </div>
+              )}
+              <PrimaryButton onClick={checkout} disabled={!editable || busy || basket.length === 0 || cashShort}>
                 {busy ? "Recording…" : "Take payment"}
               </PrimaryButton>
             </div>
