@@ -8,7 +8,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { PageHeader, Card, PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, TextArea, SelectField, Toggle, Badge, Spinner } from "../_shared/ui";
-import { API_BASE, apiGet, apiJson } from "../_shared/api";
+import { API_BASE, apiGet, apiJson, authHeaders } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
 import { MemberPicker, type MemberOption } from "../_ops/MemberPicker";
 import {
@@ -41,7 +41,9 @@ interface Product {
 interface Sale {
   id: string;
   receipt_number: string;
-  items: { name: string; quantity: number; unit_price: number; total: number }[];
+  // unit_cost, cost and margin, and the sale's cost and profit, come only to
+  // pos at manage.
+  items: { name: string; quantity: number; unit_price: number; total: number; unit_cost?: number; cost?: number; margin?: number }[];
   subtotal: number;
   discount: number;
   tax_rate: number;
@@ -56,10 +58,20 @@ interface Sale {
   sold_by: string;
   notes: string;
   paid_at: string;
+  cost?: number;
+  profit?: number;
 }
 interface SalesResponse {
-  range: { label: string };
-  summary: { totals: Record<string, number>; by_method: Record<string, number>; sales: number; items: number };
+  range: { from: string; to: string; label: string };
+  summary: {
+    totals: Record<string, number>;
+    by_method: Record<string, number>;
+    sales: number;
+    items: number;
+    cost?: Record<string, number>;
+    gross_profit?: Record<string, number>;
+  };
+  truncated?: boolean;
   data: Sale[];
 }
 
@@ -80,6 +92,16 @@ const methodLabel = (m: string) => METHODS.find((x) => x.value === m)?.label || 
 const fmt = (n: number, c: string) => `${c} ${Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const RECEIPT_FOOTER_MAX = 300;
 const round2 = (n: number) => Math.round((Number(n) || 0) * 100) / 100;
+const moneyList = (m: Record<string, number> | undefined) => Object.entries(m || {}).map(([c, n]) => fmt(n, c)).join(", ") || "—";
+
+// Local calendar days, which is how the server reads ?from=&to=.
+const dayKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const shiftDays = (key: string, n: number) => {
+  const [y, m, d] = key.split("-").map(Number);
+  return dayKey(new Date(y, m - 1, d + n));
+};
+const monthStart = (key: string) => `${key.slice(0, 7)}-01`;
+const SALES_PAGE = 30;
 
 type BasketLine = { product: Product; quantity: number };
 
@@ -162,6 +184,12 @@ export default function PosPage() {
   const [receipt, setReceipt] = useState<Sale | null>(null);
   const [notice, setNotice] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
   const [sales, setSales] = useState<SalesResponse | null>(null);
+  const [from, setFrom] = useState(() => monthStart(dayKey(new Date())));
+  const [to, setTo] = useState(() => dayKey(new Date()));
+  const [salesLoading, setSalesLoading] = useState(true);
+  const [visible, setVisible] = useState(SALES_PAGE);
+  const [opened, setOpened] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
   const [profile, setProfile] = useState<ReceiptProfile>(EMPTY_RECEIPT_PROFILE);
   const [printing, setPrinting] = useState(false);
   const [setup, setSetup] = useState<ReceiptSettings | null>(null);
@@ -171,11 +199,10 @@ export default function PosPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [p, s] = await Promise.all([apiGet<{ currency: string; tax_rate?: number; data: Product[] }>(`${POS_API}/products`), apiGet<SalesResponse>(`${POS_API}/sales`)]);
+      const p = await apiGet<{ currency: string; tax_rate?: number; data: Product[] }>(`${POS_API}/products`);
       setProducts(p.data || []);
       setCurrency(p.currency || "");
       setTaxRate(Number(p.tax_rate) || 0);
-      setSales(s);
     } catch (e) {
       setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not load the shop" });
     } finally {
@@ -183,9 +210,52 @@ export default function PosPage() {
     }
   }, []);
 
+  // The sales for the chosen days. Loaded on their own so changing the dates
+  // does not reload the shelf or blank the till.
+  const loadSales = useCallback(async () => {
+    setSalesLoading(true);
+    try {
+      setSales(await apiGet<SalesResponse>(`${POS_API}/sales?from=${from}&to=${to}`));
+      setVisible(SALES_PAGE);
+    } catch (e) {
+      setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not load the sales" });
+    } finally {
+      setSalesLoading(false);
+    }
+  }, [from, to]);
+
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    loadSales();
+  }, [loadSales]);
+
+  const setRange = (f: string, t: string) => {
+    setFrom(f);
+    setTo(t);
+  };
+
+  const exportSales = async () => {
+    setExporting(true);
+    try {
+      const res = await fetch(`${POS_API}/sales/export?from=${from}&to=${to}`, { headers: authHeaders() });
+      if (!res.ok) throw new Error("Could not export the sales");
+      const blob = await res.blob();
+      const name = (res.headers.get("Content-Disposition") || "").match(/filename="([^"]+)"/)?.[1] || `sales_${from}_${to}.csv`;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = name;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 30000);
+    } catch (e) {
+      setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not export the sales" });
+    } finally {
+      setExporting(false);
+    }
+  };
 
   // The gym's details and print settings, once. Without them a receipt still
   // prints, just without the letterhead, so a failure here does not hold up
@@ -256,7 +326,7 @@ export default function PosPage() {
       setDiscount("0");
       setTendered("");
       setMember(null);
-      await load();
+      await Promise.all([load(), loadSales()]);
     } catch (e) {
       setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not record the sale" });
     } finally {
@@ -269,7 +339,7 @@ export default function PosPage() {
     if (reason === null) return;
     try {
       await apiJson(`${POS_API}/sales/${s.id}/refund`, "POST", { reason });
-      await load();
+      await Promise.all([load(), loadSales()]);
     } catch (e) {
       setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not refund" });
     }
@@ -330,38 +400,116 @@ export default function PosPage() {
               </>
             )}
 
-            {sales && (
-              <Card className="mt-6 p-5">
-                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                  <h2 className="text-sm font-semibold text-neutral-900">Sales · {sales.range.label}</h2>
+            <Card className="mt-6 p-5">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <h2 className="text-sm font-semibold text-neutral-900">Sales{sales ? ` · ${sales.range.label}` : ""}</h2>
+                <SecondaryButton onClick={exportSales} disabled={exporting}>
+                  {exporting ? "Exporting…" : "Export CSV"}
+                </SecondaryButton>
+              </div>
+              <div className="mb-3 flex flex-wrap items-end gap-2">
+                <div className="w-40">
+                  <TextField label="From" type="date" value={from} onChange={setFrom} />
+                </div>
+                <div className="w-40">
+                  <TextField label="To" type="date" value={to} onChange={setTo} />
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  <SecondaryButton onClick={() => setRange(dayKey(new Date()), dayKey(new Date()))}>Today</SecondaryButton>
+                  <SecondaryButton onClick={() => setRange(monthStart(dayKey(new Date())), dayKey(new Date()))}>This month</SecondaryButton>
+                  <SecondaryButton onClick={() => setRange(shiftDays(dayKey(new Date()), -29), dayKey(new Date()))}>Last 30 days</SecondaryButton>
+                </div>
+              </div>
+              {salesLoading && !sales ? (
+                <Spinner />
+              ) : sales ? (
+                <div className={salesLoading ? "opacity-60" : ""}>
                   <p className="text-xs text-neutral-500">
-                    {sales.summary.sales} sales · {sales.summary.items} items · {Object.entries(sales.summary.totals).map(([c, n]) => fmt(n, c)).join(", ") || "—"}
+                    {sales.summary.sales} sales · {sales.summary.items} items · {moneyList(sales.summary.totals)}
                     {Object.keys(sales.summary.by_method).length ? ` (${Object.entries(sales.summary.by_method).map(([m, n]) => `${methodLabel(m)} ${n}`).join(", ")})` : ""}
                   </p>
+                  {sales.summary.gross_profit && (
+                    <p className="mt-0.5 text-xs text-neutral-500">
+                      Cost of goods {moneyList(sales.summary.cost)} · <span className="font-semibold text-emerald-700">Gross profit {moneyList(sales.summary.gross_profit)}</span>
+                      <span className="text-neutral-400"> (takings less the tax in them and the cost)</span>
+                    </p>
+                  )}
+                  {sales.data.length === 0 ? (
+                    <p className="mt-3 text-sm text-neutral-500">No sales on these days.</p>
+                  ) : (
+                    <div className="mt-2 divide-y divide-neutral-100">
+                      {sales.data.slice(0, visible).map((s) => (
+                        <div key={s.id} className="py-2 text-sm">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div>
+                              <span className="font-mono text-xs">{s.receipt_number}</span> · {s.items.map((i) => `${i.quantity}× ${i.name}`).join(", ")}
+                              {s.member_name ? <span className="text-neutral-500"> · {s.member_name}</span> : null}
+                              <span className="block text-[11px] text-neutral-400">
+                                {new Date(s.paid_at).toLocaleString()} · {methodLabel(s.payment_method)} · {s.sold_by}
+                                {s.profit !== undefined && s.status === "paid" && (
+                                  <>
+                                    {" "}
+                                    · cost {fmt(s.cost || 0, s.currency)} ·{" "}
+                                    <button type="button" onClick={() => setOpened(opened === s.id ? null : s.id)} className={`underline decoration-dotted ${s.profit < 0 ? "text-rose-600" : "text-emerald-700"}`}>
+                                      profit {fmt(s.profit, s.currency)}
+                                    </button>
+                                  </>
+                                )}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-semibold">{fmt(s.total, s.currency)}</span>
+                              <Badge color={s.status === "paid" ? "green" : "neutral"}>{s.status}</Badge>
+                              <SecondaryButton onClick={() => setReceipt(s)}>Receipt</SecondaryButton>
+                              {editable && s.status === "paid" && <DangerButton onClick={() => refund(s)}>Refund</DangerButton>}
+                            </div>
+                          </div>
+                          {opened === s.id && s.profit !== undefined && (
+                            <table className="mt-2 w-full text-xs text-neutral-600">
+                              <thead>
+                                <tr className="text-left text-[11px] uppercase tracking-wider text-neutral-400">
+                                  <th className="py-1 font-medium">Item</th>
+                                  <th className="py-1 text-right font-medium">Qty</th>
+                                  <th className="py-1 text-right font-medium">Price</th>
+                                  <th className="py-1 text-right font-medium">Cost</th>
+                                  <th className="py-1 text-right font-medium">Margin</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {s.items.map((i, n) => (
+                                  <tr key={n} className="border-t border-neutral-100">
+                                    <td className="py-1">{i.name}</td>
+                                    <td className="py-1 text-right">{i.quantity}</td>
+                                    <td className="py-1 text-right">{fmt(i.total, s.currency)}</td>
+                                    <td className="py-1 text-right">{fmt(i.cost || 0, s.currency)}</td>
+                                    <td className="py-1 text-right">{fmt(i.margin || 0, s.currency)}</td>
+                                  </tr>
+                                ))}
+                                <tr className="border-t border-neutral-200 font-medium text-neutral-800">
+                                  <td className="py-1" colSpan={2}>
+                                    Sale{s.discount > 0 ? `, after ${fmt(s.discount, s.currency)} off` : ""}
+                                    {s.tax_amount > 0 ? ` and less ${fmt(s.tax_amount, s.currency)} tax` : ""}
+                                  </td>
+                                  <td className="py-1 text-right">{fmt(round2(s.total - s.tax_amount), s.currency)}</td>
+                                  <td className="py-1 text-right">{fmt(s.cost || 0, s.currency)}</td>
+                                  <td className="py-1 text-right">{fmt(s.profit, s.currency)}</td>
+                                </tr>
+                              </tbody>
+                            </table>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {sales.data.length > visible && (
+                    <div className="mt-3">
+                      <SecondaryButton onClick={() => setVisible((v) => v + 50)}>Show more ({sales.data.length - visible} more)</SecondaryButton>
+                    </div>
+                  )}
+                  {sales.truncated && <p className="mt-2 text-xs text-neutral-500">The list stops at the latest 500 sales on these days; Export CSV has every one.</p>}
                 </div>
-                {sales.data.length === 0 ? (
-                  <p className="text-sm text-neutral-500">Nothing sold this month yet.</p>
-                ) : (
-                  <div className="divide-y divide-neutral-100">
-                    {sales.data.slice(0, 30).map((s) => (
-                      <div key={s.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
-                        <div>
-                          <span className="font-mono text-xs">{s.receipt_number}</span> · {s.items.map((i) => `${i.quantity}× ${i.name}`).join(", ")}
-                          {s.member_name ? <span className="text-neutral-500"> · {s.member_name}</span> : null}
-                          <span className="block text-[11px] text-neutral-400">{new Date(s.paid_at).toLocaleString()} · {methodLabel(s.payment_method)} · {s.sold_by}</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-semibold">{fmt(s.total, s.currency)}</span>
-                          <Badge color={s.status === "paid" ? "green" : "neutral"}>{s.status}</Badge>
-                          <SecondaryButton onClick={() => setReceipt(s)}>Receipt</SecondaryButton>
-                          {editable && s.status === "paid" && <DangerButton onClick={() => refund(s)}>Refund</DangerButton>}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </Card>
-            )}
+              ) : null}
+            </Card>
           </div>
 
           <Card className="h-fit p-5 lg:sticky lg:top-4">
