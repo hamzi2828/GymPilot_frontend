@@ -44,6 +44,9 @@ interface PackageOrder {
   customerInfo: { fullName: string; email: string; phone: string };
   payment: {
     amount: number;
+    // The admission and trainer's fees inside `amount`; the rest is the membership.
+    joiningFee?: number;
+    trainerFee?: number;
     subtotal?: number;
     discountAmount?: number;
     discountNote?: string;
@@ -134,6 +137,18 @@ function fmtDate(value?: string | null) {
 
 function money(amount: number | undefined, currency: string) {
   return `${(currency || "").toUpperCase()} ${Number(amount || 0).toLocaleString()}`;
+}
+
+// The fees inside an order's amount ("GBP 25 admission · GBP 30 trainer"),
+// or "" when it carries none.
+function feeParts(o: PackageOrder) {
+  const p = o.payment || ({} as PackageOrder["payment"]);
+  return [
+    (p.joiningFee || 0) > 0 ? `${money(p.joiningFee, p.currency)} admission` : "",
+    (p.trainerFee || 0) > 0 ? `${money(p.trainerFee, p.currency)} trainer` : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
 }
 
 function memberName(o: PackageOrder) {
@@ -434,7 +449,8 @@ function PackageOrdersAdminPageInner() {
                     </td>
                     <td className="px-4 py-3 align-top">
                       {money(o.payment?.amount, o.payment?.currency)}
-                      {(o.payment?.discountAmount || 0) > 0 && <p className="text-[11px] text-emerald-700">−{money(o.payment.discountAmount, o.payment.currency)} {o.payment.couponCode || "credit"}</p>}
+                      {feeParts(o) && <p className="text-[11px] text-neutral-500">incl. {feeParts(o)}</p>}
+                      {(o.payment?.discountAmount || 0) > 0 &&<p className="text-[11px] text-emerald-700">−{money(o.payment.discountAmount, o.payment.currency)} {o.payment.couponCode || "credit"}</p>}
                     </td>
                     <td className="px-4 py-3 align-top text-xs text-neutral-600">{METHOD_LABELS[o.payment?.method] || o.payment?.method}</td>
                     <td className="px-4 py-3 align-top">
@@ -525,6 +541,7 @@ function PackageOrdersAdminPageInner() {
                   {money(selected.payment.amount, selected.payment.currency)} · {METHOD_LABELS[selected.payment.method] || selected.payment.method} · {selected.payment.status}
                   {selected.payment.paidAt ? ` on ${fmtDate(selected.payment.paidAt)}` : ""}
                 </p>
+                {feeParts(selected) && <p className="text-xs text-neutral-500">incl. {feeParts(selected)}</p>}
                 {selected.payment.discountNote && <p className="text-xs text-neutral-500">{selected.payment.discountNote}</p>}
               </div>
               <div>
