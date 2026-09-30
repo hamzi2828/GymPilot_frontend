@@ -1,9 +1,10 @@
 "use client";
 
-// Settings → Data & backup: the whole gym as one file, on demand, and the
+// Settings → Data & backup: the whole gym as one file, on demand, the
 // encrypted backups the server keeps (made every night, or with "Back up
-// now"). Only the gym's administrators can use it (the API checks the same
-// thing again): a backup is every member's personal data at once.
+// now"), and restoring from one of those or from a downloaded file. Only the
+// gym's administrators can use it (the API checks the same thing again): a
+// backup is every member's personal data at once.
 
 import { useCallback, useEffect, useState } from "react";
 import { Card, PrimaryButton, SecondaryButton, Badge, Spinner } from "../_shared/ui";
@@ -14,9 +15,12 @@ import {
   downloadStoredBackup,
   formatBytes,
   listBackups,
+  uploadBackupFile,
   KIND_LABELS,
   type BackupOverview,
+  type RestoreResult,
 } from "./backupApi";
+import RestoreDialog from "./RestoreDialog";
 
 type Notice = { tone: "ok" | "warn" | "error"; text: string };
 
@@ -52,6 +56,8 @@ export default function BackupSettings() {
   const [overview, setOverview] = useState<BackupOverview | null>(null);
   const [listError, setListError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [restoring, setRestoring] = useState<{ id: string; label: string } | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -104,6 +110,28 @@ export default function BackupSettings() {
     } finally {
       setBusy(null);
     }
+  };
+
+  const uploadFile = async (file: File) => {
+    setNotice(null);
+    setUploadProgress(0);
+    try {
+      const id = await uploadBackupFile(file, setUploadProgress);
+      setRestoring({ id, label: file.name });
+    } catch (e) {
+      setNotice({ tone: "error", text: e instanceof Error ? e.message : "The file could not be uploaded." });
+    } finally {
+      setUploadProgress(null);
+    }
+  };
+
+  const restored = async (result: RestoreResult) => {
+    setRestoring(null);
+    setNotice({
+      tone: "ok",
+      text: `Restored ${result.documents.toLocaleString()} records in ${result.collections.length} collections. The gym as it was just before is kept as a backup listed "Before a restore".`,
+    });
+    await load();
   };
 
   if (loading) return <Spinner />;
@@ -216,9 +244,17 @@ export default function BackupSettings() {
                       {b.documents.toLocaleString()} <span className="text-[11px] text-neutral-500">in {b.collections} collections</span>
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 text-right">
-                      <SecondaryButton onClick={() => downloadStored(b.id)} disabled={busy !== null}>
-                        {busy === `download:${b.id}` ? "Downloading…" : "Download"}
-                      </SecondaryButton>
+                      <div className="inline-flex gap-2">
+                        <SecondaryButton onClick={() => downloadStored(b.id)} disabled={busy !== null}>
+                          {busy === `download:${b.id}` ? "Downloading…" : "Download"}
+                        </SecondaryButton>
+                        <SecondaryButton
+                          onClick={() => setRestoring({ id: b.id, label: `the ${KIND_LABELS[b.kind].toLowerCase()} backup of ${when(b.takenAt || b.createdAt)}` })}
+                          disabled={busy !== null}
+                        >
+                          Restore
+                        </SecondaryButton>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -227,6 +263,42 @@ export default function BackupSettings() {
           </div>
         ) : null}
       </Card>
+
+      <Card className="p-6">
+        <Heading
+          title="Restore from a file"
+          hint="A .tar.gz this gym downloaded from here. You will see what is in it, and confirm, before anything changes."
+        />
+        {overview && !overview.ready ? (
+          <p className="text-sm text-neutral-600">Restoring needs the server&apos;s backup storage, which is not set up yet (see above).</p>
+        ) : (
+          <>
+            <label
+              className={`inline-flex h-9 cursor-pointer items-center rounded-lg border border-neutral-200 bg-white px-3 text-sm font-medium text-neutral-700 transition-colors hover:border-neutral-300 hover:bg-neutral-50 ${
+                uploadProgress !== null || busy !== null ? "pointer-events-none opacity-50" : ""
+              }`}
+            >
+              {uploadProgress !== null ? `Encrypting and uploading… ${Math.round(uploadProgress * 100)}%` : "Choose backup file"}
+              <input
+                type="file"
+                accept=".gz,.tgz,application/gzip"
+                className="hidden"
+                disabled={uploadProgress !== null}
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) uploadFile(f);
+                  e.target.value = "";
+                }}
+              />
+            </label>
+            <p className="mt-2 text-xs text-neutral-500">
+              The file is encrypted in your browser before it is uploaded, and removed from the server once restored (or after a day).
+            </p>
+          </>
+        )}
+      </Card>
+
+      {restoring && <RestoreDialog backupId={restoring.id} label={restoring.label} onClose={() => setRestoring(null)} onRestored={restored} />}
     </div>
   );
 }
