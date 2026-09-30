@@ -1,8 +1,11 @@
 // Structured data for search engines: the gym as a local business with
 // its address, phone, opening hours, map position and social profiles --
-// all from the admin settings.
+// all from the admin settings. That is text an admin typed, and this sits in
+// the root layout on every page, so it is serialised with scriptJson: plain
+// JSON.stringify would let a "</script>" in it end the element early.
 
 import type { SiteSettingsForSeo } from "@/helper/siteMetadata";
+import { scriptJson } from "@/helper/scriptJson";
 
 export default function SiteJsonLd({ settings }: { settings: SiteSettingsForSeo }) {
   const hours = (settings.openingHours || []).filter((h) => h && !h.closed && h.open && h.close);
@@ -23,5 +26,5 @@ export default function SiteJsonLd({ settings }: { settings: SiteSettingsForSeo 
     ...(hours.length ? { openingHoursSpecification: hours.map((h) => ({ "@type": "OpeningHoursSpecification", dayOfWeek: h.day, opens: h.open, closes: h.close })) } : {}),
     ...(socials.length ? { sameAs: socials } : {}),
   };
-  return <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(data) }} />;
+  return <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: scriptJson(data) }} />;
 }
