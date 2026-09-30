@@ -203,7 +203,7 @@ export default function AdminHomePage() {
           )} · shop ${money(data.revenue_today.shop, data.base_currency)}${
             data.revenue_today.mixed ? " · other currencies not summed" : ""
           }`}
-          href="/admin/accounts"
+          href={`/admin/reports?tab=daily&from=${data.today}&to=${data.today}`}
           tone="good"
         />
         <Stat

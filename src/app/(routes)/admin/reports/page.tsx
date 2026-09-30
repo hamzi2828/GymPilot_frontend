@@ -3,13 +3,15 @@
 // Reports: the business over a range -- revenue against expenses, new
 // members, visits and peak hours, classes by demand, memberships kept and
 // lost, leads and personal training -- with every list exportable as CSV
-// or as an Excel workbook.
+// or as an Excel workbook -- and the daily sales sheet (?tab=daily).
 
-import { useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { PageHeader, Card, SecondaryButton, TextField, Spinner } from "../_shared/ui";
 import { API_BASE, apiGet } from "../_shared/api";
 import { BarChart, LineChart, HBarList, type Point } from "../_shared/Charts";
 import { downloadExport, FORMAT_LABELS, type ExportFormat } from "./download";
+import DailySales from "./DailySales";
 
 interface Report {
   range: { from: string; to: string; label: string; grain: "day" | "month" };
@@ -109,15 +111,40 @@ function Registrations({ data }: { data: Report["registrations"] }) {
   );
 }
 
-export default function ReportsPage() {
-  const [from, setFrom] = useState(monthStart(today()));
-  const [to, setTo] = useState(today());
+const TABS = [
+  { key: "overview", label: "Overview" },
+  { key: "daily", label: "Daily sales" },
+] as const;
+type TabKey = (typeof TABS)[number]["key"];
+
+function ReportsPageInner() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  // In the URL, so the dashboard can link straight to the daily sales.
+  const tab: TabKey = searchParams.get("tab") === "daily" ? "daily" : "overview";
+  const setTab = (next: TabKey) => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (next === "overview") params.delete("tab");
+    else params.set("tab", next);
+    const query = params.toString();
+    router.replace(`/admin/reports${query ? `?${query}` : ""}`, { scroll: false });
+  };
+
+  // A link may name the range (the dashboard's "Revenue today" does).
+  const urlDate = (key: string) => {
+    const value = searchParams.get(key) || "";
+    return /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;
+  };
+  const [from, setFrom] = useState(() => urlDate("from") || monthStart(today()));
+  const [to, setTo] = useState(() => urlDate("to") || today());
   const [data, setData] = useState<Report | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState<string | null>(null);
 
   const load = useCallback(async () => {
+    // The daily sales tab loads its own figures.
+    if (tab !== "overview") return;
     setLoading(true);
     setError(null);
     try {
@@ -127,7 +154,7 @@ export default function ReportsPage() {
     } finally {
       setLoading(false);
     }
-  }, [from, to]);
+  }, [from, to, tab]);
 
   useEffect(() => {
     load();
@@ -156,6 +183,26 @@ export default function ReportsPage() {
     <div>
       <PageHeader eyebrow="Overview" title="Reports" />
 
+      <div className="mb-6 border-b border-neutral-200">
+        <div className="-mb-px flex gap-1 overflow-x-auto">
+          {TABS.map((t) => (
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => setTab(t.key)}
+              aria-current={tab === t.key ? "page" : undefined}
+              className={`whitespace-nowrap border-b-2 px-4 py-2.5 text-sm font-medium transition-colors ${
+                tab === t.key
+                  ? "border-neutral-900 text-neutral-900"
+                  : "border-transparent text-neutral-500 hover:border-neutral-300 hover:text-neutral-800"
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <Card className="mb-6 p-4">
         <div className="flex flex-wrap items-end gap-3">
           <div className="w-40">
@@ -165,36 +212,40 @@ export default function ReportsPage() {
             <TextField label="To" type="date" value={to} onChange={setTo} />
           </div>
           <div className="flex flex-wrap gap-1.5 pb-1">
+            <SecondaryButton onClick={() => preset(today(), today())}>Today</SecondaryButton>
             <SecondaryButton onClick={() => preset(monthStart(today()), today())}>This month</SecondaryButton>
             <SecondaryButton onClick={() => preset(shift(today(), -29), today())}>Last 30 days</SecondaryButton>
             <SecondaryButton onClick={() => preset(shift(today(), -89), today())}>Last 90 days</SecondaryButton>
             <SecondaryButton onClick={() => preset(monthStart(shift(today(), -364)), today())}>Last 12 months</SecondaryButton>
           </div>
         </div>
-        <div className="mt-3 flex flex-wrap items-center gap-1.5 text-xs text-neutral-500">
-          <span className="mr-1">Export as CSV or Excel:</span>
-          {EXPORTS.map((item) => (
-            <span key={item.id} className="inline-flex items-center overflow-hidden rounded-md border border-neutral-200">
-              <span className="px-2 py-1 font-medium text-neutral-700">{item.label}</span>
-              {(["csv", "xlsx"] as const).map((format) => (
-                <button
-                  key={format}
-                  type="button"
-                  onClick={() => download(item, format)}
-                  disabled={exporting === `${item.id}.${format}`}
-                  title={`${item.label} as ${format === "csv" ? "CSV" : "an Excel workbook (.xlsx)"}`}
-                  className="border-l border-neutral-200 px-1.5 py-1 font-semibold text-neutral-500 hover:bg-neutral-50 hover:text-neutral-900 disabled:opacity-50"
-                >
-                  {exporting === `${item.id}.${format}` ? "…" : FORMAT_LABELS[format]}
-                </button>
-              ))}
-            </span>
-          ))}
-        </div>
+        {tab === "overview" && (
+          <div className="mt-3 flex flex-wrap items-center gap-1.5 text-xs text-neutral-500">
+            <span className="mr-1">Export as CSV or Excel:</span>
+            {EXPORTS.map((item) => (
+              <span key={item.id} className="inline-flex items-center overflow-hidden rounded-md border border-neutral-200">
+                <span className="px-2 py-1 font-medium text-neutral-700">{item.label}</span>
+                {(["csv", "xlsx"] as const).map((format) => (
+                  <button
+                    key={format}
+                    type="button"
+                    onClick={() => download(item, format)}
+                    disabled={exporting === `${item.id}.${format}`}
+                    title={`${item.label} as ${format === "csv" ? "CSV" : "an Excel workbook (.xlsx)"}`}
+                    className="border-l border-neutral-200 px-1.5 py-1 font-semibold text-neutral-500 hover:bg-neutral-50 hover:text-neutral-900 disabled:opacity-50"
+                  >
+                    {exporting === `${item.id}.${format}` ? "…" : FORMAT_LABELS[format]}
+                  </button>
+                ))}
+              </span>
+            ))}
+          </div>
+        )}
       </Card>
 
-      {error && <p className="mb-4 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
-      {loading || !data ? (
+      {tab === "daily" && <DailySales from={from} to={to} />}
+      {tab === "overview" && error && <p className="mb-4 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
+      {tab !== "overview" ? null : loading || !data ? (
         <Spinner />
       ) : (
         <div className="space-y-6">
@@ -255,5 +306,14 @@ export default function ReportsPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function ReportsPage() {
+  // useSearchParams requires a Suspense boundary during prerender.
+  return (
+    <Suspense fallback={<Spinner />}>
+      <ReportsPageInner />
+    </Suspense>
   );
 }
