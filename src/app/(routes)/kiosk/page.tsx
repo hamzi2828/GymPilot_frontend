@@ -43,6 +43,10 @@ interface Receipt {
   status_label: string;
   warning: string | null;
   alert?: PunchAlert | null;
+  // Money still owed on the member's package ("Balance due £25"); the
+  // warning line already says it, amber, and entry is never refused for it.
+  balance_due?: number;
+  balance_due_label?: string | null;
   rows: ReceiptRow[];
   check_in_time: string | null;
   check_out_time: string | null;
@@ -610,7 +614,18 @@ export default function KioskPage() {
                 <p className="text-sm text-neutral-400">
                   {receipt.person_code} · {receipt.person_meta}
                 </p>
-                {receipt.warning && <p className="mt-3 rounded-lg bg-rose-500/15 px-3 py-2 text-sm font-semibold text-rose-300">{receipt.warning}</p>}
+                {/* Amber for a word at the desk (running out, a balance owing),
+                    red for a problem: an expiry a week away or money still to
+                    collect must not look like a lapsed membership. */}
+                {receipt.warning && (
+                  <p
+                    className={`mt-3 rounded-lg px-3 py-2 text-sm font-semibold ${
+                      flash?.tone === "warn" ? "bg-amber-400/15 text-amber-300" : "bg-rose-500/15 text-rose-300"
+                    }`}
+                  >
+                    {receipt.warning}
+                  </p>
+                )}
                 <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
                   {receipt.rows.map((r) => (
                     <React.Fragment key={r.caption}>
