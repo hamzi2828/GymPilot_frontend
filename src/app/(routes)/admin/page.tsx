@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import {
   FiActivity,
@@ -28,15 +28,33 @@ interface Dashboard {
   today: string;
   base_currency: string;
   revenue: Totals & { orders: number; period: string; note: string };
+  revenue_today: Totals & {
+    memberships: number;
+    admission: number;
+    shop: number;
+    payments: number;
+    sales: number;
+    period: string;
+  };
+  expenses_today: Totals & { entries: number; period: string };
+  expenses: Totals & { entries: number; period: string };
   members: {
     total: number;
     active: number;
     expiring: number;
     lapsed: number;
     never_bought: number;
+    new_this_month: number;
     expiring_window_days: number;
   };
-  attendance_today: { member: number; staff: number; still_in: number };
+  attendance_today: {
+    member: number;
+    staff: number;
+    still_in: number;
+    paid: number;
+    unpaid: number;
+    balance_due?: number;
+  };
   classes_today: {
     count: number;
     booked: number;
@@ -87,6 +105,16 @@ const shortDate = (value: string) =>
   value
     ? new Date(value).toLocaleDateString(undefined, { day: "numeric", month: "short" })
     : "—";
+
+// The full list behind the fees-due card: members whose membership ends
+// within the same window the dashboard counts.
+const feeExpiryHref = (days: number) => `/admin/fee-expiry?days=${days}`;
+
+function SectionLabel({ children }: { children: ReactNode }) {
+  return (
+    <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-neutral-400">{children}</p>
+  );
+}
 
 function Stat({
   label,
@@ -169,10 +197,56 @@ export default function AdminHomePage() {
     <div>
       <PageHeader eyebrow="Overview" title="Dashboard" />
 
-      {/* The row an owner reads first: money, members, who is in, what is on. */}
+      {/* The row an owner reads first: today's money in and out, who came in
+          (and whether they had paid), what is on. */}
+      <SectionLabel>Today</SectionLabel>
+      <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <Stat
+          label="Revenue today"
+          value={money(data.revenue_today.headline_amount, data.revenue_today.headline_currency)}
+          hint={`memberships ${money(data.revenue_today.memberships, data.base_currency)} · admission ${money(
+            data.revenue_today.admission,
+            data.base_currency
+          )} · shop ${money(data.revenue_today.shop, data.base_currency)}${
+            data.revenue_today.mixed ? " · other currencies not summed" : ""
+          }`}
+          href={`/admin/reports?tab=daily&from=${data.today}&to=${data.today}`}
+          tone="good"
+        />
+        <Stat
+          label="Expenses today"
+          value={money(data.expenses_today.headline_amount, data.expenses_today.headline_currency)}
+          hint={
+            data.expenses_today.entries
+              ? `${data.expenses_today.entries} paid expense${data.expenses_today.entries === 1 ? "" : "s"}`
+              : "no paid expenses today"
+          }
+          href="/admin/accounts"
+        />
+        <Stat
+          label="Members in today"
+          value={data.attendance_today.member}
+          hint={`${data.attendance_today.paid} paid${
+            data.attendance_today.balance_due ? ` (${data.attendance_today.balance_due} owing)` : ""
+          } · ${data.attendance_today.unpaid} unpaid · ${data.attendance_today.staff} staff${
+            data.attendance_today.still_in > 0 ? ` · ${data.attendance_today.still_in} still in` : ""
+          }`}
+          href="/admin/attendance"
+          tone={data.attendance_today.unpaid > 0 ? "warn" : "neutral"}
+        />
+        <Stat
+          label="Classes today"
+          value={data.classes_today.count}
+          hint={`${data.classes_today.booked} places booked`}
+          href="/admin/bookings"
+          tone="neutral"
+        />
+      </div>
+
+      <SectionLabel>This month · {data.revenue.period}</SectionLabel>
       <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Stat
-          label={`Revenue · ${data.revenue.period}`}
+          label="Revenue"
           value={money(data.revenue.headline_amount, data.revenue.headline_currency)}
           hint={
             data.revenue.mixed
@@ -183,27 +257,22 @@ export default function AdminHomePage() {
           tone="good"
         />
         <Stat
+          label="Expenses"
+          value={money(data.expenses.headline_amount, data.expenses.headline_currency)}
+          hint={`${data.expenses.entries} paid expense${data.expenses.entries === 1 ? "" : "s"}`}
+          href="/admin/accounts"
+        />
+        <Stat
+          label="New this month"
+          value={data.members.new_this_month}
+          hint={`${data.members.total} members in total`}
+          href="/admin/users"
+        />
+        <Stat
           label="Active memberships"
           value={data.members.active}
           hint={`${data.members.total} members · ${data.members.never_bought} never bought`}
           href="/admin/package-orders"
-        />
-        <Stat
-          label="In the gym today"
-          value={data.attendance_today.member + data.attendance_today.staff}
-          hint={
-            data.attendance_today.still_in > 0
-              ? `${data.attendance_today.still_in} still checked in`
-              : "members and staff"
-          }
-          href="/admin/attendance"
-        />
-        <Stat
-          label="Classes today"
-          value={data.classes_today.count}
-          hint={`${data.classes_today.booked} places booked`}
-          href="/admin/bookings"
-          tone="neutral"
         />
       </div>
 
@@ -218,14 +287,14 @@ export default function AdminHomePage() {
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             {data.needs_attention.expiring_memberships > 0 && (
               <Link
-                href="/admin/package-orders"
+                href={feeExpiryHref(data.members.expiring_window_days)}
                 className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 hover:border-amber-300"
               >
                 <p className="text-lg font-semibold text-amber-900">
                   {data.needs_attention.expiring_memberships}
                 </p>
                 <p className="text-[12px] text-amber-800">
-                  memberships end within {data.members.expiring_window_days} days
+                  fees due within {data.members.expiring_window_days} days
                 </p>
               </Link>
             )}
@@ -294,18 +363,22 @@ export default function AdminHomePage() {
           )}
         </Card>
 
-        {/* Memberships about to lapse — the most actionable list in the panel */}
+        {/* Fees coming due — the most actionable list in the panel. The
+            count is people; the list shows the soonest few orders. */}
         <Card className="p-5">
           <div className="mb-4 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <FiClock className="h-4 w-4 text-neutral-400" />
-              <h2 className="text-sm font-semibold text-neutral-900">Expiring soon</h2>
+              <h2 className="text-sm font-semibold text-neutral-900">
+                Fees due · next {data.members.expiring_window_days} days
+              </h2>
+              {data.members.expiring > 0 && <Badge color="amber">{data.members.expiring}</Badge>}
             </div>
             <Link
-              href="/admin/package-orders"
+              href={feeExpiryHref(data.members.expiring_window_days)}
               className="text-[12px] font-medium text-neutral-500 hover:text-neutral-900"
             >
-              All orders →
+              View all →
             </Link>
           </div>
 
