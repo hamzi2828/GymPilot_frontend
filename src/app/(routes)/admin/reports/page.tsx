@@ -269,7 +269,7 @@ function ReportsPageInner() {
           <div data-print-cols="3" className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-6">
             <Kpi label="Revenue" value={money(data.kpis.revenue)} hint={`memberships ${money(data.kpis.membership_revenue)} · shop ${money(data.kpis.shop_revenue)}`} />
             <Kpi label="Expenses" value={money(data.kpis.expenses)} hint={data.kpis.expenses_pending ? `paid · ${money(data.kpis.expenses_pending)} pending, not deducted` : "paid"} />
-            <Kpi label="Net" value={money(data.kpis.net)} tone={data.kpis.net >= 0 ? "text-emerald-700" : "text-rose-700"} hint="same as Accounts for this range" />
+            <Kpi label="Net" value={money(data.kpis.net)} tone={data.kpis.net >= 0 ? "text-emerald-700" : "text-rose-700"} hint="revenue less expenses, salaries, commission and assets · same as Accounts" />
             <Kpi label="New members" value={data.kpis.new_members} hint={`${data.kpis.members_total} in total`} />
             <Kpi label="Visits" value={data.kpis.visits} hint={data.kpis.avg_visits_per_day !== null ? `${data.kpis.avg_visits_per_day} per day` : undefined} />
             <Kpi label="Live memberships" value={data.kpis.active_memberships} hint={`${data.kpis.expiring_soon} ending within 14 days`} />
