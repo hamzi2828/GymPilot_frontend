@@ -1,9 +1,49 @@
 // Settings → Data & backup: the calls behind it. The backend side is
 // controller/backupController.js; every call is administrators-only there.
 
-import { API_BASE, ApiError, authHeaders } from "../_shared/api";
+import { API_BASE, ApiError, apiGet, apiJson, authHeaders } from "../_shared/api";
 
 export const BACKUPS_API = `${API_BASE}/api/backups`;
+
+export type BackupKind = "daily" | "manual" | "pre-restore";
+
+/** A backup the server keeps (encrypted, in its file storage). */
+export interface StoredBackup {
+  id: string;
+  kind: BackupKind;
+  createdAt: string;
+  takenAt: string | null;
+  size: number;
+  documents: number;
+  collections: number;
+  createdBy: string | null;
+}
+
+export interface BackupOverview {
+  /** Whether this server can store backups; `reason` says why not. */
+  ready: boolean;
+  reason: string | null;
+  /** How many of each kind are kept. */
+  keep: number;
+  backups: StoredBackup[];
+}
+
+export const KIND_LABELS: Record<BackupKind, string> = {
+  daily: "Daily",
+  manual: "Backed up now",
+  "pre-restore": "Before a restore",
+};
+
+export async function listBackups(): Promise<BackupOverview> {
+  const r = await apiGet<{ data: BackupOverview }>(BACKUPS_API);
+  return r.data;
+}
+
+/** Makes and stores a backup now. */
+export async function backUpNow(): Promise<StoredBackup> {
+  const r = await apiJson<{ data: StoredBackup }>(`${BACKUPS_API}/run`, "POST");
+  return r.data;
+}
 
 // The reason a failed file response gives, read the way the shared client
 // reads a JSON error, so the message is fit to show.
@@ -50,6 +90,18 @@ export async function downloadFullBackup() {
     throw new Error("Could not reach the server — check your connection and try again.");
   }
   if (!res.ok) throw await failure(res, "The backup could not be made.");
+  return saveResponse(res, "gym-backup.tar.gz");
+}
+
+/** A stored backup, opened by the server and saved as the same .tar.gz. */
+export async function downloadStoredBackup(id: string) {
+  let res: Response;
+  try {
+    res = await fetch(`${BACKUPS_API}/${encodeURIComponent(id)}/download`, { method: "POST", headers: authHeaders() });
+  } catch {
+    throw new Error("Could not reach the server — check your connection and try again.");
+  }
+  if (!res.ok) throw await failure(res, "The backup could not be downloaded.");
   return saveResponse(res, "gym-backup.tar.gz");
 }
 
