@@ -9,6 +9,7 @@ import { FiPlus } from "react-icons/fi";
 import { PageHeader, Card, PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, SelectField, Badge, Spinner, Table } from "../_shared/ui";
 import { GYMFOLIO_API, apiGet, apiJson } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
+import { useGymToday } from "@/components/ThemeProvider";
 import { MemberPicker, type MemberOption } from "../_ops/MemberPicker";
 
 const PT_API = `${GYMFOLIO_API}/pt`;
@@ -62,7 +63,6 @@ interface Slot {
   end_time: string;
 }
 
-const today = () => new Date().toISOString().slice(0, 10);
 const addDays = (key: string, n: number) => {
   const [y, m, d] = key.split("-").map(Number);
   return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
@@ -70,6 +70,7 @@ const addDays = (key: string, n: number) => {
 const STATUS_TONE: Record<Session["status"], "green" | "neutral" | "rose" | "blue"> = { scheduled: "blue", completed: "green", cancelled: "neutral", no_show: "rose" };
 
 export default function PtAdminPage() {
+  const today = useGymToday();
   const { can } = usePermissions();
   const editable = can("pt", "manage");
   const [from, setFrom] = useState(today());

@@ -10,6 +10,7 @@ import Link from "next/link";
 import { PageHeader, Card, PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, TextArea, SelectField, Toggle, Badge, Spinner } from "../_shared/ui";
 import { API_BASE, apiGet, apiJson, authHeaders } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
+import { useGymToday } from "@/components/ThemeProvider";
 import { MemberPicker, type MemberOption } from "../_ops/MemberPicker";
 import {
   ThermalReceipt,
@@ -94,7 +95,8 @@ const RECEIPT_FOOTER_MAX = 300;
 const round2 = (n: number) => Math.round((Number(n) || 0) * 100) / 100;
 const moneyList = (m: Record<string, number> | undefined) => Object.entries(m || {}).map(([c, n]) => fmt(n, c)).join(", ") || "—";
 
-// Local calendar days, which is how the server reads ?from=&to=.
+// Calendar days, which is how the server reads ?from=&to= -- the gym's days,
+// so "today" is the gym's (useGymToday), not this browser's.
 const dayKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 const shiftDays = (key: string, n: number) => {
   const [y, m, d] = key.split("-").map(Number);
@@ -184,8 +186,9 @@ export default function PosPage() {
   const [receipt, setReceipt] = useState<Sale | null>(null);
   const [notice, setNotice] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
   const [sales, setSales] = useState<SalesResponse | null>(null);
-  const [from, setFrom] = useState(() => monthStart(dayKey(new Date())));
-  const [to, setTo] = useState(() => dayKey(new Date()));
+  const today = useGymToday();
+  const [from, setFrom] = useState(() => monthStart(today()));
+  const [to, setTo] = useState(() => today());
   const [salesLoading, setSalesLoading] = useState(true);
   const [visible, setVisible] = useState(SALES_PAGE);
   const [opened, setOpened] = useState<string | null>(null);
@@ -415,9 +418,9 @@ export default function PosPage() {
                   <TextField label="To" type="date" value={to} onChange={setTo} />
                 </div>
                 <div className="flex flex-wrap gap-1.5">
-                  <SecondaryButton onClick={() => setRange(dayKey(new Date()), dayKey(new Date()))}>Today</SecondaryButton>
-                  <SecondaryButton onClick={() => setRange(monthStart(dayKey(new Date())), dayKey(new Date()))}>This month</SecondaryButton>
-                  <SecondaryButton onClick={() => setRange(shiftDays(dayKey(new Date()), -29), dayKey(new Date()))}>Last 30 days</SecondaryButton>
+                  <SecondaryButton onClick={() => setRange(today(), today())}>Today</SecondaryButton>
+                  <SecondaryButton onClick={() => setRange(monthStart(today()), today())}>This month</SecondaryButton>
+                  <SecondaryButton onClick={() => setRange(shiftDays(today(), -29), today())}>Last 30 days</SecondaryButton>
                 </div>
               </div>
               {salesLoading && !sales ? (

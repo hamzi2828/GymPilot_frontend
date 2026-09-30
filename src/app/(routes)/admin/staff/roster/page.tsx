@@ -8,6 +8,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { PageHeader, Card, SecondaryButton, Spinner, ErrorState } from "../../_shared/ui";
 import { API_BASE, apiGet } from "../../_shared/api";
+import { useGymToday } from "@/components/ThemeProvider";
 
 interface Day {
   date: string;
@@ -16,7 +17,6 @@ interface Day {
   off: { staff_id: string; name: string; type: string }[];
 }
 
-const today = () => new Date().toISOString().slice(0, 10);
 const addDays = (key: string, n: number) => {
   const [y, m, d] = key.split("-").map(Number);
   return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
@@ -28,6 +28,7 @@ const startOfWeek = (key: string) => {
 };
 
 export default function RosterPage() {
+  const today = useGymToday();
   const [from, setFrom] = useState(startOfWeek(today()));
   const [days, setDays] = useState<Day[]>([]);
   const [loading, setLoading] = useState(true);

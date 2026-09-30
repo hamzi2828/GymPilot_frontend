@@ -1,8 +1,9 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { applyTheme, getTheme, DEFAULT_THEME_KEY } from "@/theme/themes";
 import TenantUnavailable from "@/components/TenantUnavailable";
+import { gymDateKey } from "@/helper/date";
 
 // The API's answer when the domain is not (or no longer) serving a gym.
 // `renewable` comes with a lapsed subscription: the gym's owner can still
@@ -43,6 +44,8 @@ type SiteSettings = {
   // Where the gym is, for the contact page.
   maps: { embedUrl: string; placeUrl: string };
   openingHours: { day: string; open: string; close: string; closed: boolean }[];
+  // The gym's IANA timezone, for "today" on the admin pages; "" until known.
+  ianaTimezone: string;
 };
 
 const DEFAULT_LOGO = "/images/logo.png";
@@ -69,6 +72,7 @@ const DEFAULTS: SiteSettings = {
   locale: { language: "en", direction: "ltr" },
   maps: { embedUrl: "", placeUrl: "" },
   openingHours: [],
+  ianaTimezone: "",
 };
 
 const SiteSettingsContext = createContext<SiteSettings>(DEFAULTS);
@@ -76,6 +80,16 @@ const SiteSettingsContext = createContext<SiteSettings>(DEFAULTS);
 /** Business name, logo and palette, sourced from admin settings. */
 export function useSiteSettings() {
   return useContext(SiteSettingsContext);
+}
+
+/**
+ * Today's date at the gym ('YYYY-MM-DD'; helper/date.ts gymDateKey), as a
+ * function rather than a value so a preset pressed after midnight gets the
+ * new day.
+ */
+export function useGymToday(): () => string {
+  const { ianaTimezone } = useSiteSettings();
+  return useCallback(() => gymDateKey(ianaTimezone), [ianaTimezone]);
 }
 
 function readCache(key: string): string | null {
@@ -179,6 +193,7 @@ export default function ThemeProvider({ children }: { children: React.ReactNode 
           locale: { language: (d.locale && d.locale.language) || "en", direction: d.locale && d.locale.direction === "rtl" ? "rtl" : "ltr" },
           maps: { embedUrl: (d.maps && d.maps.embedUrl) || "", placeUrl: (d.maps && d.maps.placeUrl) || "" },
           openingHours: Array.isArray(d.openingHours) ? d.openingHours : [],
+          ianaTimezone: typeof d.ianaTimezone === "string" ? d.ianaTimezone : "",
         });
       } catch {
         // Offline or API down — CSS defaults in globals.css still apply.

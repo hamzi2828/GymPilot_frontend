@@ -9,6 +9,7 @@ import { FiPlus } from "react-icons/fi";
 import { PageHeader, PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, TextArea, SelectField, Toggle, Badge, Spinner, Table, ErrorState } from "../../_shared/ui";
 import { API_BASE, apiGet, apiJson, replaceParams } from "../../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
+import { useGymToday } from "@/components/ThemeProvider";
 
 interface Leave {
   id: string;
@@ -42,9 +43,9 @@ const STATUSES = [
   { value: "cancelled", label: "Withdrawn" },
 ];
 const TONE: Record<Leave["status"], "amber" | "green" | "rose" | "neutral"> = { pending: "amber", approved: "green", rejected: "rose", cancelled: "neutral" };
-const today = () => new Date().toISOString().slice(0, 10);
 
 function LeavePageInner() {
+  const today = useGymToday();
   const { can } = usePermissions();
   const editable = can("staff", "manage");
   const [rows, setRows] = useState<Leave[]>([]);

@@ -16,6 +16,7 @@ import {
 } from "../_shared/ui";
 import { GYMFOLIO_API, apiGet, apiJson } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
+import { useGymToday } from "@/components/ThemeProvider";
 import { MemberPicker, type MemberOption } from "../_ops/MemberPicker";
 import { Pager, pageCount } from "../_ops/lists";
 
@@ -77,12 +78,11 @@ const STATUS_LABEL: Record<Booking["status"], string> = {
   no_show: "No show",
 };
 
-// Today in the gym's terms. The API files sessions against a local date key,
-// so the filter has to start from the same idea of "today" the server has.
-const todayKey = () => new Date().toISOString().slice(0, 10);
-
 export default function BookingsAdminPage() {
   const { can } = usePermissions();
+  // Today in the gym's terms. The API files sessions against a local date key,
+  // so the filter has to start from the same idea of "today" the server has.
+  const todayKey = useGymToday();
   const editable = can("bookings", "manage");
   const [list, setList] = useState<Booking[]>([]);
   const [classes, setClasses] = useState<GymClassOption[]>([]);

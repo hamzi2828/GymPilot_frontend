@@ -13,7 +13,7 @@ import { BarChart, LineChart, HBarList, type Point } from "../_shared/Charts";
 import { downloadExport, FORMAT_LABELS, type ExportFormat } from "./download";
 import DailySales from "./DailySales";
 import { PrintHeader, PrintStyles, printReport } from "./Print";
-import { useSiteSettings } from "@/components/ThemeProvider";
+import { useGymToday, useSiteSettings } from "@/components/ThemeProvider";
 
 interface Report {
   range: { from: string; to: string; label: string; grain: "day" | "month" };
@@ -48,7 +48,7 @@ interface Report {
   registrations: { total: number; days: { date: string; label: string; count: number }[] };
 }
 
-const today = () => new Date().toISOString().slice(0, 10);
+// Date-key arithmetic; "today" is the gym's (useGymToday), not UTC's.
 const shift = (key: string, n: number) => {
   const [y, m, d] = key.split("-").map(Number);
   return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
@@ -137,6 +137,7 @@ function ReportsPageInner() {
     const value = searchParams.get(key) || "";
     return /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;
   };
+  const today = useGymToday();
   const [from, setFrom] = useState(() => urlDate("from") || monthStart(today()));
   const [to, setTo] = useState(() => urlDate("to") || today());
   const [data, setData] = useState<Report | null>(null);
