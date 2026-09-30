@@ -84,6 +84,8 @@ interface PackageOrder {
   freeze?: { isFrozen: boolean; resumeAt?: string | null; totalFrozenDays?: number; reason?: string };
   cancellation?: { cancelledAt?: string | null; reason?: string; source?: string };
   refund?: { amount?: number | null; reason?: string; at?: string | null; stripeRefundId?: string | null };
+  // Changes staff made to the dates or the discount after the sale.
+  termsHistory?: { at: string; note?: string; from: Terms; to: Terms }[];
   sessions?: { total: number; used: number };
   invoice?: { number?: string | null };
   status: string;
@@ -128,7 +130,8 @@ const PAYMENT_STATUSES = ["pending", "processing", "paid", "failed", "refunded"]
 
 // hasDues: "1" lists only orders with money still owed on them.
 type Filters = { search: string; status: string; paymentStatus: string; paymentMethod: string; hasDues: string };
-type PanelAction = "" | "status" | "freeze" | "cancel" | "renew" | "change" | "reject" | "refund" | "payment";
+type PanelAction = "" | "status" | "freeze" | "cancel" | "renew" | "change" | "reject" | "refund" | "payment" | "terms";
+type Terms = { startDate?: string | null; endDate?: string | null; discountAmount?: number; discountNote?: string; amount?: number; balanceDue?: number };
 
 // The list's filters as the address gives them (the bell links to
 // ?status=past_due, for one). A value the filters do not offer is ignored.
@@ -146,6 +149,13 @@ function filtersFrom(params: { get(key: string): string | null }): Filters {
 function fmtDate(value?: string | null) {
   if (!value) return "—";
   return new Date(value).toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" });
+}
+
+// A date as a date input holds it (YYYY-MM-DD, this browser's calendar).
+function dateInput(value?: string | null) {
+  if (!value) return "";
+  const d = new Date(value);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
 function money(amount: number | undefined, currency: string) {
@@ -364,6 +374,11 @@ function PackageOrdersAdminPageInner() {
       payAmount: "",
       payMethod: "cash",
       payNote: "",
+      termsStart: "",
+      termsEnd: "",
+      termsDiscount: "",
+      termsDiscountNote: "",
+      termsNote: "",
     });
   };
 
@@ -827,6 +842,27 @@ function PackageOrdersAdminPageInner() {
                     <SecondaryButton onClick={() => setAction("renew")}>Renew</SecondaryButton>
                   ))}
                 {live(selected) && <SecondaryButton onClick={() => openAction(selected, "change")}>Change package</SecondaryButton>}
+                {/* Not on a card subscription (Stripe's billing sets its dates and price) or a card payment still going through. */}
+                {selected.status !== "cancelled" &&
+                  !["refunded", "failed", "cancelled"].includes(selected.payment.status) &&
+                  !selected.payment.stripeSubscriptionId &&
+                  !(viaStripe(selected) && selected.payment.status !== "paid") && (
+                  <SecondaryButton
+                    onClick={() => {
+                      setDraft({
+                        ...draft,
+                        termsStart: dateInput(selected.subscription?.startDate),
+                        termsEnd: dateInput(selected.subscription?.endDate),
+                        termsDiscount: String(selected.payment.discountAmount ?? 0),
+                        termsDiscountNote: selected.payment.discountNote || "",
+                        termsNote: "",
+                      });
+                      setAction("terms");
+                    }}
+                  >
+                    Edit terms
+                  </SecondaryButton>
+                )}
                 {live(selected) && isPack(selected) && (
                   <SecondaryButton disabled={busy} onClick={() => run("Session used.", () => post(selected, "use-session"))}>
                     Use a session
@@ -864,6 +900,58 @@ function PackageOrdersAdminPageInner() {
                   </DangerButton>
                 </div>
               </div>
+            )}
+
+            {action === "terms" && (
+              <div className="grid gap-3 sm:grid-cols-2 rounded-lg border border-neutral-200 p-4">
+                <TextField label="Starts" type="date" value={draft.termsStart} onChange={(v) => setDraft({ ...draft, termsStart: v })} />
+                <TextField label="Ends (through the end of that day)" type="date" value={draft.termsEnd} onChange={(v) => setDraft({ ...draft, termsEnd: v })} />
+                {!viaStripe(selected) && (
+                  <>
+                    <TextField label={`Discount (${(selected.payment.currency || "").toUpperCase()}, off the package price)`} type="number" value={draft.termsDiscount} onChange={(v) => setDraft({ ...draft, termsDiscount: v })} />
+                    <TextField label="Discount note" value={draft.termsDiscountNote} onChange={(v) => setDraft({ ...draft, termsDiscountNote: v })} />
+                  </>
+                )}
+                <div className="sm:col-span-2">
+                  <TextField label="Why (kept with the change)" value={draft.termsNote} onChange={(v) => setDraft({ ...draft, termsNote: v })} placeholder="Injury, promotion agreed at the desk…" />
+                </div>
+                <p className="sm:col-span-2 text-xs text-neutral-500">
+                  A different discount moves the total and what is due; money already received stays as it is. A discount that would take the total below what was paid needs a refund instead.
+                </p>
+                <div className="sm:col-span-2 flex justify-end">
+                  <PrimaryButton
+                    disabled={busy}
+                    onClick={() => {
+                      // Only what was changed: a date sent again as it was
+                      // would still be read as the whole of that day.
+                      const body: Record<string, string> = {};
+                      if (draft.termsStart && draft.termsStart !== dateInput(selected.subscription?.startDate)) body.startDate = draft.termsStart;
+                      if (draft.termsEnd && draft.termsEnd !== dateInput(selected.subscription?.endDate)) body.endDate = draft.termsEnd;
+                      if (draft.termsDiscount !== String(selected.payment.discountAmount ?? 0)) body.discountAmount = draft.termsDiscount || "0";
+                      if (draft.termsDiscountNote !== (selected.payment.discountNote || "")) body.discountNote = draft.termsDiscountNote;
+                      if (draft.termsNote) body.note = draft.termsNote;
+                      run("Terms updated.", () => apiJson<{ message: string }>(`${GYMFOLIO_API}/package-orders/${selected._id}/terms`, "PATCH", body));
+                    }}
+                  >
+                    {busy ? "Saving…" : "Save terms"}
+                  </PrimaryButton>
+                </div>
+              </div>
+            )}
+
+            {(selected.termsHistory || []).length > 0 && (
+              <details className="rounded-lg border border-neutral-200 p-4">
+                <summary className="cursor-pointer text-xs font-semibold text-neutral-600">Changes to the terms ({(selected.termsHistory || []).length})</summary>
+                <ul className="mt-2 space-y-1 text-xs text-neutral-600">
+                  {(selected.termsHistory || []).map((change, i) => (
+                    <li key={i}>
+                      {fmtDate(change.at)}: {fmtDate(change.from.startDate)} → {fmtDate(change.from.endDate)} became {fmtDate(change.to.startDate)} → {fmtDate(change.to.endDate)}
+                      {change.from.amount !== change.to.amount ? `; total ${money(change.from.amount, selected.payment.currency)} became ${money(change.to.amount, selected.payment.currency)}` : ""}
+                      {change.note ? ` — ${change.note}` : ""}
+                    </li>
+                  ))}
+                </ul>
+              </details>
             )}
 
             {action === "payment" && (
