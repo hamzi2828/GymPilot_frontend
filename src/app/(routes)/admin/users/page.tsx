@@ -20,6 +20,7 @@ import { API_BASE, GYMFOLIO_API, apiGet, apiJson, isPlanLimitError, replaceParam
 import { usePermissions } from "@/components/admin/PermissionsProvider";
 import UsersImportModal from "./UsersImportModal";
 import MemberProfileModal from "./MemberProfileModal";
+import UsernameModal, { type UsernameTarget } from "./UsernameModal";
 import {
   CredentialsChoice,
   PasswordReveal,
@@ -43,7 +44,10 @@ interface User {
   tags?: string[];
   memberCode?: string | null;
   isActive?: boolean;
-  /** What the member types into the phone app. Their name plus three digits. */
+  /**
+   * What they can sign in with instead of an email -- the website, the desk
+   * and the phone app. Their name plus three digits unless staff chose one.
+   */
   username?: string | null;
 }
 
@@ -59,11 +63,14 @@ function UsernameCell({
   canManage,
   onRegenerated,
   onNotice,
+  onEdit,
 }: {
   user: User;
   canManage: boolean;
   onRegenerated: () => void;
   onNotice: (tone: "ok" | "warn", text: string) => void;
+  /** Opens the dialog to type a username of the gym's choosing. */
+  onEdit: () => void;
 }) {
   const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -108,15 +115,25 @@ function UsernameCell({
         {copied ? "copied" : "copy"}
       </button>
       {canManage && (
-        <button
-          type="button"
-          onClick={regenerate}
-          disabled={busy}
-          title="Issue a new username"
-          className="rounded px-1 py-0.5 text-[11px] font-medium text-neutral-400 hover:bg-neutral-100 hover:text-neutral-800 disabled:opacity-50"
-        >
-          {busy ? "…" : "new"}
-        </button>
+        <>
+          <button
+            type="button"
+            onClick={onEdit}
+            title="Choose their username"
+            className="rounded px-1 py-0.5 text-[11px] font-medium text-neutral-400 hover:bg-neutral-100 hover:text-neutral-800"
+          >
+            edit
+          </button>
+          <button
+            type="button"
+            onClick={regenerate}
+            disabled={busy}
+            title="Issue a new generated username"
+            className="rounded px-1 py-0.5 text-[11px] font-medium text-neutral-400 hover:bg-neutral-100 hover:text-neutral-800 disabled:opacity-50"
+          >
+            {busy ? "…" : "new"}
+          </button>
+        </>
       )}
     </div>
   );
@@ -182,6 +199,7 @@ function UsersAdminPageInner() {
   // "Set password" on a row, and a generated password to show once.
   const [passwordFor, setPasswordFor] = useState<PasswordTarget | null>(null);
   const [reveal, setReveal] = useState<RevealedPassword | null>(null);
+  const [usernameFor, setUsernameFor] = useState<UsernameTarget | null>(null);
 
   // --- Assign a package to a specific member -----------------------------
   const [assignFor, setAssignFor] = useState<User | null>(null);
@@ -453,7 +471,7 @@ function UsersAdminPageInner() {
         <ErrorState message={loadErr} onRetry={load} />
       ) : (
         <Table
-          columns={["Name", "Email", "App username", "Role", "Status", "Joined", "Actions"]}
+          columns={["Name", "Email", "Username", "Role", "Status", "Joined", "Actions"]}
           rows={visible.map((u) => [
             <div key="n">
               <p className="font-medium text-neutral-900">{[u.firstName, u.lastName].filter(Boolean).join(" ") || "—"}</p>
@@ -466,7 +484,14 @@ function UsersAdminPageInner() {
               )}
             </div>,
             u.email || <span key="e" className="text-xs text-neutral-400">no email</span>,
-            <UsernameCell key="u" user={u} canManage={canManage} onRegenerated={load} onNotice={(tone, text) => setNotice({ tone, text })} />,
+            <UsernameCell
+              key="u"
+              user={u}
+              canManage={canManage}
+              onRegenerated={load}
+              onNotice={(tone, text) => setNotice({ tone, text })}
+              onEdit={() => setUsernameFor({ endpoint: `${API_BASE}/admin/users/${u._id}/username`, who: displayName(u), current: u.username })}
+            />,
             <Badge key="r" color={u.role === "admin" ? "blue" : "neutral"}>{roleNames.get(u.role || "user") || u.role || "user"}</Badge>,
             // `isActive` is what the account model stores and what sign-in
             // checks; an account from before the field is active.
@@ -673,6 +698,14 @@ function UsersAdminPageInner() {
 
       <SetPasswordModal target={passwordFor} onClose={() => setPasswordFor(null)} onDone={(text) => setNotice({ tone: "ok", text })} />
       <PasswordReveal reveal={reveal} onClose={() => setReveal(null)} />
+      <UsernameModal
+        target={usernameFor}
+        onClose={() => setUsernameFor(null)}
+        onDone={(text) => {
+          setNotice({ tone: "ok", text });
+          load();
+        }}
+      />
 
       <Modal open={!!selected} onClose={() => setSelected(null)} title="Update Role" size="sm">
         {selected && (

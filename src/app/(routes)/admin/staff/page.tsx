@@ -30,6 +30,7 @@ import {
   type PasswordTarget,
   type RevealedPassword,
 } from "../users/PasswordDialogs";
+import UsernameModal, { type UsernameTarget } from "../users/UsernameModal";
 import { currencyOptions } from "@/data/countries";
 
 const CURRENCY_OPTIONS = currencyOptions();
@@ -63,6 +64,8 @@ interface StaffMember {
   first_name: string;
   last_name: string;
   email: string;
+  /** Signs in instead of the email: website, desk and phone app. */
+  username?: string;
   phone: string;
   staff_code: string;
   role: string;
@@ -306,6 +309,7 @@ function StaffAdminPageInner() {
   const [chosenPassword, setChosenPassword] = useState("");
   const [passwordFor, setPasswordFor] = useState<PasswordTarget | null>(null);
   const [reveal, setReveal] = useState<RevealedPassword | null>(null);
+  const [usernameFor, setUsernameFor] = useState<UsernameTarget | null>(null);
 
   useEffect(() => {
     const timer = setTimeout(() => setQ(search.trim()), 350);
@@ -716,7 +720,7 @@ function StaffAdminPageInner() {
                         )}
                       </div>
                       <div className="mt-0.5 text-[11px] text-neutral-400">
-                        {[member.staff_code || "no code", member.email].filter(Boolean).join(" · ")}
+                        {[member.staff_code || "no code", member.username, member.email].filter(Boolean).join(" · ")}
                       </div>
                     </td>
 
@@ -768,10 +772,17 @@ function StaffAdminPageInner() {
                           <SecondaryButton onClick={() => openEdit(member)}>Edit</SecondaryButton>
                           <SecondaryButton
                             onClick={() =>
-                              setPasswordFor({ endpoint: `${API_BASE}/staff/${member.id}/password`, who: member.name })
+                              setPasswordFor({ endpoint: `${API_BASE}/staff/${member.id}/password`, who: member.name, username: member.username })
                             }
                           >
                             Set password
+                          </SecondaryButton>
+                          <SecondaryButton
+                            onClick={() =>
+                              setUsernameFor({ endpoint: `${API_BASE}/staff/${member.id}/username`, who: member.name, current: member.username })
+                            }
+                          >
+                            Username
                           </SecondaryButton>
                           {member.is_active ? (
                             <DangerButton onClick={() => setStatus(member, false)}>Deactivate</DangerButton>
@@ -1098,6 +1109,14 @@ function StaffAdminPageInner() {
 
       <SetPasswordModal target={passwordFor} onClose={() => setPasswordFor(null)} onDone={setNotice} />
       <PasswordReveal reveal={reveal} onClose={() => setReveal(null)} />
+      <UsernameModal
+        target={usernameFor}
+        onClose={() => setUsernameFor(null)}
+        onDone={(text) => {
+          setNotice(text);
+          load();
+        }}
+      />
     </div>
   );
 }

@@ -130,6 +130,7 @@ export const LeftSide: React.FC<LeftSideProps> = ({
             formData={formData}
             errors={errors}
             handleInputChange={handleInputChange}
+            allowUsername={!isSignUp && !isForgot}
           />
         )}
 
