@@ -22,6 +22,8 @@ import { usePermissions } from "@/components/admin/PermissionsProvider";
 import UsersImportModal from "./UsersImportModal";
 import MemberProfileModal from "./MemberProfileModal";
 import UsernameModal, { type UsernameTarget } from "./UsernameModal";
+import AddMemberModal, { type RegisterResult } from "./AddMemberModal";
+import { DESK_METHOD_OPTIONS } from "./membershipDesk";
 import {
   CredentialsChoice,
   PasswordReveal,
@@ -176,8 +178,9 @@ function UsersAdminPageInner() {
   const [role, setRole] = useState("");
   const [roles, setRoles] = useState<RoleOption[]>([]);
 
-  // Create-user dialog
+  // Create-user dialog (any role), and the desk's one-screen Add member.
   const [createOpen, setCreateOpen] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [profileId, setProfileId] = useState<string | null>(null);
   // The address carries the search (?q=) and can name a member to open
@@ -340,6 +343,16 @@ function UsersAdminPageInner() {
     }
   };
 
+  // Add member saved: the list gains the row, and the page says so once the
+  // dialog (password, receipt) is closed.
+  const registered = (res: RegisterResult) => {
+    const m = res.member;
+    const who = [m.firstName, m.lastName].filter(Boolean).join(" ") || m.email || "The member";
+    const sold = res.order ? ` ${res.order.packageDetails.name} sold.` : "";
+    setNotice({ tone: "ok", text: `${who} registered${m.memberCode ? ` (Member ID ${m.memberCode})` : ""}.${sold}` });
+    load();
+  };
+
   const load = async () => {
     setLoading(true);
     try {
@@ -435,12 +448,14 @@ function UsersAdminPageInner() {
           canManage ? (
             <>
               <SecondaryButton onClick={() => setImportOpen(true)}>Import CSV</SecondaryButton>
-              <PrimaryButton onClick={openCreate}>New User</PrimaryButton>
+              <SecondaryButton onClick={openCreate}>New User</SecondaryButton>
+              <PrimaryButton onClick={() => setAddOpen(true)}>Add member</PrimaryButton>
             </>
           ) : undefined
         }
       />
       <UsersImportModal open={importOpen} onClose={() => setImportOpen(false)} onImported={load} />
+      <AddMemberModal open={addOpen} onClose={() => setAddOpen(false)} onRegistered={registered} canSell={canAssign} />
 
       {notice && (
         <div
@@ -707,12 +722,7 @@ function UsersAdminPageInner() {
                 label="Payment Method"
                 value={assignDraft.paymentMethod}
                 onChange={(v) => setAssignDraft({ ...assignDraft, paymentMethod: v })}
-                options={[
-                  { value: "cash", label: "Cash" },
-                  { value: "bank_transfer", label: "Bank Transfer" },
-                  { value: "card", label: "Card" },
-                  { value: "stripe", label: "Stripe" },
-                ]}
+                options={DESK_METHOD_OPTIONS}
               />
               <SelectField
                 label="Mark as Paid"
