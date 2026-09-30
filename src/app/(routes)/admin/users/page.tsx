@@ -42,6 +42,7 @@ interface User {
   createdAt?: string;
   phone?: string | null;
   tags?: string[];
+  /** "GP-0012": given when a member's account is created; staff have none. */
   memberCode?: string | null;
   isActive?: boolean;
   /**
@@ -282,7 +283,7 @@ function UsersAdminPageInner() {
         emailError?: string;
         credentials?: CredentialMode;
         password?: string;
-        data?: { username?: string };
+        data?: { username?: string; memberCode?: string | null };
       }>(`${API_BASE}/admin/users`, "POST", {
         ...draft,
         credentials,
@@ -292,7 +293,9 @@ function UsersAdminPageInner() {
       setChosenPassword("");
       const who = `${draft.firstName.trim()} ${draft.lastName.trim()}`.trim() || draft.email;
       const label = draft.email.trim() || who;
-      const appLogin = res.data?.username ? ` Their username is ${res.data.username}.` : "";
+      const appLogin =
+        (res.data?.memberCode ? ` Member ID ${res.data.memberCode}.` : "") +
+        (res.data?.username ? ` Their username is ${res.data.username}.` : "");
       if (res.password) {
         setReveal({
           who,
@@ -471,7 +474,7 @@ function UsersAdminPageInner() {
         <ErrorState message={loadErr} onRetry={load} />
       ) : (
         <Table
-          columns={["Name", "Email", "Username", "Role", "Status", "Joined", "Actions"]}
+          columns={["Name", "Member ID", "Email", "Phone", "Username", "Role", "Status", "Joined", "Actions"]}
           rows={visible.map((u) => [
             <div key="n">
               <p className="font-medium text-neutral-900">{[u.firstName, u.lastName].filter(Boolean).join(" ") || "—"}</p>
@@ -483,7 +486,13 @@ function UsersAdminPageInner() {
                 </p>
               )}
             </div>,
+            u.memberCode ? (
+              <span key="c" className="whitespace-nowrap font-mono text-xs text-neutral-800">{u.memberCode}</span>
+            ) : (
+              <span key="c" className="text-xs text-neutral-400">—</span>
+            ),
             u.email || <span key="e" className="text-xs text-neutral-400">no email</span>,
+            u.phone ? <span key="p" className="whitespace-nowrap">{u.phone}</span> : <span key="p" className="text-xs text-neutral-400">—</span>,
             <UsernameCell
               key="u"
               user={u}
