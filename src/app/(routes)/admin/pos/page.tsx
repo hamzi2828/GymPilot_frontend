@@ -1,14 +1,28 @@
 "use client";
 
 // The till: tap products into a basket, pick a member if it is for one,
-// take payment, print the receipt. Stock comes off as it sells.
+// take payment, print the receipt. Stock comes off as it sells. The receipt
+// shown after a sale is the one that prints: the same component, sent to the
+// printer on its own at the roll's width (components/receipts).
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { PageHeader, Card, PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, SelectField, Badge, Spinner } from "../_shared/ui";
-import { API_BASE, apiGet, apiJson } from "../_shared/api";
+import { PageHeader, Card, PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, TextArea, SelectField, Toggle, Badge, Spinner } from "../_shared/ui";
+import { API_BASE, apiGet, apiJson, authHeaders } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
 import { MemberPicker, type MemberOption } from "../_ops/MemberPicker";
+import {
+  ThermalReceipt,
+  printReceipt,
+  loadReceiptProfile,
+  toReceiptProfile,
+  EMPTY_RECEIPT_PROFILE,
+  RECEIPT_SETTINGS_URL,
+  type ReceiptProfile,
+  type ReceiptSettings,
+  type ReceiptSettingsResponse,
+  type ThermalReceiptProps,
+} from "@/components/receipts";
 
 const POS_API = `${API_BASE}/admin/pos`;
 
@@ -21,12 +35,15 @@ interface Product {
   track_stock: boolean;
   stock: number;
   low: boolean;
+  taxable: boolean;
   is_active: boolean;
 }
 interface Sale {
   id: string;
   receipt_number: string;
-  items: { name: string; quantity: number; unit_price: number; total: number }[];
+  // unit_cost, cost and margin, and the sale's cost and profit, come only to
+  // pos at manage.
+  items: { name: string; quantity: number; unit_price: number; total: number; unit_cost?: number; cost?: number; margin?: number }[];
   subtotal: number;
   discount: number;
   tax_rate: number;
@@ -34,50 +51,158 @@ interface Sale {
   total: number;
   currency: string;
   payment_method: string;
+  tendered: number | null;
+  change: number | null;
   status: "paid" | "refunded";
   member_name: string;
   sold_by: string;
+  notes: string;
   paid_at: string;
+  cost?: number;
+  profit?: number;
 }
 interface SalesResponse {
-  range: { label: string };
-  summary: { totals: Record<string, number>; by_method: Record<string, number>; sales: number; items: number };
+  range: { from: string; to: string; label: string };
+  summary: {
+    totals: Record<string, number>;
+    by_method: Record<string, number>;
+    sales: number;
+    items: number;
+    cost?: Record<string, number>;
+    gross_profit?: Record<string, number>;
+  };
+  truncated?: boolean;
   data: Sale[];
 }
 
+// The same values the server accepts (posController METHODS); the mobile
+// wallets are the ones package orders take too.
 const METHODS = [
   { value: "cash", label: "Cash" },
   { value: "card", label: "Card" },
+  { value: "jazzcash", label: "JazzCash" },
+  { value: "easypaisa", label: "Easypaisa" },
+  { value: "wallet", label: "Other mobile wallet" },
   { value: "bank_transfer", label: "Bank transfer" },
   { value: "online", label: "Online" },
   { value: "account", label: "On account" },
   { value: "other", label: "Other" },
 ];
+const methodLabel = (m: string) => METHODS.find((x) => x.value === m)?.label || m;
 const fmt = (n: number, c: string) => `${c} ${Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const RECEIPT_FOOTER_MAX = 300;
+const round2 = (n: number) => Math.round((Number(n) || 0) * 100) / 100;
+const moneyList = (m: Record<string, number> | undefined) => Object.entries(m || {}).map(([c, n]) => fmt(n, c)).join(", ") || "—";
+
+// Local calendar days, which is how the server reads ?from=&to=.
+const dayKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const shiftDays = (key: string, n: number) => {
+  const [y, m, d] = key.split("-").map(Number);
+  return dayKey(new Date(y, m - 1, d + n));
+};
+const monthStart = (key: string) => `${key.slice(0, 7)}-01`;
+const SALES_PAGE = 30;
+
+type BasketLine = { product: Product; quantity: number };
+
+// The basket's sums, worked out exactly as the server works out the sale
+// (posController.createSale), so the total shown before payment is the
+// total on the receipt: prices include tax, the discount comes off the
+// whole basket, and the tax is the included share of what is left on the
+// taxable lines.
+function basketTotals(basket: BasketLine[], discountInput: string, taxRate: number) {
+  const lines = basket.map((x) => ({ ...x, total: round2(x.product.price * x.quantity) }));
+  const subtotal = round2(lines.reduce((s, l) => s + l.total, 0));
+  const discount = Math.min(subtotal, Math.max(0, round2(Number(discountInput) || 0)));
+  const total = round2(subtotal - discount);
+  const taxableShare = subtotal ? lines.filter((l) => l.product.taxable !== false).reduce((s, l) => s + l.total, 0) / subtotal : 0;
+  const tax = taxRate > 0 ? round2(total * taxableShare - (total * taxableShare) / (1 + taxRate / 100)) : 0;
+  return { lines, subtotal, discount, total, tax };
+}
+
+// A sale as the receipt prints it.
+function receiptFor(s: Sale, profile: ReceiptProfile): ThermalReceiptProps {
+  return {
+    ...profile,
+    title: "Sales receipt",
+    number: s.receipt_number,
+    date: s.paid_at,
+    currency: s.currency,
+    cashier: s.sold_by || undefined,
+    customer: s.member_name || undefined,
+    lines: s.items.map((i) => ({ name: i.name, quantity: i.quantity, unitPrice: i.unit_price, total: i.total })),
+    subtotal: s.subtotal,
+    discount: s.discount,
+    tax: s.tax_amount,
+    taxRate: s.tax_rate,
+    taxInclusive: true,
+    total: s.total,
+    paid: s.tendered ?? s.total,
+    change: s.change ?? undefined,
+    method: methodLabel(s.payment_method),
+    notes: s.notes || undefined,
+    status: s.status === "refunded" ? "Refunded" : undefined,
+  };
+}
+
+// What the Receipt settings dialog previews: a made-up sale in the gym's
+// own currency, so a change of width or footer can be judged before saving.
+function sampleReceipt(profile: ReceiptProfile, settings: ReceiptSettings, currency: string): ThermalReceiptProps {
+  return {
+    ...profile,
+    settings,
+    title: "Sales receipt",
+    number: "RCP-0000-00000",
+    date: new Date(),
+    currency,
+    cashier: "Front desk",
+    lines: [
+      { name: "Water 500ml", quantity: 2, unitPrice: 1.5, total: 3 },
+      { name: "Protein bar", quantity: 1, unitPrice: 2.5, total: 2.5 },
+    ],
+    subtotal: 5.5,
+    total: 5.5,
+    paid: 5.5,
+    method: "Cash",
+  };
+}
 
 export default function PosPage() {
   const { can } = usePermissions();
   const editable = can("pos", "manage");
   const [products, setProducts] = useState<Product[]>([]);
   const [currency, setCurrency] = useState("");
+  const [taxRate, setTaxRate] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [basket, setBasket] = useState<{ product: Product; quantity: number }[]>([]);
+  const [basket, setBasket] = useState<BasketLine[]>([]);
   const [discount, setDiscount] = useState("0");
   const [method, setMethod] = useState("cash");
+  const [tendered, setTendered] = useState("");
   const [member, setMember] = useState<MemberOption | null>(null);
   const [category, setCategory] = useState("");
   const [busy, setBusy] = useState(false);
   const [receipt, setReceipt] = useState<Sale | null>(null);
   const [notice, setNotice] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
   const [sales, setSales] = useState<SalesResponse | null>(null);
+  const [from, setFrom] = useState(() => monthStart(dayKey(new Date())));
+  const [to, setTo] = useState(() => dayKey(new Date()));
+  const [salesLoading, setSalesLoading] = useState(true);
+  const [visible, setVisible] = useState(SALES_PAGE);
+  const [opened, setOpened] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const [profile, setProfile] = useState<ReceiptProfile>(EMPTY_RECEIPT_PROFILE);
+  const [printing, setPrinting] = useState(false);
+  const [setup, setSetup] = useState<ReceiptSettings | null>(null);
+  const [savingSetup, setSavingSetup] = useState(false);
+  const [setupError, setSetupError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [p, s] = await Promise.all([apiGet<{ currency: string; data: Product[] }>(`${POS_API}/products`), apiGet<SalesResponse>(`${POS_API}/sales`)]);
+      const p = await apiGet<{ currency: string; tax_rate?: number; data: Product[] }>(`${POS_API}/products`);
       setProducts(p.data || []);
       setCurrency(p.currency || "");
-      setSales(s);
+      setTaxRate(Number(p.tax_rate) || 0);
     } catch (e) {
       setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not load the shop" });
     } finally {
@@ -85,9 +210,88 @@ export default function PosPage() {
     }
   }, []);
 
+  // The sales for the chosen days. Loaded on their own so changing the dates
+  // does not reload the shelf or blank the till.
+  const loadSales = useCallback(async () => {
+    setSalesLoading(true);
+    try {
+      setSales(await apiGet<SalesResponse>(`${POS_API}/sales?from=${from}&to=${to}`));
+      setVisible(SALES_PAGE);
+    } catch (e) {
+      setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not load the sales" });
+    } finally {
+      setSalesLoading(false);
+    }
+  }, [from, to]);
+
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    loadSales();
+  }, [loadSales]);
+
+  const setRange = (f: string, t: string) => {
+    setFrom(f);
+    setTo(t);
+  };
+
+  const exportSales = async () => {
+    setExporting(true);
+    try {
+      const res = await fetch(`${POS_API}/sales/export?from=${from}&to=${to}`, { headers: authHeaders() });
+      if (!res.ok) throw new Error("Could not export the sales");
+      const blob = await res.blob();
+      const name = (res.headers.get("Content-Disposition") || "").match(/filename="([^"]+)"/)?.[1] || `sales_${from}_${to}.csv`;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = name;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 30000);
+    } catch (e) {
+      setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not export the sales" });
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  // The gym's details and print settings, once. Without them a receipt still
+  // prints, just without the letterhead, so a failure here does not hold up
+  // the till.
+  useEffect(() => {
+    loadReceiptProfile()
+      .then(setProfile)
+      .catch(() => undefined);
+  }, []);
+
+  const print = async (s: Sale) => {
+    setPrinting(true);
+    try {
+      await printReceipt(receiptFor(s, profile));
+    } catch (e) {
+      setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not print the receipt" });
+    } finally {
+      setPrinting(false);
+    }
+  };
+
+  const saveSetup = async () => {
+    if (!setup) return;
+    setSavingSetup(true);
+    setSetupError(null);
+    try {
+      const res = await apiJson<{ data: ReceiptSettingsResponse }>(RECEIPT_SETTINGS_URL, "PUT", setup);
+      setProfile(toReceiptProfile(res.data));
+      setSetup(null);
+      setNotice({ tone: "ok", text: "Receipt settings saved." });
+    } catch (e) {
+      setSetupError(e instanceof Error ? e.message : "Could not save the receipt settings");
+    } finally {
+      setSavingSetup(false);
+    }
+  };
 
   const categories = useMemo(() => Array.from(new Set(products.map((p) => p.category))).sort(), [products]);
   const shown = products.filter((p) => !category || p.category === category);
@@ -101,8 +305,10 @@ export default function PosPage() {
   };
   const setQty = (id: string, qty: number) => setBasket((b) => b.map((x) => (x.product.id === id ? { ...x, quantity: Math.max(1, qty) } : x)));
   const remove = (id: string) => setBasket((b) => b.filter((x) => x.product.id !== id));
-  const subtotal = basket.reduce((s, x) => s + x.product.price * x.quantity, 0);
-  const total = Math.max(0, subtotal - (Number(discount) || 0));
+  const totals = basketTotals(basket, discount, taxRate);
+  const cashGiven = method === "cash" && tendered.trim() !== "" ? Number(tendered) : null;
+  const cashShort = cashGiven !== null && (!Number.isFinite(cashGiven) || round2(cashGiven) < totals.total);
+  const change = cashGiven !== null && !cashShort ? round2(cashGiven - totals.total) : null;
 
   const checkout = async () => {
     setBusy(true);
@@ -112,13 +318,15 @@ export default function PosPage() {
         items: basket.map((x) => ({ productId: x.product.id, quantity: x.quantity })),
         discount: Number(discount) || 0,
         paymentMethod: method,
+        tendered: cashGiven ?? undefined,
         memberId: member?.id || undefined,
       });
       setReceipt(res.data);
       setBasket([]);
       setDiscount("0");
+      setTendered("");
       setMember(null);
-      await load();
+      await Promise.all([load(), loadSales()]);
     } catch (e) {
       setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not record the sale" });
     } finally {
@@ -131,7 +339,7 @@ export default function PosPage() {
     if (reason === null) return;
     try {
       await apiJson(`${POS_API}/sales/${s.id}/refund`, "POST", { reason });
-      await load();
+      await Promise.all([load(), loadSales()]);
     } catch (e) {
       setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not refund" });
     }
@@ -143,9 +351,21 @@ export default function PosPage() {
         eyebrow="Sales"
         title="Shop / POS"
         actions={
-          <Link href="/admin/inventory" className="rounded-lg border border-neutral-200 px-3 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-50">
-            Products &amp; stock
-          </Link>
+          <>
+            {editable && (
+              <SecondaryButton
+                onClick={() => {
+                  setSetupError(null);
+                  setSetup({ ...profile.settings });
+                }}
+              >
+                Receipt settings
+              </SecondaryButton>
+            )}
+            <Link href="/admin/inventory" className="rounded-lg border border-neutral-200 px-3 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-50">
+              Products &amp; stock
+            </Link>
+          </>
         }
       />
       {notice && <p className={`mb-4 rounded-lg px-3 py-2 text-sm ${notice.tone === "ok" ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}>{notice.text}</p>}
@@ -180,38 +400,116 @@ export default function PosPage() {
               </>
             )}
 
-            {sales && (
-              <Card className="mt-6 p-5">
-                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                  <h2 className="text-sm font-semibold text-neutral-900">Sales · {sales.range.label}</h2>
-                  <p className="text-xs text-neutral-500">
-                    {sales.summary.sales} sales · {sales.summary.items} items · {Object.entries(sales.summary.totals).map(([c, n]) => fmt(n, c)).join(", ") || "—"}
-                    {Object.keys(sales.summary.by_method).length ? ` (${Object.entries(sales.summary.by_method).map(([m, n]) => `${m} ${n}`).join(", ")})` : ""}
-                  </p>
+            <Card className="mt-6 p-5">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <h2 className="text-sm font-semibold text-neutral-900">Sales{sales ? ` · ${sales.range.label}` : ""}</h2>
+                <SecondaryButton onClick={exportSales} disabled={exporting}>
+                  {exporting ? "Exporting…" : "Export CSV"}
+                </SecondaryButton>
+              </div>
+              <div className="mb-3 flex flex-wrap items-end gap-2">
+                <div className="w-40">
+                  <TextField label="From" type="date" value={from} onChange={setFrom} />
                 </div>
-                {sales.data.length === 0 ? (
-                  <p className="text-sm text-neutral-500">Nothing sold this month yet.</p>
-                ) : (
-                  <div className="divide-y divide-neutral-100">
-                    {sales.data.slice(0, 30).map((s) => (
-                      <div key={s.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
-                        <div>
-                          <span className="font-mono text-xs">{s.receipt_number}</span> · {s.items.map((i) => `${i.quantity}× ${i.name}`).join(", ")}
-                          {s.member_name ? <span className="text-neutral-500"> · {s.member_name}</span> : null}
-                          <span className="block text-[11px] text-neutral-400">{new Date(s.paid_at).toLocaleString()} · {s.payment_method} · {s.sold_by}</span>
+                <div className="w-40">
+                  <TextField label="To" type="date" value={to} onChange={setTo} />
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  <SecondaryButton onClick={() => setRange(dayKey(new Date()), dayKey(new Date()))}>Today</SecondaryButton>
+                  <SecondaryButton onClick={() => setRange(monthStart(dayKey(new Date())), dayKey(new Date()))}>This month</SecondaryButton>
+                  <SecondaryButton onClick={() => setRange(shiftDays(dayKey(new Date()), -29), dayKey(new Date()))}>Last 30 days</SecondaryButton>
+                </div>
+              </div>
+              {salesLoading && !sales ? (
+                <Spinner />
+              ) : sales ? (
+                <div className={salesLoading ? "opacity-60" : ""}>
+                  <p className="text-xs text-neutral-500">
+                    {sales.summary.sales} sales · {sales.summary.items} items · {moneyList(sales.summary.totals)}
+                    {Object.keys(sales.summary.by_method).length ? ` (${Object.entries(sales.summary.by_method).map(([m, n]) => `${methodLabel(m)} ${n}`).join(", ")})` : ""}
+                  </p>
+                  {sales.summary.gross_profit && (
+                    <p className="mt-0.5 text-xs text-neutral-500">
+                      Cost of goods {moneyList(sales.summary.cost)} · <span className="font-semibold text-emerald-700">Gross profit {moneyList(sales.summary.gross_profit)}</span>
+                      <span className="text-neutral-400"> (takings less the tax in them and the cost)</span>
+                    </p>
+                  )}
+                  {sales.data.length === 0 ? (
+                    <p className="mt-3 text-sm text-neutral-500">No sales on these days.</p>
+                  ) : (
+                    <div className="mt-2 divide-y divide-neutral-100">
+                      {sales.data.slice(0, visible).map((s) => (
+                        <div key={s.id} className="py-2 text-sm">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div>
+                              <span className="font-mono text-xs">{s.receipt_number}</span> · {s.items.map((i) => `${i.quantity}× ${i.name}`).join(", ")}
+                              {s.member_name ? <span className="text-neutral-500"> · {s.member_name}</span> : null}
+                              <span className="block text-[11px] text-neutral-400">
+                                {new Date(s.paid_at).toLocaleString()} · {methodLabel(s.payment_method)} · {s.sold_by}
+                                {s.profit !== undefined && s.status === "paid" && (
+                                  <>
+                                    {" "}
+                                    · cost {fmt(s.cost || 0, s.currency)} ·{" "}
+                                    <button type="button" onClick={() => setOpened(opened === s.id ? null : s.id)} className={`underline decoration-dotted ${s.profit < 0 ? "text-rose-600" : "text-emerald-700"}`}>
+                                      profit {fmt(s.profit, s.currency)}
+                                    </button>
+                                  </>
+                                )}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-semibold">{fmt(s.total, s.currency)}</span>
+                              <Badge color={s.status === "paid" ? "green" : "neutral"}>{s.status}</Badge>
+                              <SecondaryButton onClick={() => setReceipt(s)}>Receipt</SecondaryButton>
+                              {editable && s.status === "paid" && <DangerButton onClick={() => refund(s)}>Refund</DangerButton>}
+                            </div>
+                          </div>
+                          {opened === s.id && s.profit !== undefined && (
+                            <table className="mt-2 w-full text-xs text-neutral-600">
+                              <thead>
+                                <tr className="text-left text-[11px] uppercase tracking-wider text-neutral-400">
+                                  <th className="py-1 font-medium">Item</th>
+                                  <th className="py-1 text-right font-medium">Qty</th>
+                                  <th className="py-1 text-right font-medium">Price</th>
+                                  <th className="py-1 text-right font-medium">Cost</th>
+                                  <th className="py-1 text-right font-medium">Margin</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {s.items.map((i, n) => (
+                                  <tr key={n} className="border-t border-neutral-100">
+                                    <td className="py-1">{i.name}</td>
+                                    <td className="py-1 text-right">{i.quantity}</td>
+                                    <td className="py-1 text-right">{fmt(i.total, s.currency)}</td>
+                                    <td className="py-1 text-right">{fmt(i.cost || 0, s.currency)}</td>
+                                    <td className="py-1 text-right">{fmt(i.margin || 0, s.currency)}</td>
+                                  </tr>
+                                ))}
+                                <tr className="border-t border-neutral-200 font-medium text-neutral-800">
+                                  <td className="py-1" colSpan={2}>
+                                    Sale{s.discount > 0 ? `, after ${fmt(s.discount, s.currency)} off` : ""}
+                                    {s.tax_amount > 0 ? ` and less ${fmt(s.tax_amount, s.currency)} tax` : ""}
+                                  </td>
+                                  <td className="py-1 text-right">{fmt(round2(s.total - s.tax_amount), s.currency)}</td>
+                                  <td className="py-1 text-right">{fmt(s.cost || 0, s.currency)}</td>
+                                  <td className="py-1 text-right">{fmt(s.profit, s.currency)}</td>
+                                </tr>
+                              </tbody>
+                            </table>
+                          )}
                         </div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-semibold">{fmt(s.total, s.currency)}</span>
-                          <Badge color={s.status === "paid" ? "green" : "neutral"}>{s.status}</Badge>
-                          <SecondaryButton onClick={() => setReceipt(s)}>Receipt</SecondaryButton>
-                          {editable && s.status === "paid" && <DangerButton onClick={() => refund(s)}>Refund</DangerButton>}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </Card>
-            )}
+                      ))}
+                    </div>
+                  )}
+                  {sales.data.length > visible && (
+                    <div className="mt-3">
+                      <SecondaryButton onClick={() => setVisible((v) => v + 50)}>Show more ({sales.data.length - visible} more)</SecondaryButton>
+                    </div>
+                  )}
+                  {sales.truncated && <p className="mt-2 text-xs text-neutral-500">The list stops at the latest 500 sales on these days; Export CSV has every one.</p>}
+                </div>
+              ) : null}
+            </Card>
           </div>
 
           <Card className="h-fit p-5 lg:sticky lg:top-4">
@@ -220,17 +518,23 @@ export default function PosPage() {
               <p className="mt-2 text-sm text-neutral-500">Tap products to add them.</p>
             ) : (
               <div className="mt-3 divide-y divide-neutral-100">
-                {basket.map((x) => (
-                  <div key={x.product.id} className="flex items-center justify-between gap-2 py-2 text-sm">
-                    <div className="min-w-0">
-                      <p className="truncate font-medium text-neutral-900">{x.product.name}</p>
-                      <p className="text-xs text-neutral-500">{fmt(x.product.price, currency)} each</p>
+                {totals.lines.map((x) => (
+                  <div key={x.product.id} className="py-2 text-sm">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="min-w-0 truncate font-medium text-neutral-900">{x.product.name}</p>
+                      <span className="shrink-0 font-medium text-neutral-900">{fmt(x.total, currency)}</span>
                     </div>
-                    <div className="flex items-center gap-1">
-                      <button type="button" onClick={() => setQty(x.product.id, x.quantity - 1)} className="h-7 w-7 rounded-md border border-neutral-200">−</button>
-                      <span className="w-6 text-center">{x.quantity}</span>
-                      <button type="button" onClick={() => setQty(x.product.id, x.quantity + 1)} className="h-7 w-7 rounded-md border border-neutral-200">+</button>
-                      <button type="button" onClick={() => remove(x.product.id)} className="ml-1 text-neutral-400 hover:text-rose-600">×</button>
+                    <div className="mt-1 flex items-center justify-between gap-2">
+                      <p className="text-xs text-neutral-500">
+                        {x.quantity} × {fmt(x.product.price, currency)}
+                        {taxRate > 0 && !x.product.taxable ? " · no tax" : ""}
+                      </p>
+                      <div className="flex items-center gap-1">
+                        <button type="button" onClick={() => setQty(x.product.id, x.quantity - 1)} className="h-7 w-7 rounded-md border border-neutral-200">−</button>
+                        <span className="w-6 text-center">{x.quantity}</span>
+                        <button type="button" onClick={() => setQty(x.product.id, x.quantity + 1)} className="h-7 w-7 rounded-md border border-neutral-200">+</button>
+                        <button type="button" onClick={() => remove(x.product.id)} className="ml-1 text-neutral-400 hover:text-rose-600">×</button>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -240,11 +544,44 @@ export default function PosPage() {
               <MemberPicker label="Member (optional)" type="member" value={member} onChange={setMember} placeholder="Name, email or code" disabled={!editable} />
               <TextField label="Discount" type="number" value={discount} onChange={setDiscount} />
               <SelectField label="Payment" value={method} allowClear={false} onChange={setMethod} options={METHODS} />
-              <div className="flex items-center justify-between border-t border-neutral-200 pt-3 text-sm">
-                <span className="text-neutral-600">Total</span>
-                <span className="text-lg font-semibold text-neutral-900">{fmt(total, currency)}</span>
+              <div className="space-y-1 border-t border-neutral-200 pt-3 text-sm">
+                <div className="flex items-center justify-between text-neutral-600">
+                  <span>Subtotal</span>
+                  <span>{fmt(totals.subtotal, currency)}</span>
+                </div>
+                {totals.discount > 0 && (
+                  <div className="flex items-center justify-between text-neutral-600">
+                    <span>Discount</span>
+                    <span>−{fmt(totals.discount, currency)}</span>
+                  </div>
+                )}
+                <div className="flex items-center justify-between">
+                  <span className="text-neutral-600">Total</span>
+                  <span className="text-lg font-semibold text-neutral-900">{fmt(totals.total, currency)}</span>
+                </div>
+                {totals.tax > 0 && (
+                  <div className="flex items-center justify-between text-xs text-neutral-500">
+                    <span>
+                      Includes {profile.branding.taxLabel || "tax"} {taxRate}%
+                    </span>
+                    <span>{fmt(totals.tax, currency)}</span>
+                  </div>
+                )}
               </div>
-              <PrimaryButton onClick={checkout} disabled={!editable || busy || basket.length === 0}>
+              {method === "cash" && basket.length > 0 && (
+                <div>
+                  <TextField label="Cash received (optional)" type="number" value={tendered} onChange={setTendered} placeholder={totals.total.toFixed(2)} />
+                  {cashShort ? (
+                    <p className="mt-1 text-xs text-rose-600">Less than the total of {fmt(totals.total, currency)}.</p>
+                  ) : change !== null ? (
+                    <p className="mt-1 flex justify-between text-sm font-semibold text-neutral-900">
+                      <span>Change</span>
+                      <span>{fmt(change, currency)}</span>
+                    </p>
+                  ) : null}
+                </div>
+              )}
+              <PrimaryButton onClick={checkout} disabled={!editable || busy || basket.length === 0 || cashShort}>
                 {busy ? "Recording…" : "Take payment"}
               </PrimaryButton>
             </div>
@@ -254,40 +591,60 @@ export default function PosPage() {
 
       <Modal open={!!receipt} onClose={() => setReceipt(null)} title={receipt ? `Receipt ${receipt.receipt_number}` : ""} size="sm">
         {receipt && (
-          <div className="text-sm" id="receipt">
-            <p className="text-xs text-neutral-500">{new Date(receipt.paid_at).toLocaleString()}{receipt.member_name ? ` · ${receipt.member_name}` : ""}</p>
-            <div className="mt-3 divide-y divide-neutral-100">
-              {receipt.items.map((i, idx) => (
-                <div key={idx} className="flex justify-between py-1.5">
-                  <span>
-                    {i.quantity} × {i.name}
-                  </span>
-                  <span>{fmt(i.total, receipt.currency)}</span>
-                </div>
-              ))}
-            </div>
-            <div className="mt-3 space-y-1 border-t border-neutral-200 pt-3">
-              {receipt.discount > 0 && (
-                <div className="flex justify-between text-neutral-600">
-                  <span>Discount</span>
-                  <span>−{fmt(receipt.discount, receipt.currency)}</span>
-                </div>
-              )}
-              {receipt.tax_amount > 0 && (
-                <div className="flex justify-between text-neutral-500">
-                  <span>Includes tax ({receipt.tax_rate}%)</span>
-                  <span>{fmt(receipt.tax_amount, receipt.currency)}</span>
-                </div>
-              )}
-              <div className="flex justify-between text-base font-semibold">
-                <span>Total ({receipt.payment_method})</span>
-                <span>{fmt(receipt.total, receipt.currency)}</span>
+          <div>
+            <div className="flex justify-center rounded-lg bg-neutral-100 p-3">
+              <div className="shadow-sm">
+                <ThermalReceipt {...receiptFor(receipt, profile)} />
               </div>
             </div>
-            {receipt.status === "refunded" && <p className="mt-3 text-rose-600">Refunded</p>}
             <div className="mt-5 flex justify-end gap-2">
-              <SecondaryButton onClick={() => window.print()}>Print</SecondaryButton>
+              <SecondaryButton onClick={() => print(receipt)} disabled={printing}>
+                {printing ? "Printing…" : "Print"}
+              </SecondaryButton>
               <PrimaryButton onClick={() => setReceipt(null)}>Done</PrimaryButton>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      <Modal open={!!setup} onClose={() => setSetup(null)} title="Receipt settings">
+        {setup && (
+          <div className="space-y-4">
+            <SelectField
+              label="Paper width"
+              value={setup.paperWidth}
+              allowClear={false}
+              onChange={(v) => setSetup({ ...setup, paperWidth: v === "58mm" ? "58mm" : "80mm" })}
+              options={[
+                { value: "80mm", label: "80 mm roll" },
+                { value: "58mm", label: "58 mm roll" },
+              ]}
+            />
+            <Toggle label="Print the gym's logo" checked={setup.showLogo} onChange={(v) => setSetup({ ...setup, showLogo: v })} />
+            <TextArea
+              label="Footer"
+              rows={3}
+              value={setup.footerText}
+              placeholder={profile.branding.footerNote || "Thank you, see you at the gym!"}
+              onChange={(v) => setSetup({ ...setup, footerText: v.slice(0, RECEIPT_FOOTER_MAX) })}
+            />
+            <p className="text-xs text-neutral-500">
+              Left empty, the invoice footer note from Settings is printed. The gym&apos;s name, address, phone, logo and tax number come from Settings.
+            </p>
+            <div>
+              <p className="mb-2 text-xs font-medium text-neutral-600">Preview</p>
+              <div className="flex justify-center rounded-lg bg-neutral-100 p-3">
+                <div className="shadow-sm">
+                  <ThermalReceipt {...sampleReceipt(profile, setup, currency)} />
+                </div>
+              </div>
+            </div>
+            {setupError && <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{setupError}</p>}
+            <div className="flex justify-end gap-2">
+              <SecondaryButton onClick={() => setSetup(null)}>Cancel</SecondaryButton>
+              <PrimaryButton onClick={saveSetup} disabled={savingSetup}>
+                {savingSetup ? "Saving…" : "Save"}
+              </PrimaryButton>
             </div>
           </div>
         )}
