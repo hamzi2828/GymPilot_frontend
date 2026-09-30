@@ -150,6 +150,44 @@ interface PeopleResponse {
   people: PersonRow[];
 }
 
+// One visit on the live view of today (GET /api/attendance/live).
+interface LiveRecord {
+  // Its place in the day's arrivals, 1 = first in; the same whatever the
+  // filters, so a row keeps its number from one refresh to the next.
+  number: number;
+  id: string;
+  person_type: "member" | "staff";
+  person_id: string;
+  code: string;
+  name: string;
+  phone: string;
+  gender: string;
+  package_name: string;
+  end_date_label: string | null;
+  check_in_time: string | null;
+  check_out_time: string | null;
+  still_in: boolean;
+  no_check_out: boolean;
+  status: string;
+  status_label: string;
+  // The one word for the Status column: paid | expiring | balance_due |
+  // frozen | cancelled | unpaid | suspended | staff.
+  standing: { key: string; label: string };
+  paid: boolean;
+  balance_due: number;
+  balance_due_label: string | null;
+}
+
+interface LiveResponse {
+  today: string;
+  date_label: string;
+  refreshed_label: string | null;
+  // The whole day's, whatever the filters. Members are counted once each.
+  counts: { visits: number; members: number; staff: number; in_now: number; paid: number; unpaid: number; balance_due: number };
+  truncated?: boolean;
+  records: LiveRecord[];
+}
+
 interface PersonDetail {
   person: {
     person_type: "member" | "staff";
@@ -243,6 +281,21 @@ const STATUS_OPTIONS = [
 function statusTone(status: string) {
   return STATUS_TONE[status] || "neutral";
 }
+
+// The live view's status word, coloured as the desk colours the verdict
+// behind it: money owed or running out is amber, not paid is red.
+const STANDING_TONE: Record<string, "green" | "amber" | "rose" | "blue" | "neutral"> = {
+  paid: "green",
+  expiring: "amber",
+  balance_due: "amber",
+  cancelled: "amber",
+  frozen: "blue",
+  unpaid: "rose",
+  suspended: "rose",
+};
+
+// How often the live view asks again while it is on screen.
+const LIVE_REFRESH_MS = 15000;
 
 // A roster membership's verdict key: the server's own when it sends one, so
 // "Cancelled · 5 days left" is amber and "Frozen" blue exactly as at the desk;
@@ -385,6 +438,35 @@ function StillIn() {
   );
 }
 
+// Says the view is live -- and when it last heard from the server, so a
+// screen left open knows whether what it shows is current.
+function LiveIndicator({ live, stale }: { live: LiveResponse | null; stale: boolean }) {
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-[13px]">
+      {stale ? (
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 font-semibold text-amber-800 ring-1 ring-inset ring-amber-600/20">
+          <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+          Reconnecting…
+        </span>
+      ) : (
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-600/15">
+          <span className="relative flex h-1.5 w-1.5">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+            <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
+          </span>
+          Live
+        </span>
+      )}
+      {live && <span className="font-medium text-neutral-700">{live.date_label}</span>}
+      {live?.refreshed_label && (
+        <span className="text-[12px] text-neutral-400">
+          {stale ? "as of" : "updated"} {live.refreshed_label} · every 15 s while this tab is open
+        </span>
+      )}
+    </div>
+  );
+}
+
 function Stat({
   label,
   value,
@@ -429,10 +511,11 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 // ---------------------------------------------------------------------------
 
-type Tab = "log" | "people";
+type Tab = "live" | "log" | "people";
 
 export default function AttendanceAdminPage() {
-  const [tab, setTab] = useState<Tab>("log");
+  // Opens on today, live: who is in the gym is what the office asks first.
+  const [tab, setTab] = useState<Tab>("live");
 
   // Left empty on first load so the server picks the gym's today, then
   // adopted from its answer. The browser never guesses the gym's date.
@@ -462,6 +545,13 @@ export default function AttendanceAdminPage() {
   const [counts, setCounts] = useState<PeopleResponse["counts"] | null>(null);
   const [range, setRange] = useState<RangeInfo | null>(null);
   const [pagination, setPagination] = useState<Pagination | null>(null);
+
+  // The live view: its last answer, and whether the last refresh failed (the
+  // rows on screen are then as of the time shown, not now).
+  const [live, setLive] = useState<LiveResponse | null>(null);
+  const [liveStale, setLiveStale] = useState(false);
+  const liveInFlight = useRef(false);
+  const liveSeq = useRef(0);
 
   const [detailFor, setDetailFor] = useState<{ type: string; id: string; name: string } | null>(null);
   const [detail, setDetail] = useState<PersonDetail | null>(null);
@@ -504,7 +594,48 @@ export default function AttendanceAdminPage() {
     [from, to, personType, q]
   );
 
+  // Today, live. `silent` is the timed refresh: no spinner, and a failure
+  // keeps the rows on screen (marked as not current) rather than blanking them.
+  const loadLive = useCallback(
+    async (silent: boolean) => {
+      // A timed refresh never piles up behind a slow one; a real ask (new
+      // filters, the Refresh button) always goes, and whatever answers after
+      // it is dropped.
+      if (silent && liveInFlight.current) return;
+      const seq = ++liveSeq.current;
+      liveInFlight.current = true;
+      if (!silent) {
+        setLoading(true);
+        setErr(null);
+      }
+      try {
+        const params = new URLSearchParams();
+        if (personType !== "all") params.set("personType", personType);
+        if (q) params.set("q", q);
+        const res = await apiGet<LiveResponse>(`${ATTENDANCE_API}/live?${params.toString()}`);
+        if (seq !== liveSeq.current) return;
+        setLive(res);
+        setLiveStale(false);
+        if (res.today) setToday(res.today);
+      } catch (e) {
+        if (seq !== liveSeq.current) return;
+        setLiveStale(true);
+        if (!silent) setErr(e instanceof Error ? e.message : "Could not load today's attendance.");
+      } finally {
+        if (seq === liveSeq.current) {
+          liveInFlight.current = false;
+          setLoading(false);
+        }
+      }
+    },
+    [personType, q]
+  );
+
   const load = useCallback(async () => {
+    if (tab === "live") {
+      await loadLive(false);
+      return;
+    }
     setLoading(true);
     setErr(null);
     try {
@@ -541,11 +672,41 @@ export default function AttendanceAdminPage() {
     } finally {
       setLoading(false);
     }
-  }, [tab, queryString, status, presence, attended, sort, page, limit, from, to]);
+  }, [tab, loadLive, queryString, status, presence, attended, sort, page, limit, from, to]);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  // The live view keeps itself current while it is on screen: every 15 s
+  // while the browser tab is visible, paused while it is hidden (nobody is
+  // looking, and a tab left open all day must not poll all night), and
+  // caught up the moment it is shown again.
+  useEffect(() => {
+    if (tab !== "live") return;
+    let timer: ReturnType<typeof setInterval> | null = null;
+    const start = () => {
+      if (!timer) timer = setInterval(() => loadLive(true), LIVE_REFRESH_MS);
+    };
+    const stop = () => {
+      if (timer) clearInterval(timer);
+      timer = null;
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") {
+        loadLive(true);
+        start();
+      } else {
+        stop();
+      }
+    };
+    if (document.visibilityState === "visible") start();
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      stop();
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [tab, loadLive]);
 
   // A correction saved: close whatever asked for it, say so, and re-read the
   // page -- the totals above the table change with it.
@@ -599,13 +760,16 @@ export default function AttendanceAdminPage() {
     setPage(1);
   };
 
+  // The live view has only two filters; its dates are always today.
   const filtersDirty =
-    personType !== "all" ||
-    status !== "all" ||
-    presence !== "all" ||
-    attended !== "all" ||
-    !!q ||
-    activePreset !== "today";
+    tab === "live"
+      ? personType !== "all" || !!q
+      : personType !== "all" ||
+        status !== "all" ||
+        presence !== "all" ||
+        attended !== "all" ||
+        !!q ||
+        activePreset !== "today";
 
   // Export covers the WHOLE filtered range — every page, in the same order,
   // under the same filters — not just the rows on screen. It walks the same
@@ -619,7 +783,27 @@ export default function AttendanceAdminPage() {
     setExporting(true);
     setErr(null);
     try {
-      if (tab === "log") {
+      if (tab === "live") {
+        // Today as it stands now, under the same filters, oldest first.
+        const params = new URLSearchParams();
+        if (personType !== "all") params.set("personType", personType);
+        if (q) params.set("q", q);
+        const res = await apiGet<LiveResponse>(`${ATTENDANCE_API}/live?${params.toString()}`);
+        header = ["#", "Time in", "Time out", "Member ID", "Name", "Contact", "Gender", "Package", "Next expiry", "Status", "Balance due"];
+        lines = [...(res.records || [])].reverse().map((r) => [
+          String(r.number),
+          r.check_in_time || "",
+          r.check_out_time || (r.still_in ? "Still in" : r.no_check_out ? "No check-out" : ""),
+          r.code,
+          r.name,
+          r.phone,
+          r.gender,
+          r.person_type === "staff" ? "Staff" : r.package_name,
+          r.end_date_label || "",
+          r.standing.label,
+          r.balance_due ? String(r.balance_due) : "",
+        ]);
+      } else if (tab === "log") {
         const all: AttendanceRecord[] = [];
         for (let p = 1; ; p++) {
           // summary=0: the range summary is already on screen; recounting it
@@ -683,7 +867,8 @@ export default function AttendanceAdminPage() {
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = `attendance-${tab}-${from || today}-to-${to || today}.csv`;
+    anchor.download =
+      tab === "live" ? `attendance-today-${live?.today || today}.csv` : `attendance-${tab}-${from || today}-to-${to || today}.csv`;
     anchor.click();
     URL.revokeObjectURL(url);
   };
@@ -706,7 +891,11 @@ export default function AttendanceAdminPage() {
             )}
             <SecondaryButton
               onClick={exportCsv}
-              disabled={loading || exporting || (tab === "log" ? !records.length : !people.length)}
+              disabled={
+                loading ||
+                exporting ||
+                (tab === "live" ? !live?.records.length : tab === "log" ? !records.length : !people.length)
+              }
             >
               <FiDownload className="mr-1.5 h-4 w-4" /> {exporting ? "Exporting…" : "Export CSV"}
             </SecondaryButton>
@@ -720,24 +909,30 @@ export default function AttendanceAdminPage() {
       {/* ---- Filters ---- */}
       <Card className="mb-6 p-4">
         <div className="flex flex-wrap items-center gap-2">
-          {presets.map((preset) => (
-            <button
-              key={preset.id}
-              type="button"
-              onClick={() => applyPreset(preset)}
-              className={`h-8 rounded-lg px-3 text-[13px] font-medium transition-colors ${
-                activePreset === preset.id
-                  ? "bg-neutral-900 text-white"
-                  : "border border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900"
-              }`}
-            >
-              {preset.label}
-            </button>
-          ))}
-          {activePreset === "custom" && (
-            <span className="rounded-lg bg-neutral-100 px-2.5 py-1 text-[12px] font-medium text-neutral-600">
-              Custom range
-            </span>
+          {tab === "live" ? (
+            <LiveIndicator live={live} stale={liveStale} />
+          ) : (
+            <>
+              {presets.map((preset) => (
+                <button
+                  key={preset.id}
+                  type="button"
+                  onClick={() => applyPreset(preset)}
+                  className={`h-8 rounded-lg px-3 text-[13px] font-medium transition-colors ${
+                    activePreset === preset.id
+                      ? "bg-neutral-900 text-white"
+                      : "border border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900"
+                  }`}
+                >
+                  {preset.label}
+                </button>
+              ))}
+              {activePreset === "custom" && (
+                <span className="rounded-lg bg-neutral-100 px-2.5 py-1 text-[12px] font-medium text-neutral-600">
+                  Custom range
+                </span>
+              )}
+            </>
           )}
           <div className="ml-auto flex items-center gap-2">
             {filtersDirty && (
@@ -749,36 +944,41 @@ export default function AttendanceAdminPage() {
                 <FiX className="h-3.5 w-3.5" /> Clear filters
               </button>
             )}
-            {range && <span className="text-[12px] text-neutral-400">{range.label}</span>}
+            {tab !== "live" && range && <span className="text-[12px] text-neutral-400">{range.label}</span>}
           </div>
         </div>
 
         <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-6">
-          <Field label="From">
-            <input
-              type="date"
-              value={from}
-              max={to || undefined}
-              onChange={(e) => {
-                setFrom(e.target.value);
-                setPage(1);
-              }}
-              className={fieldCls}
-            />
-          </Field>
+          {/* The live view is always today: no dates to pick. */}
+          {tab !== "live" && (
+            <>
+              <Field label="From">
+                <input
+                  type="date"
+                  value={from}
+                  max={to || undefined}
+                  onChange={(e) => {
+                    setFrom(e.target.value);
+                    setPage(1);
+                  }}
+                  className={fieldCls}
+                />
+              </Field>
 
-          <Field label="To">
-            <input
-              type="date"
-              value={to}
-              min={from || undefined}
-              onChange={(e) => {
-                setTo(e.target.value);
-                setPage(1);
-              }}
-              className={fieldCls}
-            />
-          </Field>
+              <Field label="To">
+                <input
+                  type="date"
+                  value={to}
+                  min={from || undefined}
+                  onChange={(e) => {
+                    setTo(e.target.value);
+                    setPage(1);
+                  }}
+                  className={fieldCls}
+                />
+              </Field>
+            </>
+          )}
 
           <Field label="Person type">
             <Select2
@@ -838,7 +1038,7 @@ export default function AttendanceAdminPage() {
                 />
               </Field>
             </>
-          ) : (
+          ) : tab === "live" ? null : (
             <>
               <Field label="Turned up">
                 <Select2
@@ -892,6 +1092,35 @@ export default function AttendanceAdminPage() {
       </Card>
 
       {/* ---- Summary ---- */}
+      {tab === "live" && live && (
+        <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-5">
+          <Stat
+            label="In the gym"
+            value={live.counts.in_now}
+            tone={live.counts.in_now ? "green" : "neutral"}
+            hint="right now"
+          />
+          <Stat
+            label="Visits today"
+            value={live.counts.visits}
+            hint={`${live.counts.members} member${live.counts.members === 1 ? "" : "s"} · ${live.counts.staff} staff`}
+          />
+          <Stat label="Paid" value={live.counts.paid} tone={live.counts.paid ? "green" : "neutral"} hint="members on a running paid package" />
+          <Stat
+            label="Unpaid"
+            value={live.counts.unpaid}
+            tone={live.counts.unpaid ? "rose" : "neutral"}
+            hint="expired, no package or not paid yet"
+          />
+          <Stat
+            label="Balance due"
+            value={live.counts.balance_due}
+            tone={live.counts.balance_due ? "amber" : "neutral"}
+            hint="members still owing on their package"
+          />
+        </div>
+      )}
+
       {tab === "log" && summary && (
         <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-6">
           <Stat label="Visits" value={summary.visits} hint={`${summary.members} member · ${summary.staff} staff`} />
@@ -961,6 +1190,7 @@ export default function AttendanceAdminPage() {
       {/* ---- Tabs ---- */}
       <div className="mb-4 flex items-center gap-1 border-b border-neutral-200">
         {([
+          { id: "live", label: "Today · live" },
           { id: "log", label: "Punch log" },
           { id: "people", label: "By person" },
         ] as { id: Tab; label: string }[]).map((entry) => (
@@ -988,6 +1218,8 @@ export default function AttendanceAdminPage() {
 
       {loading ? (
         <Spinner />
+      ) : tab === "live" ? (
+        <LiveTable records={live?.records || []} truncated={!!live?.truncated} onOpen={openDetail} />
       ) : tab === "log" ? (
         <LogTable
           records={records}
@@ -999,8 +1231,8 @@ export default function AttendanceAdminPage() {
         <PeopleTable people={people} onOpen={openDetail} />
       )}
 
-      {/* ---- Paging ---- */}
-      {!loading && pagination && pagination.total > 0 && (
+      {/* ---- Paging (the live view is the whole of today, unpaged) ---- */}
+      {tab !== "live" && !loading && pagination && pagination.total > 0 && (
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
           <p className="text-[12px] text-neutral-500">
             Showing {(pagination.page - 1) * pagination.limit + 1}–
@@ -1060,6 +1292,134 @@ export default function AttendanceAdminPage() {
       )}
       {settingsOpen && <DeskSettingsModal onClose={() => setSettingsOpen(false)} onSaved={corrected} />}
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Today, live
+// ---------------------------------------------------------------------------
+
+function LiveTable({
+  records,
+  truncated,
+  onOpen,
+}: {
+  records: LiveRecord[];
+  truncated: boolean;
+  onOpen: (person: { type: string; id: string; name: string }) => void;
+}) {
+  if (!records.length) {
+    return (
+      <EmptyState
+        title="Nobody has checked in yet today"
+        hint="Visits appear here within seconds of the front desk or the kiosk recording them."
+      />
+    );
+  }
+
+  return (
+    <Card className="overflow-hidden">
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-neutral-200 bg-neutral-50/80">
+              {["#", "Time in", "Time out", "Member ID", "Name", "Contact", "Gender", "Package", "Next expiry", "Status", ""].map(
+                (column) => (
+                  <th
+                    key={column}
+                    className="whitespace-nowrap px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-neutral-500"
+                  >
+                    {column}
+                  </th>
+                )
+              )}
+            </tr>
+          </thead>
+          <tbody>
+            {records.map((record) => {
+              const tone =
+                record.standing.key === "staff" ? statusTone(record.status) : STANDING_TONE[record.standing.key] || "neutral";
+              // The desk's own words under the one-word status, when they add
+              // something ("Expired 3 days ago", "4 days left").
+              const detail = record.standing.key === "staff" ? "" : record.status_label;
+              return (
+                <tr key={record.id} className="border-b border-neutral-100 transition-colors last:border-b-0 hover:bg-neutral-50">
+                  <td className="whitespace-nowrap px-4 py-3 align-middle tabular-nums text-neutral-400">{record.number}</td>
+                  <td className="whitespace-nowrap px-4 py-3 align-middle font-medium text-neutral-800">
+                    {record.check_in_time || "—"}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-3 align-middle">
+                    {record.still_in ? (
+                      <StillIn />
+                    ) : record.no_check_out ? (
+                      <NoCheckOut />
+                    ) : (
+                      <span className="font-medium text-neutral-800">{record.check_out_time || "—"}</span>
+                    )}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-3 align-middle font-mono text-[12px] text-neutral-700">
+                    {record.code || "—"}
+                  </td>
+                  <td className="px-4 py-3 align-middle">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-neutral-900">{record.name}</span>
+                      {record.person_type === "staff" && <TypePill type="staff" />}
+                    </div>
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-3 align-middle text-neutral-700">
+                    {record.phone ? (
+                      <a href={`tel:${record.phone.replace(/[^\d+]/g, "")}`} className="hover:text-[var(--accent)]">
+                        {record.phone}
+                      </a>
+                    ) : (
+                      <span className="text-neutral-400">—</span>
+                    )}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-3 align-middle capitalize text-neutral-700">
+                    {record.gender || <span className="text-neutral-400">—</span>}
+                  </td>
+                  <td className="px-4 py-3 align-middle text-neutral-700">
+                    {record.person_type === "staff" ? (
+                      <span className="text-neutral-400">—</span>
+                    ) : (
+                      record.package_name || <span className="text-neutral-400">None</span>
+                    )}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-3 align-middle text-neutral-700">
+                    {record.end_date_label || <span className="text-neutral-400">—</span>}
+                  </td>
+                  <td className="px-4 py-3 align-middle">
+                    <div className="flex flex-wrap items-center gap-1">
+                      <StatusPill status={record.status} label={record.standing.label} tone={tone} />
+                      {record.balance_due_label && record.standing.key !== "balance_due" && (
+                        <StatusPill status="" label={record.balance_due_label} tone="amber" />
+                      )}
+                    </div>
+                    {detail && detail !== record.standing.label && (
+                      <div className="mt-0.5 text-[11px] text-neutral-400">{detail}</div>
+                    )}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-3 text-right align-middle">
+                    <button
+                      type="button"
+                      onClick={() => onOpen({ type: record.person_type, id: record.person_id, name: record.name })}
+                      className="text-[12px] font-semibold text-neutral-500 hover:text-[var(--accent)]"
+                    >
+                      History
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      {truncated && (
+        <p className="border-t border-neutral-100 px-4 py-2 text-[12px] text-amber-700">
+          More visits today than this view reads at once; the Punch log has all of them.
+        </p>
+      )}
+    </Card>
   );
 }
 
