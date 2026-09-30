@@ -1,14 +1,28 @@
 "use client";
 
 // The till: tap products into a basket, pick a member if it is for one,
-// take payment, print the receipt. Stock comes off as it sells.
+// take payment, print the receipt. Stock comes off as it sells. The receipt
+// shown after a sale is the one that prints: the same component, sent to the
+// printer on its own at the roll's width (components/receipts).
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { PageHeader, Card, PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, SelectField, Badge, Spinner } from "../_shared/ui";
+import { PageHeader, Card, PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, TextArea, SelectField, Toggle, Badge, Spinner } from "../_shared/ui";
 import { API_BASE, apiGet, apiJson } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
 import { MemberPicker, type MemberOption } from "../_ops/MemberPicker";
+import {
+  ThermalReceipt,
+  printReceipt,
+  loadReceiptProfile,
+  toReceiptProfile,
+  EMPTY_RECEIPT_PROFILE,
+  RECEIPT_SETTINGS_URL,
+  type ReceiptProfile,
+  type ReceiptSettings,
+  type ReceiptSettingsResponse,
+  type ThermalReceiptProps,
+} from "@/components/receipts";
 
 const POS_API = `${API_BASE}/admin/pos`;
 
@@ -37,6 +51,7 @@ interface Sale {
   status: "paid" | "refunded";
   member_name: string;
   sold_by: string;
+  notes: string;
   paid_at: string;
 }
 interface SalesResponse {
@@ -53,7 +68,55 @@ const METHODS = [
   { value: "account", label: "On account" },
   { value: "other", label: "Other" },
 ];
+const methodLabel = (m: string) => METHODS.find((x) => x.value === m)?.label || m;
 const fmt = (n: number, c: string) => `${c} ${Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const RECEIPT_FOOTER_MAX = 300;
+
+// A sale as the receipt prints it.
+function receiptFor(s: Sale, profile: ReceiptProfile): ThermalReceiptProps {
+  return {
+    ...profile,
+    title: "Sales receipt",
+    number: s.receipt_number,
+    date: s.paid_at,
+    currency: s.currency,
+    cashier: s.sold_by || undefined,
+    customer: s.member_name || undefined,
+    lines: s.items.map((i) => ({ name: i.name, quantity: i.quantity, unitPrice: i.unit_price, total: i.total })),
+    subtotal: s.subtotal,
+    discount: s.discount,
+    tax: s.tax_amount,
+    taxRate: s.tax_rate,
+    taxInclusive: true,
+    total: s.total,
+    paid: s.total,
+    method: methodLabel(s.payment_method),
+    notes: s.notes || undefined,
+    status: s.status === "refunded" ? "Refunded" : undefined,
+  };
+}
+
+// What the Receipt settings dialog previews: a made-up sale in the gym's
+// own currency, so a change of width or footer can be judged before saving.
+function sampleReceipt(profile: ReceiptProfile, settings: ReceiptSettings, currency: string): ThermalReceiptProps {
+  return {
+    ...profile,
+    settings,
+    title: "Sales receipt",
+    number: "RCP-0000-00000",
+    date: new Date(),
+    currency,
+    cashier: "Front desk",
+    lines: [
+      { name: "Water 500ml", quantity: 2, unitPrice: 1.5, total: 3 },
+      { name: "Protein bar", quantity: 1, unitPrice: 2.5, total: 2.5 },
+    ],
+    subtotal: 5.5,
+    total: 5.5,
+    paid: 5.5,
+    method: "Cash",
+  };
+}
 
 export default function PosPage() {
   const { can } = usePermissions();
@@ -70,6 +133,11 @@ export default function PosPage() {
   const [receipt, setReceipt] = useState<Sale | null>(null);
   const [notice, setNotice] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
   const [sales, setSales] = useState<SalesResponse | null>(null);
+  const [profile, setProfile] = useState<ReceiptProfile>(EMPTY_RECEIPT_PROFILE);
+  const [printing, setPrinting] = useState(false);
+  const [setup, setSetup] = useState<ReceiptSettings | null>(null);
+  const [savingSetup, setSavingSetup] = useState(false);
+  const [setupError, setSetupError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -88,6 +156,42 @@ export default function PosPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // The gym's details and print settings, once. Without them a receipt still
+  // prints, just without the letterhead, so a failure here does not hold up
+  // the till.
+  useEffect(() => {
+    loadReceiptProfile()
+      .then(setProfile)
+      .catch(() => undefined);
+  }, []);
+
+  const print = async (s: Sale) => {
+    setPrinting(true);
+    try {
+      await printReceipt(receiptFor(s, profile));
+    } catch (e) {
+      setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not print the receipt" });
+    } finally {
+      setPrinting(false);
+    }
+  };
+
+  const saveSetup = async () => {
+    if (!setup) return;
+    setSavingSetup(true);
+    setSetupError(null);
+    try {
+      const res = await apiJson<{ data: ReceiptSettingsResponse }>(RECEIPT_SETTINGS_URL, "PUT", setup);
+      setProfile(toReceiptProfile(res.data));
+      setSetup(null);
+      setNotice({ tone: "ok", text: "Receipt settings saved." });
+    } catch (e) {
+      setSetupError(e instanceof Error ? e.message : "Could not save the receipt settings");
+    } finally {
+      setSavingSetup(false);
+    }
+  };
 
   const categories = useMemo(() => Array.from(new Set(products.map((p) => p.category))).sort(), [products]);
   const shown = products.filter((p) => !category || p.category === category);
@@ -143,9 +247,21 @@ export default function PosPage() {
         eyebrow="Sales"
         title="Shop / POS"
         actions={
-          <Link href="/admin/inventory" className="rounded-lg border border-neutral-200 px-3 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-50">
-            Products &amp; stock
-          </Link>
+          <>
+            {editable && (
+              <SecondaryButton
+                onClick={() => {
+                  setSetupError(null);
+                  setSetup({ ...profile.settings });
+                }}
+              >
+                Receipt settings
+              </SecondaryButton>
+            )}
+            <Link href="/admin/inventory" className="rounded-lg border border-neutral-200 px-3 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-50">
+              Products &amp; stock
+            </Link>
+          </>
         }
       />
       {notice && <p className={`mb-4 rounded-lg px-3 py-2 text-sm ${notice.tone === "ok" ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}>{notice.text}</p>}
@@ -254,40 +370,60 @@ export default function PosPage() {
 
       <Modal open={!!receipt} onClose={() => setReceipt(null)} title={receipt ? `Receipt ${receipt.receipt_number}` : ""} size="sm">
         {receipt && (
-          <div className="text-sm" id="receipt">
-            <p className="text-xs text-neutral-500">{new Date(receipt.paid_at).toLocaleString()}{receipt.member_name ? ` · ${receipt.member_name}` : ""}</p>
-            <div className="mt-3 divide-y divide-neutral-100">
-              {receipt.items.map((i, idx) => (
-                <div key={idx} className="flex justify-between py-1.5">
-                  <span>
-                    {i.quantity} × {i.name}
-                  </span>
-                  <span>{fmt(i.total, receipt.currency)}</span>
-                </div>
-              ))}
-            </div>
-            <div className="mt-3 space-y-1 border-t border-neutral-200 pt-3">
-              {receipt.discount > 0 && (
-                <div className="flex justify-between text-neutral-600">
-                  <span>Discount</span>
-                  <span>−{fmt(receipt.discount, receipt.currency)}</span>
-                </div>
-              )}
-              {receipt.tax_amount > 0 && (
-                <div className="flex justify-between text-neutral-500">
-                  <span>Includes tax ({receipt.tax_rate}%)</span>
-                  <span>{fmt(receipt.tax_amount, receipt.currency)}</span>
-                </div>
-              )}
-              <div className="flex justify-between text-base font-semibold">
-                <span>Total ({receipt.payment_method})</span>
-                <span>{fmt(receipt.total, receipt.currency)}</span>
+          <div>
+            <div className="flex justify-center rounded-lg bg-neutral-100 p-3">
+              <div className="shadow-sm">
+                <ThermalReceipt {...receiptFor(receipt, profile)} />
               </div>
             </div>
-            {receipt.status === "refunded" && <p className="mt-3 text-rose-600">Refunded</p>}
             <div className="mt-5 flex justify-end gap-2">
-              <SecondaryButton onClick={() => window.print()}>Print</SecondaryButton>
+              <SecondaryButton onClick={() => print(receipt)} disabled={printing}>
+                {printing ? "Printing…" : "Print"}
+              </SecondaryButton>
               <PrimaryButton onClick={() => setReceipt(null)}>Done</PrimaryButton>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      <Modal open={!!setup} onClose={() => setSetup(null)} title="Receipt settings">
+        {setup && (
+          <div className="space-y-4">
+            <SelectField
+              label="Paper width"
+              value={setup.paperWidth}
+              allowClear={false}
+              onChange={(v) => setSetup({ ...setup, paperWidth: v === "58mm" ? "58mm" : "80mm" })}
+              options={[
+                { value: "80mm", label: "80 mm roll" },
+                { value: "58mm", label: "58 mm roll" },
+              ]}
+            />
+            <Toggle label="Print the gym's logo" checked={setup.showLogo} onChange={(v) => setSetup({ ...setup, showLogo: v })} />
+            <TextArea
+              label="Footer"
+              rows={3}
+              value={setup.footerText}
+              placeholder={profile.branding.footerNote || "Thank you, see you at the gym!"}
+              onChange={(v) => setSetup({ ...setup, footerText: v.slice(0, RECEIPT_FOOTER_MAX) })}
+            />
+            <p className="text-xs text-neutral-500">
+              Left empty, the invoice footer note from Settings is printed. The gym&apos;s name, address, phone, logo and tax number come from Settings.
+            </p>
+            <div>
+              <p className="mb-2 text-xs font-medium text-neutral-600">Preview</p>
+              <div className="flex justify-center rounded-lg bg-neutral-100 p-3">
+                <div className="shadow-sm">
+                  <ThermalReceipt {...sampleReceipt(profile, setup, currency)} />
+                </div>
+              </div>
+            </div>
+            {setupError && <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{setupError}</p>}
+            <div className="flex justify-end gap-2">
+              <SecondaryButton onClick={() => setSetup(null)}>Cancel</SecondaryButton>
+              <PrimaryButton onClick={saveSetup} disabled={savingSetup}>
+                {savingSetup ? "Saving…" : "Save"}
+              </PrimaryButton>
             </div>
           </div>
         )}
