@@ -132,6 +132,13 @@ export interface RestoreResult {
   dropped: string[];
   kept: string[];
   safetyBackup: string;
+  /** Every session ended with the restore, this one included. */
+  signedOut?: boolean;
+  /**
+   * The phone app's usernames, rebuilt from the restored accounts: `taken`
+   * are ones another gym's member has had since, which need a new username.
+   */
+  memberLogins?: { published: number; taken: string[] } | { error: string };
 }
 
 export async function previewRestore(backupId: string): Promise<RestorePreview> {
