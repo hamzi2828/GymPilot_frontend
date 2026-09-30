@@ -127,11 +127,22 @@ export default function BackupSettings() {
 
   const restored = async (result: RestoreResult) => {
     setRestoring(null);
+    // The phone app's usernames are rebuilt with the restore; any another
+    // gym's member took in the meantime stay theirs, and those members need
+    // a new one (Users → username).
+    const logins = result.memberLogins;
+    const loginsNote = !logins
+      ? ""
+      : "error" in logins
+        ? ` ${logins.error}`
+        : logins.taken.length
+          ? ` These usernames were taken by another gym's member since the backup, so give those members new ones: ${logins.taken.join(", ")}.`
+          : "";
     setNotice({
       tone: "ok",
       text: `Restored ${result.documents.toLocaleString()} records in ${result.collections.length} collections. The gym as it was just before is kept as a backup listed "Before a restore".${
         result.signedOut ? " Everyone has been signed out, you included: sign in again to carry on." : ""
-      }`,
+      }${loginsNote}`,
     });
     // This session ended with the restore, so a reload would only find that
     // out and leave for the sign-in page before the notice could be read.
