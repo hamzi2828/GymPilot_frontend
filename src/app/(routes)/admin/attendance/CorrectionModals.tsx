@@ -1,7 +1,7 @@
 "use client";
 
-// The office's corrections to a visit the front desk recorded, and the one
-// attendance setting that lives on this page. Everything here writes through
+// The office's corrections to a visit the front desk recorded, and the
+// attendance settings that live on this page (scanning out, the desk voice). Everything here writes through
 // /api/attendance and needs 'manage' on the attendance tab; the page only
 // offers these to accounts that hold it.
 //
@@ -260,15 +260,47 @@ export function VoidVisitModal({
 // Desk settings
 // ---------------------------------------------------------------------------
 
+// What the desk and the kiosk say after the alert sound (attendance.voice).
+interface VoiceSettings {
+  enabled: boolean;
+  expired_message: string;
+  expiring_message: string;
+  balance_due_message: string;
+}
+
 interface AttendanceSettingsResponse {
-  settings: { member_scan_out: boolean };
+  settings: { member_scan_out: boolean; voice?: VoiceSettings; voice_defaults?: VoiceSettings };
   message?: string;
+}
+
+const VOICE_FIELDS: { key: "expired_message" | "expiring_message" | "balance_due_message"; body: string; label: string; when: string }[] = [
+  { key: "expired_message", body: "expiredMessage", label: "Fee expired", when: "Expired, no package, or the card payment failed" },
+  { key: "expiring_message", body: "expiringMessage", label: "Expiring soon", when: "Within a week of the end date, or a few sessions left" },
+  { key: "balance_due_message", body: "balanceDueMessage", label: "Balance due", when: "Money still owed on the current package" },
+];
+
+const voiceInputCls =
+  "h-9 min-w-0 flex-1 rounded-lg border border-neutral-200 bg-white px-3 text-sm text-neutral-800 focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[color-mix(in_srgb,var(--accent)_25%,transparent)]";
+
+/** Reads a message out in this browser, so the office can hear how it sounds. */
+function tryVoice(text: string) {
+  try {
+    if (!text || typeof window === "undefined" || !window.speechSynthesis) return;
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(new SpeechSynthesisUtterance(text));
+  } catch {
+    /* no speech in this browser */
+  }
 }
 
 export function DeskSettingsModal({ onClose, onSaved }: { onClose: () => void; onSaved: (message: string) => void }) {
   const [loading, setLoading] = useState(true);
   const [saved, setSaved] = useState<boolean | null>(null);
   const [scanOut, setScanOut] = useState(true);
+  // The voice as last saved, as edited, and the wording a blank field means.
+  const [savedVoice, setSavedVoice] = useState<VoiceSettings | null>(null);
+  const [voice, setVoice] = useState<VoiceSettings | null>(null);
+  const [defaults, setDefaults] = useState<VoiceSettings | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -279,6 +311,13 @@ export function DeskSettingsModal({ onClose, onSaved }: { onClose: () => void; o
         if (!live) return;
         setSaved(res.settings.member_scan_out);
         setScanOut(res.settings.member_scan_out);
+        // Absent on a server from before the voice existed: the section is
+        // then simply not offered.
+        if (res.settings.voice) {
+          setSavedVoice(res.settings.voice);
+          setVoice(res.settings.voice);
+          setDefaults(res.settings.voice_defaults || null);
+        }
       })
       .catch((e) => live && setError(e instanceof Error ? e.message : "Could not load the attendance settings."))
       .finally(() => live && setLoading(false));
@@ -287,11 +326,25 @@ export function DeskSettingsModal({ onClose, onSaved }: { onClose: () => void; o
     };
   }, []);
 
+  const voiceChanged =
+    !!voice &&
+    !!savedVoice &&
+    (voice.enabled !== savedVoice.enabled ||
+      VOICE_FIELDS.some((field) => voice[field.key].trim() !== savedVoice[field.key]));
+  const changed = (saved !== null && saved !== scanOut) || voiceChanged;
+
   const save = async () => {
     setSaving(true);
     setError(null);
     try {
-      const res = await apiJson<AttendanceSettingsResponse>(`${ATTENDANCE_API}/settings`, "PUT", { memberScanOut: scanOut });
+      const body: Record<string, unknown> = {};
+      if (saved !== scanOut) body.memberScanOut = scanOut;
+      if (voice && voiceChanged) {
+        const sent: Record<string, unknown> = { enabled: voice.enabled };
+        for (const field of VOICE_FIELDS) sent[field.body] = voice[field.key].trim();
+        body.voice = sent;
+      }
+      const res = await apiJson<AttendanceSettingsResponse>(`${ATTENDANCE_API}/settings`, "PUT", body);
       onSaved(res.message || "Attendance settings saved.");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not save the attendance settings.");
@@ -314,13 +367,57 @@ export function DeskSettingsModal({ onClose, onSaved }: { onClose: () => void; o
             Staff always scan in and out.
           </p>
 
+          {voice && (
+            <div className="space-y-3 border-t border-neutral-200 pt-4">
+              <Toggle
+                label="Speak a message after the alert sound"
+                checked={voice.enabled}
+                onChange={(enabled) => setVoice({ ...voice, enabled })}
+              />
+              <p className="text-[13px] text-neutral-600">
+                The fingerprint desk and the web kiosk play one sound when all is well, another when a membership is
+                running out or has a balance owing, and a third when it has expired, is unpaid or is frozen
+                {voice.enabled ? " — then read the message below out loud." : ". With this off, only the sound plays."}
+              </p>
+              {voice.enabled &&
+                VOICE_FIELDS.map((field) => (
+                  <div key={field.key}>
+                    <label htmlFor={`desk-voice-${field.key}`} className="text-xs font-semibold text-neutral-700">
+                      {field.label}
+                    </label>
+                    <span className="ml-1 text-[11px] text-neutral-400">· {field.when}</span>
+                    <div className="mt-1 flex gap-2">
+                      <input
+                        id={`desk-voice-${field.key}`}
+                        type="text"
+                        value={voice[field.key]}
+                        maxLength={200}
+                        placeholder={defaults?.[field.key] || ""}
+                        onChange={(e) => setVoice({ ...voice, [field.key]: e.target.value })}
+                        className={voiceInputCls}
+                      />
+                      <SecondaryButton onClick={() => tryVoice(voice[field.key].trim() || defaults?.[field.key] || "")}>
+                        Hear it
+                      </SecondaryButton>
+                    </div>
+                  </div>
+                ))}
+              {voice.enabled && (
+                <p className="text-[11px] text-neutral-400">
+                  Leave a message blank to use the default. The desk speaks with the Windows voice, which may sound
+                  different from this browser&apos;s.
+                </p>
+              )}
+            </div>
+          )}
+
           <ErrorLine message={error} />
 
           <div className="flex justify-end gap-2 pt-1">
             <SecondaryButton onClick={onClose} disabled={saving}>
               Cancel
             </SecondaryButton>
-            <PrimaryButton onClick={save} disabled={saving || saved === null || saved === scanOut}>
+            <PrimaryButton onClick={save} disabled={saving || saved === null || !changed}>
               {saving ? "Saving…" : "Save"}
             </PrimaryButton>
           </div>
