@@ -16,7 +16,7 @@ import {
   Spinner,
   Table,
 } from "../_shared/ui";
-import { API_BASE, GYMFOLIO_API, apiGet, apiJson } from "../_shared/api";
+import { API_BASE, GYMFOLIO_API, ApiError, apiGet, apiJson } from "../_shared/api";
 import { currencyOptions } from "@/data/countries";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
 import { LoadError } from "../_ops/lists";
@@ -86,6 +86,8 @@ export default function PackagesAdminPage() {
   const [featuresText, setFeaturesText] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // A delete the backend refused because members still hold the package.
+  const [refusal, setRefusal] = useState<{ message: string; pkg: Package } | null>(null);
   // The gym's currency (Settings → General); new packages start on it.
   const [defaultCurrency, setDefaultCurrency] = useState("USD");
 
@@ -164,13 +166,17 @@ export default function PackagesAdminPage() {
     }
   };
 
-  const remove = async (id: string) => {
+  const remove = async (p: Package) => {
     if (!confirm("Delete this package?")) return;
+    setRefusal(null);
     try {
-      await apiJson(`${GYMFOLIO_API}/packages/${id}`, "DELETE");
+      await apiJson(`${GYMFOLIO_API}/packages/${p._id}`, "DELETE");
       await load();
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Delete failed");
+      // Members still hold it (409 PACKAGE_IN_USE): the backend says who and
+      // points at Deactivate, which the banner then offers in one click.
+      if (e instanceof ApiError && e.code === "PACKAGE_IN_USE") setRefusal({ message: e.message, pkg: p });
+      else alert(e instanceof Error ? e.message : "Delete failed");
     }
   };
 
@@ -202,6 +208,25 @@ export default function PackagesAdminPage() {
 
       {loadError && <LoadError message={loadError} onRetry={load} />}
 
+      {refusal && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <span>{refusal.message}</span>
+          <div className="flex shrink-0 gap-2">
+            {list.find((p) => p._id === refusal.pkg._id)?.isActive && (
+              <SecondaryButton
+                onClick={async () => {
+                  await toggleActive(refusal.pkg);
+                  setRefusal(null);
+                }}
+              >
+                Deactivate {refusal.pkg.name}
+              </SecondaryButton>
+            )}
+            <SecondaryButton onClick={() => setRefusal(null)}>Dismiss</SecondaryButton>
+          </div>
+        </div>
+      )}
+
       {loading ? (
         <Spinner />
       ) : loadError && !list.length ? null : (
@@ -230,7 +255,7 @@ export default function PackagesAdminPage() {
                 <SecondaryButton onClick={() => openEdit(p)}>
                   <FiEdit2 className="w-3.5 h-3.5" />
                 </SecondaryButton>
-                <DangerButton onClick={() => remove(p._id)}>
+                <DangerButton onClick={() => remove(p)}>
                   <FiTrash2 className="w-3.5 h-3.5" />
                 </DangerButton>
               </div>

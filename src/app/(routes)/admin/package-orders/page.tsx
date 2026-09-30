@@ -33,7 +33,13 @@ interface PackageOption {
   currency?: string;
   period?: string;
   kind?: string;
+  joiningFee?: number;
   billing?: { mode: string; interval: string; intervalCount: number };
+}
+
+interface TrainerOption {
+  _id: string;
+  name: string;
 }
 
 interface PackageOrder {
@@ -44,6 +50,14 @@ interface PackageOrder {
   customerInfo: { fullName: string; email: string; phone: string };
   payment: {
     amount: number;
+    // The admission and trainer's fees inside `amount`; the rest is the membership.
+    joiningFee?: number;
+    trainerFee?: number;
+    // Paid in parts: what has come in (null on older orders: all of it),
+    // what is still owed, and each payment received.
+    amountPaid?: number | null;
+    balanceDue?: number;
+    installments?: { amount: number; method?: string; at: string; note?: string }[];
     subtotal?: number;
     discountAmount?: number;
     discountNote?: string;
@@ -70,6 +84,8 @@ interface PackageOrder {
   freeze?: { isFrozen: boolean; resumeAt?: string | null; totalFrozenDays?: number; reason?: string };
   cancellation?: { cancelledAt?: string | null; reason?: string; source?: string };
   refund?: { amount?: number | null; reason?: string; at?: string | null; stripeRefundId?: string | null };
+  // Changes staff made to the dates or the discount after the sale.
+  termsHistory?: { at: string; note?: string; from: Terms; to: Terms }[];
   sessions?: { total: number; used: number };
   invoice?: { number?: string | null };
   status: string;
@@ -91,15 +107,31 @@ const statusColors: Record<string, "neutral" | "green" | "amber" | "rose" | "blu
   refunded: "neutral",
 };
 
-const METHOD_LABELS: Record<string, string> = { stripe: "Card (Stripe)", card: "Card (desk)", bank_transfer: "Bank transfer", cash: "Cash" };
+// The backend's services/paymentMethods.js, label for label.
+const METHOD_LABELS: Record<string, string> = {
+  stripe: "Card (Stripe)",
+  card: "Card",
+  bank_transfer: "Bank transfer",
+  cash: "Cash",
+  jazzcash: "JazzCash",
+  easypaisa: "Easypaisa",
+  wallet: "Other mobile wallet",
+};
+// What the desk records by hand: every method but Stripe, which is only ever
+// paid through online checkout (the API refuses it here with a 422).
+const DESK_METHOD_OPTIONS = Object.entries(METHOD_LABELS)
+  .filter(([value]) => value !== "stripe")
+  .map(([value, label]) => ({ value, label }));
 // Stripe subscription statuses that never charge again on their own (the
 // backend's reminderJobs reads them the same way).
 const NOT_RENEWING_STRIPE_STATUSES = ["canceled", "incomplete", "incomplete_expired", "unpaid", "paused"];
 const ORDER_STATUSES = ["pending", "active", "frozen", "past_due", "expired", "cancelled"];
 const PAYMENT_STATUSES = ["pending", "processing", "paid", "failed", "refunded"];
 
-type Filters = { search: string; status: string; paymentStatus: string; paymentMethod: string };
-type PanelAction = "" | "status" | "freeze" | "cancel" | "renew" | "change" | "reject" | "refund";
+// hasDues: "1" lists only orders with money still owed on them.
+type Filters = { search: string; status: string; paymentStatus: string; paymentMethod: string; hasDues: string };
+type PanelAction = "" | "status" | "freeze" | "cancel" | "renew" | "change" | "reject" | "refund" | "payment" | "terms";
+type Terms = { startDate?: string | null; endDate?: string | null; discountAmount?: number; discountNote?: string; amount?: number; balanceDue?: number };
 
 // The list's filters as the address gives them (the bell links to
 // ?status=past_due, for one). A value the filters do not offer is ignored.
@@ -110,6 +142,7 @@ function filtersFrom(params: { get(key: string): string | null }): Filters {
     status: offered(params.get("status"), ORDER_STATUSES),
     paymentStatus: offered(params.get("paymentStatus"), PAYMENT_STATUSES),
     paymentMethod: offered(params.get("paymentMethod"), Object.keys(METHOD_LABELS)),
+    hasDues: params.get("hasDues") === "1" ? "1" : "",
   };
 }
 
@@ -118,8 +151,27 @@ function fmtDate(value?: string | null) {
   return new Date(value).toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" });
 }
 
+// A date as a date input holds it (YYYY-MM-DD, this browser's calendar).
+function dateInput(value?: string | null) {
+  if (!value) return "";
+  const d = new Date(value);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 function money(amount: number | undefined, currency: string) {
   return `${(currency || "").toUpperCase()} ${Number(amount || 0).toLocaleString()}`;
+}
+
+// The fees inside an order's amount ("GBP 25 admission · GBP 30 trainer"),
+// or "" when it carries none.
+function feeParts(o: PackageOrder) {
+  const p = o.payment || ({} as PackageOrder["payment"]);
+  return [
+    (p.joiningFee || 0) > 0 ? `${money(p.joiningFee, p.currency)} admission` : "",
+    (p.trainerFee || 0) > 0 ? `${money(p.trainerFee, p.currency)} trainer` : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
 }
 
 function memberName(o: PackageOrder) {
@@ -154,7 +206,30 @@ function PackageOrdersAdminPageInner() {
   const [assignOpen, setAssignOpen] = useState(false);
   const [assignMember, setAssignMember] = useState<MemberOption | null>(null);
   const [packages, setPackages] = useState<PackageOption[]>([]);
-  const emptyAssign = { packageId: "", paymentMethod: "cash", markPaid: "yes", durationMonths: "", notes: "", couponCode: "", amount: "" };
+  const [trainers, setTrainers] = useState<TrainerOption[]>([]);
+  const emptyAssign = {
+    packageId: "",
+    paymentMethod: "cash",
+    markPaid: "yes",
+    durationMonths: "",
+    notes: "",
+    couponCode: "",
+    amount: "",
+    // When the term starts: "" = when the current membership ends (or now),
+    // "date" = on startDate, "days" = startAfterDays from today.
+    startMode: "",
+    startDate: "",
+    startAfterDays: "",
+    discountAmount: "",
+    discountNote: "",
+    // Blank: paid in full. Less than the total: granted now, the rest due.
+    amountPaid: "",
+    waiveJoiningFee: "no",
+    trainerId: "",
+    trainerFee: "",
+    trainerCommissionType: "percent",
+    trainerCommissionValue: "",
+  };
   const [assignDraft, setAssignDraft] = useState(emptyAssign);
 
   // Paged: a fixed limit of 200 used to cut the list off without saying so
@@ -167,6 +242,7 @@ function PackageOrdersAdminPageInner() {
       if (filters.status) params.set("status", filters.status);
       if (filters.paymentStatus) params.set("paymentStatus", filters.paymentStatus);
       if (filters.paymentMethod) params.set("paymentMethod", filters.paymentMethod);
+      if (filters.hasDues) params.set("hasDues", "1");
       const r = await apiGet<{ data: PackageOrder[]; pagination?: { total?: number; pages?: number; limit?: number } }>(`${GYMFOLIO_API}/package-orders?${params.toString()}`);
       setList(r.data || []);
       setTotal(r.pagination?.total ?? (r.data || []).length);
@@ -195,14 +271,14 @@ function PackageOrdersAdminPageInner() {
   // A link followed while already here brings a whole new set of filters.
   // (Changes made on the page come back through here too, already applied.)
   useEffect(() => {
-    const next = { search: url.search, status: url.status, paymentStatus: url.paymentStatus, paymentMethod: url.paymentMethod };
+    const next = { search: url.search, status: url.status, paymentStatus: url.paymentStatus, paymentMethod: url.paymentMethod, hasDues: url.hasDues };
     setFilters((prev) =>
-      prev.search === next.search && prev.status === next.status && prev.paymentStatus === next.paymentStatus && prev.paymentMethod === next.paymentMethod
+      prev.search === next.search && prev.status === next.status && prev.paymentStatus === next.paymentStatus && prev.paymentMethod === next.paymentMethod && prev.hasDues === next.hasDues
         ? prev
         : next
     );
     setPage(1);
-  }, [url.search, url.status, url.paymentStatus, url.paymentMethod]);
+  }, [url.search, url.status, url.paymentStatus, url.paymentMethod, url.hasDues]);
 
   // Members come from the picker's own search. Packages: the full list when
   // this account has the Packages tab, else the ones on sale right now.
@@ -212,6 +288,9 @@ function PackageOrdersAdminPageInner() {
         apiGet<{ data?: PackageOption[] }>(`${GYMFOLIO_API}/packages/active`)
       );
       setPackages(p.data || []);
+      // The trainers who can be sold with a membership: the active ones.
+      const t = await apiGet<{ data?: TrainerOption[] }>(`${GYMFOLIO_API}/trainers/active`).catch(() => ({ data: [] as TrainerOption[] }));
+      setTrainers(t.data || []);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load packages.");
     }
@@ -245,15 +324,29 @@ function PackageOrdersAdminPageInner() {
   const assignPackage = () =>
     run("Package assigned.", async () => {
       if (!assignMember || !assignDraft.packageId) throw new Error("Choose both a member and a package.");
+      const d = assignDraft;
+      const withTrainer = !!d.trainerId;
+      // Amounts go as typed: the API reads "5,000" as readily as 5000, and
+      // says which field it could not read.
       const res = await apiJson<{ message: string }>(`${GYMFOLIO_API}/package-orders/assign`, "POST", {
         userId: assignMember.id,
-        packageId: assignDraft.packageId,
-        paymentMethod: assignDraft.paymentMethod,
-        markPaid: assignDraft.markPaid === "yes",
-        durationMonths: assignDraft.durationMonths ? Number(assignDraft.durationMonths) : undefined,
-        notes: assignDraft.notes || undefined,
-        couponCode: assignDraft.couponCode || undefined,
-        amount: assignDraft.amount || undefined,
+        packageId: d.packageId,
+        paymentMethod: d.paymentMethod,
+        markPaid: d.markPaid === "yes",
+        durationMonths: d.durationMonths ? Number(d.durationMonths) : undefined,
+        notes: d.notes || undefined,
+        couponCode: d.couponCode || undefined,
+        amountOverride: d.amount || undefined,
+        startDate: d.startMode === "date" ? d.startDate || undefined : undefined,
+        startAfterDays: d.startMode === "days" && d.startAfterDays !== "" ? Number(d.startAfterDays) : undefined,
+        discountAmount: d.discountAmount || undefined,
+        discountNote: d.discountNote || undefined,
+        waiveJoiningFee: d.waiveJoiningFee === "yes" || undefined,
+        amountPaid: d.markPaid === "yes" && d.amountPaid !== "" ? d.amountPaid : undefined,
+        trainerId: d.trainerId || undefined,
+        trainerFee: withTrainer ? d.trainerFee || undefined : undefined,
+        trainerCommissionType: withTrainer ? d.trainerCommissionType : undefined,
+        trainerCommissionValue: withTrainer ? d.trainerCommissionValue || undefined : undefined,
       });
       setAssignOpen(false);
       return res;
@@ -263,7 +356,30 @@ function PackageOrdersAdminPageInner() {
   const openOrder = (o: PackageOrder, a: PanelAction) => {
     setSelected(o);
     setAction(a);
-    setDraft({ status: o.status, days: "7", reason: "", immediate: "no", paymentMethod: "cash", markPaid: "yes", months: "", packageId: "", amount: "" });
+    setDraft({
+      status: o.status,
+      days: "7",
+      reason: "",
+      immediate: "no",
+      paymentMethod: "cash",
+      markPaid: "yes",
+      months: "",
+      packageId: "",
+      amount: "",
+      amountOverride: "",
+      startDate: "",
+      discountAmount: "",
+      discountNote: "",
+      amountPaid: "",
+      payAmount: "",
+      payMethod: "cash",
+      payNote: "",
+      termsStart: "",
+      termsEnd: "",
+      termsDiscount: "",
+      termsDiscountNote: "",
+      termsNote: "",
+    });
   };
 
   const openAction = async (o: PackageOrder, a: typeof action) => {
@@ -292,7 +408,7 @@ function PackageOrdersAdminPageInner() {
   const viaStripe = (o: PackageOrder) => o.payment.method === "stripe" || !!o.payment.stripePaymentIntentId || !!o.payment.stripeSessionId;
   const refund = (o: PackageOrder) => {
     const amount = draft.amount.trim();
-    const shown = amount ? money(Number(amount), o.payment.currency) : `the full ${money(o.payment.amount, o.payment.currency)}`;
+    const shown = amount ? money(Number(amount), o.payment.currency) : `the full ${money(o.payment.amountPaid ?? o.payment.amount, o.payment.currency)}`;
     const how = viaStripe(o) ? "It is sent back to the member's card through Stripe." : "Give the money back by hand; this only records it.";
     if (!confirm(`Refund ${shown} on ${o.orderNumber}? ${how} The membership is cancelled straight away. This cannot be undone.`)) return;
     run("Refunded.", () => post(o, "refund", { amount: amount || undefined, reason: draft.reason }));
@@ -378,6 +494,10 @@ function PackageOrdersAdminPageInner() {
             </option>
           ))}
         </select>
+        <label className="flex items-center gap-2 text-sm text-neutral-700">
+          <input type="checkbox" checked={filters.hasDues === "1"} onChange={(e) => filterBy({ hasDues: e.target.checked ? "1" : "" })} className="h-4 w-4 accent-[var(--accent)]" />
+          Has dues
+        </label>
         {!loading && <span className="text-xs text-neutral-500">{total} order{total === 1 ? "" : "s"}</span>}
       </div>
 
@@ -391,7 +511,7 @@ function PackageOrdersAdminPageInner() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-neutral-200 bg-neutral-50/80">
-                  {["Order #", "Member", "Package", "Amount", "Method", "Payment", "Membership", "Runs", ""].map((c) => (
+                  {["Order #", "Member", "Package", "Amount", "Due", "Method", "Payment", "Membership", "Runs", ""].map((c) => (
                     <th key={c} className="whitespace-nowrap px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-neutral-500">
                       {c}
                     </th>
@@ -420,7 +540,11 @@ function PackageOrdersAdminPageInner() {
                     </td>
                     <td className="px-4 py-3 align-top">
                       {money(o.payment?.amount, o.payment?.currency)}
-                      {(o.payment?.discountAmount || 0) > 0 && <p className="text-[11px] text-emerald-700">−{money(o.payment.discountAmount, o.payment.currency)} {o.payment.couponCode || "credit"}</p>}
+                      {feeParts(o) && <p className="text-[11px] text-neutral-500">incl. {feeParts(o)}</p>}
+                      {(o.payment?.discountAmount || 0) > 0 &&<p className="text-[11px] text-emerald-700">−{money(o.payment.discountAmount, o.payment.currency)} {o.payment.couponCode || "credit"}</p>}
+                    </td>
+                    <td className="px-4 py-3 align-top whitespace-nowrap">
+                      {(o.payment?.balanceDue || 0) > 0 ? <span className="font-medium text-amber-700">{money(o.payment.balanceDue, o.payment.currency)}</span> : <span className="text-neutral-400">—</span>}
                     </td>
                     <td className="px-4 py-3 align-top text-xs text-neutral-600">{METHOD_LABELS[o.payment?.method] || o.payment?.method}</td>
                     <td className="px-4 py-3 align-top">
@@ -448,7 +572,7 @@ function PackageOrdersAdminPageInner() {
       <Pager page={page} pages={pages} total={total} onChange={setPage} disabled={loading} />
 
       {/* ---- Assign ---- */}
-      <Modal open={assignOpen} onClose={() => setAssignOpen(false)} title="Assign Package to Member" size="md">
+      <Modal open={assignOpen} onClose={() => setAssignOpen(false)} title="Assign Package to Member" size="lg">
         <div className="space-y-4">
           <p className="text-sm text-neutral-500">Creates a membership without going through checkout — for payments taken in person or a comped package.</p>
           <MemberPicker label="Member" value={assignMember} onChange={setAssignMember} />
@@ -463,11 +587,7 @@ function PackageOrdersAdminPageInner() {
               label="Payment Method"
               value={assignDraft.paymentMethod}
               onChange={(v) => setAssignDraft({ ...assignDraft, paymentMethod: v })}
-              options={[
-                { value: "cash", label: "Cash" },
-                { value: "bank_transfer", label: "Bank Transfer" },
-                { value: "card", label: "Card (desk terminal)" },
-              ]}
+              options={DESK_METHOD_OPTIONS}
             />
             <SelectField
               label="Mark as Paid"
@@ -478,12 +598,88 @@ function PackageOrdersAdminPageInner() {
                 { value: "no", label: "No — leave pending" },
               ]}
             />
+            <SelectField
+              label="Starts"
+              value={assignDraft.startMode}
+              allowClear={false}
+              onChange={(v) => setAssignDraft({ ...assignDraft, startMode: v })}
+              options={[
+                { value: "", label: "Now (or when their current membership ends)" },
+                { value: "date", label: "On a date" },
+                { value: "days", label: "In a number of days" },
+              ]}
+            />
+            {assignDraft.startMode === "date" ? (
+              <TextField label="Start date" type="date" value={assignDraft.startDate} onChange={(v) => setAssignDraft({ ...assignDraft, startDate: v })} />
+            ) : assignDraft.startMode === "days" ? (
+              <TextField label="Starts in (days from today)" type="number" value={assignDraft.startAfterDays} onChange={(v) => setAssignDraft({ ...assignDraft, startAfterDays: v })} placeholder="e.g. 3" />
+            ) : (
+              <TextField label="Duration in months (optional)" type="number" value={assignDraft.durationMonths} onChange={(v) => setAssignDraft({ ...assignDraft, durationMonths: v })} placeholder="Defaults to the package period" />
+            )}
+            <TextField label="Discount (off the package price)" type="number" value={assignDraft.discountAmount} onChange={(v) => setAssignDraft({ ...assignDraft, discountAmount: v })} />
+            <TextField label="Discount note" value={assignDraft.discountNote} onChange={(v) => setAssignDraft({ ...assignDraft, discountNote: v })} placeholder="Student, family, promotion…" />
             <TextField label="Coupon code (optional)" value={assignDraft.couponCode} onChange={(v) => setAssignDraft({ ...assignDraft, couponCode: v.toUpperCase() })} />
             <TextField label="Override amount (optional)" type="number" value={assignDraft.amount} onChange={(v) => setAssignDraft({ ...assignDraft, amount: v })} placeholder="Charged as-is" />
+            {assignDraft.markPaid === "yes" && (
+              <TextField
+                label="Amount paid now (optional)"
+                type="number"
+                value={assignDraft.amountPaid}
+                onChange={(v) => setAssignDraft({ ...assignDraft, amountPaid: v })}
+                placeholder="Blank = paid in full; the rest is due"
+              />
+            )}
+            {(packages.find((p) => p._id === assignDraft.packageId)?.joiningFee || 0) > 0 && (
+              <SelectField
+                label="Joining fee"
+                value={assignDraft.waiveJoiningFee}
+                allowClear={false}
+                onChange={(v) => setAssignDraft({ ...assignDraft, waiveJoiningFee: v })}
+                options={[
+                  { value: "no", label: "Charge it (first membership only)" },
+                  { value: "yes", label: "Waive it" },
+                ]}
+              />
+            )}
           </div>
-          <TextField label="Duration in months (optional)" type="number" value={assignDraft.durationMonths} onChange={(v) => setAssignDraft({ ...assignDraft, durationMonths: v })} placeholder="Defaults to the package period" />
+          <div className="rounded-lg border border-neutral-200 p-4">
+            <p className="text-xs font-semibold text-neutral-700">Personal trainer (optional)</p>
+            <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <SelectField
+                label="Trainer"
+                value={assignDraft.trainerId}
+                onChange={(v) => setAssignDraft({ ...assignDraft, trainerId: v })}
+                options={trainers.map((t) => ({ value: t._id, label: t.name }))}
+                placeholder="No trainer"
+              />
+              {assignDraft.trainerId && (
+                <>
+                  <TextField label="Trainer fee (charged to the member)" type="number" value={assignDraft.trainerFee} onChange={(v) => setAssignDraft({ ...assignDraft, trainerFee: v })} />
+                  <SelectField
+                    label="Trainer's commission"
+                    value={assignDraft.trainerCommissionType}
+                    allowClear={false}
+                    onChange={(v) => setAssignDraft({ ...assignDraft, trainerCommissionType: v })}
+                    options={[
+                      { value: "percent", label: "Percent of the trainer fee" },
+                      { value: "amount", label: "Fixed amount" },
+                    ]}
+                  />
+                  <TextField
+                    label={assignDraft.trainerCommissionType === "percent" ? "Commission (%)" : "Commission (amount)"}
+                    type="number"
+                    value={assignDraft.trainerCommissionValue}
+                    onChange={(v) => setAssignDraft({ ...assignDraft, trainerCommissionValue: v })}
+                  />
+                </>
+              )}
+            </div>
+            {assignDraft.trainerId && <p className="mt-2 text-xs text-neutral-500">The member&apos;s assigned trainer becomes this one.</p>}
+          </div>
           <TextField label="Notes (optional)" value={assignDraft.notes} onChange={(v) => setAssignDraft({ ...assignDraft, notes: v })} />
-          <p className="text-xs text-neutral-500">If the member already has a live membership, the new one starts when it ends.</p>
+          <p className="text-xs text-neutral-500">
+            Unless a start is chosen, a membership bought while another is live starts when that one ends. The joining fee is added only to a member&apos;s first membership.
+          </p>
           {error && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>}
           <div className="flex justify-end gap-2 pt-2">
             <SecondaryButton onClick={() => setAssignOpen(false)}>Cancel</SecondaryButton>
@@ -515,6 +711,22 @@ function PackageOrdersAdminPageInner() {
                   {money(selected.payment.amount, selected.payment.currency)} · {METHOD_LABELS[selected.payment.method] || selected.payment.method} · {selected.payment.status}
                   {selected.payment.paidAt ? ` on ${fmtDate(selected.payment.paidAt)}` : ""}
                 </p>
+                {feeParts(selected) && <p className="text-xs text-neutral-500">incl. {feeParts(selected)}</p>}
+                {(selected.payment.balanceDue || 0) > 0 && (
+                  <p className="text-xs font-medium text-amber-700">
+                    {money(selected.payment.amountPaid ?? 0, selected.payment.currency)} paid so far · {money(selected.payment.balanceDue, selected.payment.currency)} due
+                  </p>
+                )}
+                {(selected.payment.installments || []).length > 0 && (
+                  <ul className="mt-1 space-y-0.5 text-xs text-neutral-500">
+                    {(selected.payment.installments || []).map((part, i) => (
+                      <li key={i}>
+                        {fmtDate(part.at)} · {money(part.amount, selected.payment.currency)} · {METHOD_LABELS[part.method || selected.payment.method] || part.method}
+                        {part.note ? ` — ${part.note}` : ""}
+                      </li>
+                    ))}
+                  </ul>
+                )}
                 {selected.payment.discountNote && <p className="text-xs text-neutral-500">{selected.payment.discountNote}</p>}
               </div>
               <div>
@@ -603,6 +815,16 @@ function PackageOrdersAdminPageInner() {
                 {selected.payment.status === "paid" && (
                   <SecondaryButton onClick={() => openInvoice(selected)}>Invoice PDF</SecondaryButton>
                 )}
+                {selected.payment.status === "paid" && (selected.payment.balanceDue || 0) > 0 && (
+                  <PrimaryButton
+                    onClick={() => {
+                      setDraft({ ...draft, payAmount: String(selected.payment.balanceDue ?? ""), payMethod: selected.payment.method === "stripe" ? "cash" : selected.payment.method, payNote: "" });
+                      setAction("payment");
+                    }}
+                  >
+                    Record payment
+                  </PrimaryButton>
+                )}
                 {live(selected) && selected.status !== "frozen" && <SecondaryButton onClick={() => setAction("freeze")}>Freeze</SecondaryButton>}
                 {selected.status === "frozen" && (
                   <SecondaryButton disabled={busy} onClick={() => run("Membership resumed.", () => post(selected, "unfreeze"))}>
@@ -620,6 +842,27 @@ function PackageOrdersAdminPageInner() {
                     <SecondaryButton onClick={() => setAction("renew")}>Renew</SecondaryButton>
                   ))}
                 {live(selected) && <SecondaryButton onClick={() => openAction(selected, "change")}>Change package</SecondaryButton>}
+                {/* Not on a card subscription (Stripe's billing sets its dates and price) or a card payment still going through. */}
+                {selected.status !== "cancelled" &&
+                  !["refunded", "failed", "cancelled"].includes(selected.payment.status) &&
+                  !selected.payment.stripeSubscriptionId &&
+                  !(viaStripe(selected) && selected.payment.status !== "paid") && (
+                  <SecondaryButton
+                    onClick={() => {
+                      setDraft({
+                        ...draft,
+                        termsStart: dateInput(selected.subscription?.startDate),
+                        termsEnd: dateInput(selected.subscription?.endDate),
+                        termsDiscount: String(selected.payment.discountAmount ?? 0),
+                        termsDiscountNote: selected.payment.discountNote || "",
+                        termsNote: "",
+                      });
+                      setAction("terms");
+                    }}
+                  >
+                    Edit terms
+                  </SecondaryButton>
+                )}
                 {live(selected) && isPack(selected) && (
                   <SecondaryButton disabled={busy} onClick={() => run("Session used.", () => post(selected, "use-session"))}>
                     Use a session
@@ -642,7 +885,7 @@ function PackageOrdersAdminPageInner() {
                   type="number"
                   value={draft.amount}
                   onChange={(v) => setDraft({ ...draft, amount: v })}
-                  placeholder={String(selected.payment.amount ?? "")}
+                  placeholder={String(selected.payment.amountPaid ?? selected.payment.amount ?? "")}
                 />
                 <TextField label="Reason" value={draft.reason} onChange={(v) => setDraft({ ...draft, reason: v })} />
                 <p className="sm:col-span-2 text-xs text-neutral-500">
@@ -655,6 +898,81 @@ function PackageOrdersAdminPageInner() {
                   <DangerButton disabled={busy} onClick={() => refund(selected)}>
                     {busy ? "Refunding…" : "Refund"}
                   </DangerButton>
+                </div>
+              </div>
+            )}
+
+            {action === "terms" && (
+              <div className="grid gap-3 sm:grid-cols-2 rounded-lg border border-neutral-200 p-4">
+                <TextField label="Starts" type="date" value={draft.termsStart} onChange={(v) => setDraft({ ...draft, termsStart: v })} />
+                <TextField label="Ends (through the end of that day)" type="date" value={draft.termsEnd} onChange={(v) => setDraft({ ...draft, termsEnd: v })} />
+                {!viaStripe(selected) && (
+                  <>
+                    <TextField label={`Discount (${(selected.payment.currency || "").toUpperCase()}, off the package price)`} type="number" value={draft.termsDiscount} onChange={(v) => setDraft({ ...draft, termsDiscount: v })} />
+                    <TextField label="Discount note" value={draft.termsDiscountNote} onChange={(v) => setDraft({ ...draft, termsDiscountNote: v })} />
+                  </>
+                )}
+                <div className="sm:col-span-2">
+                  <TextField label="Why (kept with the change)" value={draft.termsNote} onChange={(v) => setDraft({ ...draft, termsNote: v })} placeholder="Injury, promotion agreed at the desk…" />
+                </div>
+                <p className="sm:col-span-2 text-xs text-neutral-500">
+                  A different discount moves the total and what is due; money already received stays as it is. A discount that would take the total below what was paid needs a refund instead.
+                </p>
+                <div className="sm:col-span-2 flex justify-end">
+                  <PrimaryButton
+                    disabled={busy}
+                    onClick={() => {
+                      // Only what was changed: a date sent again as it was
+                      // would still be read as the whole of that day.
+                      const body: Record<string, string> = {};
+                      if (draft.termsStart && draft.termsStart !== dateInput(selected.subscription?.startDate)) body.startDate = draft.termsStart;
+                      if (draft.termsEnd && draft.termsEnd !== dateInput(selected.subscription?.endDate)) body.endDate = draft.termsEnd;
+                      if (draft.termsDiscount !== String(selected.payment.discountAmount ?? 0)) body.discountAmount = draft.termsDiscount || "0";
+                      if (draft.termsDiscountNote !== (selected.payment.discountNote || "")) body.discountNote = draft.termsDiscountNote;
+                      if (draft.termsNote) body.note = draft.termsNote;
+                      run("Terms updated.", () => apiJson<{ message: string }>(`${GYMFOLIO_API}/package-orders/${selected._id}/terms`, "PATCH", body));
+                    }}
+                  >
+                    {busy ? "Saving…" : "Save terms"}
+                  </PrimaryButton>
+                </div>
+              </div>
+            )}
+
+            {(selected.termsHistory || []).length > 0 && (
+              <details className="rounded-lg border border-neutral-200 p-4">
+                <summary className="cursor-pointer text-xs font-semibold text-neutral-600">Changes to the terms ({(selected.termsHistory || []).length})</summary>
+                <ul className="mt-2 space-y-1 text-xs text-neutral-600">
+                  {(selected.termsHistory || []).map((change, i) => (
+                    <li key={i}>
+                      {fmtDate(change.at)}: {fmtDate(change.from.startDate)} → {fmtDate(change.from.endDate)} became {fmtDate(change.to.startDate)} → {fmtDate(change.to.endDate)}
+                      {change.from.amount !== change.to.amount ? `; total ${money(change.from.amount, selected.payment.currency)} became ${money(change.to.amount, selected.payment.currency)}` : ""}
+                      {change.note ? ` — ${change.note}` : ""}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
+
+            {action === "payment" && (
+              <div className="grid gap-3 sm:grid-cols-2 rounded-lg border border-amber-200 bg-amber-50/40 p-4">
+                <TextField
+                  label={`Amount received (${(selected.payment.currency || "").toUpperCase()}, up to ${selected.payment.balanceDue ?? 0})`}
+                  type="number"
+                  value={draft.payAmount}
+                  onChange={(v) => setDraft({ ...draft, payAmount: v })}
+                />
+                <SelectField label="Paid by" value={draft.payMethod} allowClear={false} onChange={(v) => setDraft({ ...draft, payMethod: v })} options={DESK_METHOD_OPTIONS} />
+                <div className="sm:col-span-2">
+                  <TextField label="Note (optional)" value={draft.payNote} onChange={(v) => setDraft({ ...draft, payNote: v })} placeholder="Receipt number, who brought it…" />
+                </div>
+                <div className="sm:col-span-2 flex justify-end">
+                  <PrimaryButton
+                    disabled={busy || !draft.payAmount}
+                    onClick={() => run("Payment recorded.", () => post(selected, "payments", { amount: draft.payAmount, method: draft.payMethod, note: draft.payNote || undefined }))}
+                  >
+                    {busy ? "Recording…" : "Record payment"}
+                  </PrimaryButton>
                 </div>
               </div>
             )}
@@ -699,11 +1017,7 @@ function PackageOrdersAdminPageInner() {
                   value={draft.paymentMethod}
                   allowClear={false}
                   onChange={(v) => setDraft({ ...draft, paymentMethod: v })}
-                  options={[
-                    { value: "cash", label: "Cash" },
-                    { value: "bank_transfer", label: "Bank transfer" },
-                    { value: "card", label: "Card (desk terminal)" },
-                  ]}
+                  options={DESK_METHOD_OPTIONS}
                 />
                 <SelectField
                   label="Mark as paid"
@@ -716,8 +1030,30 @@ function PackageOrdersAdminPageInner() {
                   ]}
                 />
                 <TextField label="Months (optional)" type="number" value={draft.months} onChange={(v) => setDraft({ ...draft, months: v })} placeholder="Defaults to one term" />
-                <div className="flex items-end justify-end">
-                  <PrimaryButton disabled={busy} onClick={() => run("Renewed.", () => post(selected, "renew", { paymentMethod: draft.paymentMethod, markPaid: draft.markPaid === "yes", months: draft.months || undefined }))}>
+                <TextField label="Start date (optional)" type="date" value={draft.startDate} onChange={(v) => setDraft({ ...draft, startDate: v })} />
+                <TextField label="Discount (optional)" type="number" value={draft.discountAmount} onChange={(v) => setDraft({ ...draft, discountAmount: v })} />
+                <TextField label="Discount note" value={draft.discountNote} onChange={(v) => setDraft({ ...draft, discountNote: v })} />
+                <TextField label="Override amount (optional)" type="number" value={draft.amountOverride} onChange={(v) => setDraft({ ...draft, amountOverride: v })} placeholder="Charged as-is" />
+                <TextField label="Amount paid now (optional)" type="number" value={draft.amountPaid} onChange={(v) => setDraft({ ...draft, amountPaid: v })} placeholder="Blank = paid in full" />
+                <p className="sm:col-span-2 text-xs text-neutral-500">Without a start date the new term starts when the current one ends (today, if it has ended). No joining fee on a renewal.</p>
+                <div className="sm:col-span-2 flex items-end justify-end">
+                  <PrimaryButton
+                    disabled={busy}
+                    onClick={() =>
+                      run("Renewed.", () =>
+                        post(selected, "renew", {
+                          paymentMethod: draft.paymentMethod,
+                          markPaid: draft.markPaid === "yes",
+                          months: draft.months || undefined,
+                          startDate: draft.startDate || undefined,
+                          discountAmount: draft.discountAmount || undefined,
+                          discountNote: draft.discountNote || undefined,
+                          amountOverride: draft.amountOverride || undefined,
+                          amountPaid: draft.amountPaid || undefined,
+                        })
+                      )
+                    }
+                  >
                     Renew
                   </PrimaryButton>
                 </div>
@@ -741,11 +1077,7 @@ function PackageOrdersAdminPageInner() {
                   value={draft.paymentMethod}
                   allowClear={false}
                   onChange={(v) => setDraft({ ...draft, paymentMethod: v })}
-                  options={[
-                    { value: "cash", label: "Cash" },
-                    { value: "bank_transfer", label: "Bank transfer" },
-                    { value: "card", label: "Card (desk terminal)" },
-                  ]}
+                  options={DESK_METHOD_OPTIONS}
                 />
                 <div className="flex items-end justify-end">
                   <PrimaryButton disabled={busy || !draft.packageId} onClick={() => run("Package changed.", () => post(selected, "change-package", { packageId: draft.packageId, paymentMethod: draft.paymentMethod }))}>
