@@ -20,6 +20,7 @@ import {
   FiLayout,
   FiStar,
   FiClock,
+  FiWatch,
   FiBriefcase,
   FiShield,
   FiDollarSign,
@@ -81,6 +82,7 @@ const sections: MenuSection[] = [
     heading: "Sales",
     items: [
       { name: "Package Orders", path: "/admin/package-orders", icon: <FiShoppingBag className={iconCls} />, tab: "package-orders" },
+      { name: "Fee expiry", path: "/admin/fee-expiry", icon: <FiWatch className={iconCls} />, tab: "package-orders" },
       { name: "Registrations", path: "/admin/package-registrations", icon: <FiClipboard className={iconCls} />, tab: "registrations" },
       { name: "Coupons", path: "/admin/coupons", icon: <FiTag className={iconCls} />, tab: "coupons" },
       { name: "Shop / POS", path: "/admin/pos", icon: <FiShoppingCart className={iconCls} />, tab: "pos" },
