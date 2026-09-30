@@ -437,8 +437,8 @@ export default function KioskPage() {
           <h1 className="mt-1 text-xl font-semibold text-white">Check-in kiosk</h1>
           <p className="mt-1 text-sm text-neutral-400">Sign in with a staff account that is allowed to use the attendance app.</p>
           <label className="mt-6 block">
-            <span className="text-xs font-semibold text-neutral-300">Email</span>
-            <input type="email" required autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} className="mt-1 h-11 w-full rounded-lg border border-white/10 bg-neutral-950 px-3 text-sm text-white outline-none focus:border-white/30" />
+            <span className="text-xs font-semibold text-neutral-300">Email or username</span>
+            <input type="text" required autoComplete="username" autoCapitalize="none" spellCheck={false} value={email} onChange={(e) => setEmail(e.target.value)} className="mt-1 h-11 w-full rounded-lg border border-white/10 bg-neutral-950 px-3 text-sm text-white outline-none focus:border-white/30" />
           </label>
           <label className="mt-4 block">
             <span className="text-xs font-semibold text-neutral-300">Password</span>
