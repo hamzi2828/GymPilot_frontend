@@ -19,6 +19,7 @@ import {
 import { ACCOUNTS_API, apiGet, apiJson } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
 import { TrendChart, CategoryBars, useMoneyFormatter, SERIES_IN, SERIES_OUT, TrendPoint } from "./_charts";
+import { ManageHeadsModal } from "./_heads";
 
 // ---------------------------------------------------------------------------
 // Shapes, as /api/accounts returns them.
@@ -138,7 +139,10 @@ interface ExpensesResponse {
   record_currency?: string;
   currency_notice: CurrencyNotice | null;
   range: { from: string; to: string; label: string };
+  /** The heads a new expense can be filed under: built-in and the gym's own. */
   categories: { key: string; label: string }[];
+  /** The gym's archived heads: still on old rows, so still in the filter. */
+  archived_categories?: { key: string; label: string }[];
   methods: string[];
   summary: {
     paid: Totals;
@@ -191,6 +195,7 @@ interface AssetsResponse {
   record_currency?: string;
   currency_notice: CurrencyNotice | null;
   categories: { key: string; label: string; default_life: number }[];
+  archived_categories?: { key: string; label: string }[];
   conditions: string[];
   statuses: string[];
   summary: {
@@ -207,6 +212,25 @@ interface AssetsResponse {
 }
 
 type Tab = "overview" | "sales" | "expenses" | "assets";
+
+// A filter's head options: the ones in use, then the archived ones -- old rows
+// are still filed under those.
+function headFilterOptions(active?: { key: string; label: string }[], archived?: { key: string; label: string }[]) {
+  return [
+    { value: "all", label: "All categories" },
+    ...(active || []).map((entry) => ({ value: entry.key, label: entry.label })),
+    ...(archived || []).map((entry) => ({ value: entry.key, label: `${entry.label} (archived)` })),
+  ];
+}
+
+// A form's head options: the ones in use, plus the archived head the row being
+// edited is already filed under, so opening it does not quietly move it.
+function headFormOptions(active: { key: string; label: string }[] | undefined, archived: { key: string; label: string }[] | undefined, current: string) {
+  const options = (active || []).map((entry) => ({ value: entry.key, label: entry.label }));
+  const kept = (archived || []).find((entry) => entry.key === current);
+  if (kept) options.push({ value: kept.key, label: `${kept.label} (archived)` });
+  return options;
+}
 
 const CONDITION_TONE: Record<string, string> = {
   new: "bg-emerald-50 text-emerald-700 ring-emerald-600/15",
@@ -368,6 +392,7 @@ export default function AccountsAdminPage() {
 
   const [saving, setSaving] = useState(false);
   const [formErr, setFormErr] = useState<string | null>(null);
+  const [headsOpen, setHeadsOpen] = useState(false);
 
   const base = overview?.base_currency || sales?.base_currency || expenses?.base_currency || assets?.base_currency || "USD";
   const currencyNotice =
@@ -642,6 +667,9 @@ export default function AccountsAdminPage() {
             <SecondaryButton onClick={load} disabled={loading}>
               <FiRefreshCw className={`mr-1.5 h-4 w-4 ${loading ? "animate-spin" : ""}`} /> Refresh
             </SecondaryButton>
+            {editable && (tab === "expenses" || tab === "assets") && (
+              <SecondaryButton onClick={() => setHeadsOpen(true)}>Manage heads</SecondaryButton>
+            )}
             {editable && tab === "expenses" && <PrimaryButton onClick={() => openExpense()}>Add Expense</PrimaryButton>}
             {editable && tab === "assets" && <PrimaryButton onClick={() => openAsset()}>Add Asset</PrimaryButton>}
           </>
@@ -736,10 +764,7 @@ export default function AccountsAdminPage() {
                   ariaLabel="Category"
                   value={expenseCategory}
                   onChange={setExpenseCategory}
-                  options={[
-                    { value: "all", label: "All categories" },
-                    ...(expenses?.categories || []).map((entry) => ({ value: entry.key, label: entry.label })),
-                  ]}
+                  options={headFilterOptions(expenses?.categories, expenses?.archived_categories)}
                 />
               </label>
               <label className="block">
@@ -767,10 +792,7 @@ export default function AccountsAdminPage() {
                   ariaLabel="Asset category"
                   value={assetCategory}
                   onChange={setAssetCategory}
-                  options={[
-                    { value: "all", label: "All categories" },
-                    ...(assets?.categories || []).map((entry) => ({ value: entry.key, label: entry.label })),
-                  ]}
+                  options={headFilterOptions(assets?.categories, assets?.archived_categories)}
                 />
               </label>
               <label className="block">
@@ -882,7 +904,7 @@ export default function AccountsAdminPage() {
                   ariaLabel="Category"
                   value={expenseDraft.category}
                   onChange={(v) => setExpenseDraft({ ...expenseDraft, category: v })}
-                  options={(expenses?.categories || []).map((entry) => ({ value: entry.key, label: entry.label }))}
+                  options={headFormOptions(expenses?.categories, expenses?.archived_categories, expenseDraft.category)}
                 />
               </div>
             </div>
@@ -952,6 +974,13 @@ export default function AccountsAdminPage() {
         </div>
       </Modal>
 
+      <ManageHeadsModal
+        open={headsOpen}
+        kind={tab === "assets" ? "asset" : "expense"}
+        onClose={() => setHeadsOpen(false)}
+        onChanged={load}
+      />
+
       {/* ---- Asset dialog ---- */}
       <Modal open={assetOpen} onClose={() => setAssetOpen(false)} title={editingAsset ? `Edit ${editingAsset.tag}` : "Add asset"} size="lg">
         <div className="space-y-4">
@@ -967,7 +996,7 @@ export default function AccountsAdminPage() {
                     const life = (assets?.categories || []).find((entry) => entry.key === v)?.default_life;
                     setAssetDraft({ ...assetDraft, category: v, usefulLifeYears: life ? String(life) : assetDraft.usefulLifeYears });
                   }}
-                  options={(assets?.categories || []).map((entry) => ({ value: entry.key, label: entry.label }))}
+                  options={headFormOptions(assets?.categories, assets?.archived_categories, assetDraft.category)}
                 />
               </div>
             </div>
