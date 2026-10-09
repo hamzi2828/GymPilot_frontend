@@ -302,7 +302,7 @@ const Header = () => {
         {/* Actions */}
         <div className="site-header__actions">
           <div className="site-header__actions-desktop">
-            <LanguageSwitcher className="mr-2 hidden lg:inline-block" />
+            <LanguageSwitcher className="mr-2 hidden text-white lg:inline-block [&>option]:text-neutral-900" />
             {desktopActions()}
           </div>
 
