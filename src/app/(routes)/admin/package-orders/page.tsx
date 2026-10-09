@@ -20,6 +20,7 @@ import {
   EmptyState,
   useConfirm,
   ErrorState,
+  useLatestRequest,
 } from "../_shared/ui";
 import { GYMFOLIO_API, apiGet, apiJson, authHeaders, absoluteUrl, replaceParams } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
@@ -238,7 +239,9 @@ function PackageOrdersAdminPageInner() {
 
   // Paged: a fixed limit of 200 used to cut the list off without saying so
   // beyond a small "showing N of M".
+  const begin = useLatestRequest();
   const load = useCallback(async () => {
+    const isLatest = begin();
     setLoading(true);
     try {
       const params = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE) });
@@ -248,18 +251,20 @@ function PackageOrdersAdminPageInner() {
       if (filters.paymentMethod) params.set("paymentMethod", filters.paymentMethod);
       if (filters.hasDues) params.set("hasDues", "1");
       const r = await apiGet<{ data: PackageOrder[]; pagination?: { total?: number; pages?: number; limit?: number } }>(`${GYMFOLIO_API}/package-orders?${params.toString()}`);
+      if (!isLatest()) return;
       setList(r.data || []);
       setTotal(r.pagination?.total ?? (r.data || []).length);
       setPages(pageCount(r.pagination));
       setLoadErr(null);
     } catch (e) {
+      if (!isLatest()) return;
       setList([]);
       setTotal(0);
       setLoadErr(e instanceof Error ? e.message : "Could not load orders");
     } finally {
-      setLoading(false);
+      if (isLatest()) setLoading(false);
     }
-  }, [filters, page]);
+  }, [filters, page, begin]);
 
   useEffect(() => {
     const t = setTimeout(load, filters.search ? 250 : 0);

@@ -18,6 +18,7 @@ import {
   Select2,
   useConfirm,
   ErrorState,
+  useLatestRequest,
 } from "../_shared/ui";
 import { ACCOUNTS_API, apiGet, apiJson, replaceParams } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
@@ -476,7 +477,9 @@ function AccountsAdminPageInner() {
     return () => clearTimeout(timer);
   }, [search]);
 
+  const begin = useLatestRequest();
   const load = useCallback(async () => {
+    const isLatest = begin();
     setLoading(true);
     setErr(null);
     setLoadErr(null);
@@ -488,6 +491,7 @@ function AccountsAdminPageInner() {
 
       if (tab === "overview") {
         const res = await apiGet<Overview>(`${ACCOUNTS_API}/overview?${params}`);
+        if (!isLatest()) return;
         setOverview(res);
         setToday(res.range.today);
         if (!from) setFrom(res.range.from);
@@ -495,6 +499,7 @@ function AccountsAdminPageInner() {
       } else if (tab === "sales") {
         params.set("status", salesStatus);
         const res = await apiGet<SalesResponse>(`${ACCOUNTS_API}/sales?${params}`);
+        if (!isLatest()) return;
         setSales(res);
         if (!from) setFrom(res.range.from);
         if (!to) setTo(res.range.to);
@@ -502,6 +507,7 @@ function AccountsAdminPageInner() {
         if (expenseCategory !== "all") params.set("category", expenseCategory);
         if (expenseStatus !== "all") params.set("status", expenseStatus);
         const res = await apiGet<ExpensesResponse>(`${ACCOUNTS_API}/expenses?${params}`);
+        if (!isLatest()) return;
         setExpenses(res);
         if (!from) setFrom(res.range.from);
         if (!to) setTo(res.range.to);
@@ -516,14 +522,16 @@ function AccountsAdminPageInner() {
         if (assetService !== "all") params.set("service", assetService);
         if (assetWarranty !== "all") params.set("warranty", assetWarranty);
         const res = await apiGet<AssetsResponse>(`${ACCOUNTS_API}/assets?${params}`);
+        if (!isLatest()) return;
         setAssets(res);
       }
     } catch (e) {
+      if (!isLatest()) return;
       setLoadErr(e instanceof Error ? e.message : "Could not load the accounts");
     } finally {
-      setLoading(false);
+      if (isLatest()) setLoading(false);
     }
-  }, [tab, from, to, assetFrom, assetTo, q, salesStatus, expenseCategory, expenseStatus, assetCategory, assetStatus, assetService, assetWarranty]);
+  }, [tab, from, to, assetFrom, assetTo, q, salesStatus, expenseCategory, expenseStatus, assetCategory, assetStatus, assetService, assetWarranty, begin]);
 
   useEffect(() => {
     load();

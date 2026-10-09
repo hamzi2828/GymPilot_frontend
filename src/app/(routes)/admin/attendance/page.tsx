@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FiDownload, FiRefreshCw, FiSearch, FiSettings, FiX } from "react-icons/fi";
-import { PageHeader, Card, Modal, SecondaryButton, Spinner, EmptyState, Select2 } from "../_shared/ui";
+import { PageHeader, Card, Modal, SecondaryButton, Spinner, EmptyState, Select2, useLatestRequest } from "../_shared/ui";
 import { ATTENDANCE_API, apiGet } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
 import {
@@ -631,7 +631,11 @@ export default function AttendanceAdminPage() {
     [personType, q]
   );
 
+  const begin = useLatestRequest();
   const load = useCallback(async () => {
+    // Begun on every tab, so a log or people answer still on its way when
+    // the tab changes is dropped too.
+    const isLatest = begin();
     if (tab === "live") {
       await loadLive(false);
       return;
@@ -642,6 +646,7 @@ export default function AttendanceAdminPage() {
       if (tab === "log") {
         const qs = queryString({ status, presence, page, limit });
         const res = await apiGet<RecordsResponse>(`${ATTENDANCE_API}/records?${qs}`);
+        if (!isLatest()) return;
         setRecords(res.records || []);
         setSummary(res.summary);
         setPagination(res.pagination);
@@ -655,6 +660,7 @@ export default function AttendanceAdminPage() {
       } else {
         const qs = queryString({ attended, sort, page, limit });
         const res = await apiGet<PeopleResponse>(`${ATTENDANCE_API}/people?${qs}`);
+        if (!isLatest()) return;
         setPeople(res.people || []);
         setCounts(res.counts);
         setPagination(res.pagination);
@@ -666,13 +672,14 @@ export default function AttendanceAdminPage() {
         }
       }
     } catch (e) {
+      if (!isLatest()) return;
       setErr(e instanceof Error ? e.message : "Could not load attendance.");
       setRecords([]);
       setPeople([]);
     } finally {
-      setLoading(false);
+      if (isLatest()) setLoading(false);
     }
-  }, [tab, loadLive, queryString, status, presence, attended, sort, page, limit, from, to]);
+  }, [tab, loadLive, queryString, status, presence, attended, sort, page, limit, from, to, begin]);
 
   useEffect(() => {
     load();

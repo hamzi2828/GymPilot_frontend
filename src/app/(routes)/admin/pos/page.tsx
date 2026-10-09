@@ -7,7 +7,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { PageHeader, Card, PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, TextArea, SelectField, Toggle, Badge, Spinner, useConfirm, ErrorState } from "../_shared/ui";
+import { PageHeader, Card, PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, TextArea, SelectField, Toggle, Badge, Spinner, useConfirm, ErrorState, useLatestRequest } from "../_shared/ui";
 import { API_BASE, apiGet, apiJson, authHeaders } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
 import { useGymToday } from "@/components/ThemeProvider";
@@ -221,18 +221,23 @@ export default function PosPage() {
 
   // The sales for the chosen days. Loaded on their own so changing the dates
   // does not reload the shelf or blank the till.
+  const begin = useLatestRequest();
   const loadSales = useCallback(async () => {
+    const isLatest = begin();
     setSalesLoading(true);
     try {
-      setSales(await apiGet<SalesResponse>(`${POS_API}/sales?from=${from}&to=${to}`));
+      const res = await apiGet<SalesResponse>(`${POS_API}/sales?from=${from}&to=${to}`);
+      if (!isLatest()) return;
+      setSales(res);
       setVisible(SALES_PAGE);
       setSalesErr(null);
     } catch (e) {
+      if (!isLatest()) return;
       setSalesErr(e instanceof Error ? e.message : "Could not load the sales");
     } finally {
-      setSalesLoading(false);
+      if (isLatest()) setSalesLoading(false);
     }
-  }, [from, to]);
+  }, [from, to, begin]);
 
   useEffect(() => {
     load();

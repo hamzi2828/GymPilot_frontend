@@ -933,6 +933,31 @@ function ConfirmDialog({ options, onAnswer }: { options: ConfirmOptions; onAnswe
   );
 }
 
+// ---------------------------------------------------------------------------
+// useLatestRequest
+//
+// For a list that reloads as its filters change: a slow answer to an older
+// question must not land on top of a newer one.
+//
+//   const begin = useLatestRequest();
+//
+//   const isLatest = begin();
+//   const rows = await apiGet(...);
+//   if (!isLatest()) return;              // a newer load has started since
+//
+// The same check goes in the catch, and around setLoading(false) in the
+// finally, so the older request neither reports an error nor stops the
+// spinner of the newer one.
+// ---------------------------------------------------------------------------
+
+export function useLatestRequest(): () => () => boolean {
+  const latest = useRef(0);
+  return useCallback(() => {
+    const mine = ++latest.current;
+    return () => mine === latest.current;
+  }, []);
+}
+
 export function Table({
   columns,
   rows,

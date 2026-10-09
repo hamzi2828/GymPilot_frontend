@@ -15,6 +15,7 @@ import {
   Table,
   useConfirm,
   ErrorState,
+  useLatestRequest,
 } from "../_shared/ui";
 import { GYMFOLIO_API, apiGet, apiJson } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
@@ -102,6 +103,12 @@ export default function BookingsAdminPage() {
   const [classId, setClassId] = useState("");
   const [status, setStatus] = useState("");
   const [search, setSearch] = useState("");
+  // What is sent to the server: the search box, once typing has paused.
+  const [q, setQ] = useState("");
+  useEffect(() => {
+    const timer = setTimeout(() => setQ(search.trim()), 300);
+    return () => clearTimeout(timer);
+  }, [search]);
 
   // Booking a member in from the desk.
   const [bookOpen, setBookOpen] = useState(false);
@@ -114,7 +121,9 @@ export default function BookingsAdminPage() {
   const [booking, setBooking] = useState(false);
   const [bookErr, setBookErr] = useState<string | null>(null);
 
+  const begin = useLatestRequest();
   const load = useCallback(async () => {
+    const isLatest = begin();
     setLoading(true);
     setErr(null);
     setLoadErr(null);
@@ -123,23 +132,25 @@ export default function BookingsAdminPage() {
       if (date) params.set("date", date);
       if (classId) params.set("classId", classId);
       if (status) params.set("status", status);
-      if (search.trim()) params.set("search", search.trim());
+      if (q) params.set("search", q);
       params.set("page", String(page));
       params.set("limit", String(PAGE_SIZE));
 
       const r = await apiGet<{ data: Booking[]; pagination?: { total?: number; pages?: number; limit?: number } }>(
         `${GYMFOLIO_API}/bookings?${params}`
       );
+      if (!isLatest()) return;
       setList(r.data || []);
       setPages(pageCount(r.pagination));
       setTotal(r.pagination?.total ?? (r.data || []).length);
     } catch (e) {
+      if (!isLatest()) return;
       setLoadErr(e instanceof Error ? e.message : "Could not load bookings");
       setList([]);
     } finally {
-      setLoading(false);
+      if (isLatest()) setLoading(false);
     }
-  }, [date, classId, status, search, page]);
+  }, [date, classId, status, q, page, begin]);
 
   useEffect(() => {
     load();
