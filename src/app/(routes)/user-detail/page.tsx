@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Header } from "./components/Header";
 import { Tabs, parseUserTab, UserTab } from "./components/Tabs";
 import { BookingsSection } from "./components/BookingsSection";
-import { ProfileSection } from "./components/ProfileSection";
+import { ProfileSection, type SaveResult } from "./components/ProfileSection";
 import { HistorySection } from "./components/HistorySection";
 import { VisitsSection } from "./components/VisitsSection";
 import { CheckInSection } from "./components/CheckInSection";
@@ -21,8 +21,12 @@ import {
   updateUser,
   getMembershipHistory,
   getMyAttendance,
+  SessionEndedError,
+  RequestError,
+  PASSWORD_REQUIRED,
+  PASSWORD_INCORRECT,
 } from "./service/userDetailService";
-import { getCurrentUser, UserPayload } from "@/helper/helper";
+import { getCurrentUser, removeToken, signInUrl, UserPayload } from "@/helper/helper";
 import { localDateKey, toDateInputValue } from "@/helper/date";
 
 import {
@@ -53,6 +57,11 @@ const UserProfilePageContent: React.FC = () => {
   const [memberships, setMemberships] = useState<MembershipOrder[]>([]);
   const [attendance, setAttendance] = useState<MyAttendance | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
+  // Why the memberships / the visits could not be loaded. Kept apart from
+  // "there are none": over a failed request, "You have not bought a package
+  // yet" with a See packages button invites a member to pay twice.
+  const [membershipError, setMembershipError] = useState<string | null>(null);
+  const [visitsError, setVisitsError] = useState<string | null>(null);
   const [selectedMonth, setSelectedMonth] = useState<string | null>(null);
   const [monthLoading, setMonthLoading] = useState(false);
   // Staff accounts get a "My work" tab; the API answers null for members.
@@ -70,6 +79,13 @@ const UserProfilePageContent: React.FC = () => {
     setTimeout(() => setToast({ show: false, msg: "", type }), 2500);
   };
 
+  // The API says the session is over. The stored session is cleared first --
+  // it is no use any more -- and sign-in brings the member back to this tab.
+  const endSession = () => {
+    removeToken();
+    router.replace(signInUrl());
+  };
+
   // Packages and visits are fetched together -- the History tab is one story
   // told in two halves, and loading them separately would show it half-drawn.
   // Settled rather than awaited as a pair, so a member with no attendance yet
@@ -79,14 +95,24 @@ const UserProfilePageContent: React.FC = () => {
       setHistoryLoading(true);
       const [packages, visits] = await Promise.allSettled([getMembershipHistory(), getMyAttendance()]);
 
-      if (packages.status === "fulfilled") setMemberships(packages.value);
-      else console.error("Error fetching memberships:", packages.reason);
+      if ([packages, visits].some((r) => r.status === "rejected" && r.reason instanceof SessionEndedError)) {
+        endSession();
+        return;
+      }
+      const why = (reason: unknown, fallback: string) => (reason instanceof Error && reason.message ? reason.message : fallback);
 
-      if (visits.status === "fulfilled") setAttendance(visits.value);
-      else console.error("Error fetching attendance:", visits.reason);
+      if (packages.status === "fulfilled") {
+        setMemberships(packages.value);
+        setMembershipError(null);
+      } else {
+        setMembershipError(why(packages.reason, "We could not load your membership."));
+      }
 
-      if (packages.status === "rejected" && visits.status === "rejected") {
-        showToast("Could not load your history", "error");
+      if (visits.status === "fulfilled") {
+        setAttendance(visits.value);
+        setVisitsError(null);
+      } else {
+        setVisitsError(why(visits.reason, "We could not load your visits."));
       }
     } finally {
       setHistoryLoading(false);
@@ -103,6 +129,10 @@ const UserProfilePageContent: React.FC = () => {
       const data = await getMyAttendance(key || undefined);
       setAttendance(data);
     } catch (e) {
+      if (e instanceof SessionEndedError) {
+        endSession();
+        return;
+      }
       showToast(e instanceof Error ? e.message : "Could not load that month", "error");
       setSelectedMonth(null);
     } finally {
@@ -115,7 +145,7 @@ const UserProfilePageContent: React.FC = () => {
     try {
       const currentUser = getCurrentUser();
       if (!currentUser) {
-        router.replace("/authentication");
+        router.replace(signInUrl());
         return;
       }
 
@@ -151,7 +181,10 @@ const UserProfilePageContent: React.FC = () => {
           ...base,
           ...pl,
           id: pl._id ?? pl.id ?? base.id,
-          email: pl.email ?? base.email,
+          // The API's answer is the truth here: an account with no email (or
+          // one whose email was just removed) must not keep showing the one
+          // from the sign-in token.
+          email: pl.email ?? "",
           firstName: pl.firstName ?? base.firstName,
           lastName: pl.lastName ?? base.lastName,
           phone: pl.phone ?? base.phone,
@@ -165,6 +198,10 @@ const UserProfilePageContent: React.FC = () => {
         };
       });
     } catch (error) {
+      if (error instanceof SessionEndedError) {
+        endSession();
+        return;
+      }
       console.error("Error refreshing user data:", error);
       showToast(error instanceof Error ? error.message : "Failed to refresh user data", "error");
     }
@@ -187,15 +224,16 @@ const UserProfilePageContent: React.FC = () => {
   useEffect(() => {
     const u = getCurrentUser() as UserPayload | null;
     if (!u) {
-      router.replace("/authentication");
+      router.replace(signInUrl());
       return;
     }
     // Seed with token data first
     setUserProfile({
       id: u.id,
-      firstName: u.firstName,
-      lastName: u.lastName,
-      email: u.email,
+      firstName: u.firstName ?? "",
+      lastName: u.lastName ?? "",
+      // Blank for an account that signs in by username.
+      email: u.email ?? "",
       phone: "",
       dateOfBirth: "",
       gender: "other",
@@ -212,31 +250,44 @@ const UserProfilePageContent: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
 
-  // Parent-owned save handler
+  // Parent-owned save handler. `change.email` is set only when the member
+  // changed their address, and then comes with their current password: the
+  // API asks for it before moving an account to a different mailbox.
   const handleSave = async (
-    userData: Pick<UserProfile, "firstName" | "lastName" | "email" | "phone" | "dateOfBirth" | "gender">
-  ) => {
+    userData: Pick<UserProfile, "firstName" | "lastName" | "phone" | "dateOfBirth" | "gender">,
+    change?: { email: string; currentPassword: string }
+  ): Promise<SaveResult> => {
     try {
       setSaving(true);
 
       if (!userData.firstName?.trim() || !userData.lastName?.trim()) {
-        showToast("First and last name are required", "error");
-        return false;
+        return { ok: false, message: "First and last name are required" };
       }
 
-      // Call updateUser service which already handles the response
-      const result = await updateUser(userData);
+      const result = await updateUser(change ? { ...userData, email: change.email, currentPassword: change.currentPassword } : userData);
       if (!result) {
         throw new Error("No data returned from server");
       }
 
       await refreshUserData();
-      showToast("Profile updated successfully", "success");
-      return true;
+      // The API's own sentence when it has something to say (an email that
+      // was removed, and the username to sign in with from now on).
+      const said = typeof result.message === "string" && result.message !== "User updated successfully" ? result.message : "";
+      showToast(said || "Profile updated successfully", "success");
+      return { ok: true };
     } catch (e) {
+      if (e instanceof SessionEndedError) {
+        endSession();
+        return { ok: false, message: e.message };
+      }
+      if (e instanceof RequestError && e.code === PASSWORD_REQUIRED) {
+        return { ok: false, needsPassword: true, message: "Enter your current password to change your email." };
+      }
+      if (e instanceof RequestError && e.code === PASSWORD_INCORRECT) {
+        return { ok: false, needsPassword: true, message: "That password is not right, so your email was not changed. Try again." };
+      }
       console.error("Update error:", e);
-      showToast(e instanceof Error ? e.message : "Failed to update profile", "error");
-      return false;
+      return { ok: false, message: e instanceof Error ? e.message : "Failed to update profile" };
     } finally {
       setSaving(false);
     }
@@ -322,6 +373,7 @@ const UserProfilePageContent: React.FC = () => {
             memberships={memberships}
             months={attendance?.months || []}
             loading={historyLoading}
+            error={membershipError}
             selectedMonth={selectedMonth}
             // Picking a month loads it and moves to the tab that shows the
             // visits, so the click has somewhere to land.
@@ -338,6 +390,8 @@ const UserProfilePageContent: React.FC = () => {
           <VisitsSection
             attendance={attendance}
             loading={historyLoading}
+            error={visitsError}
+            onRetry={fetchHistory}
             selectedMonth={selectedMonth}
             onSelectMonth={selectMonth}
             monthLoading={monthLoading}

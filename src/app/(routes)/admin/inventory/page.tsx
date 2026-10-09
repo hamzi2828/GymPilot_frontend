@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { FiPlus } from "react-icons/fi";
-import { PageHeader, PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, SelectField, Toggle, Badge, Spinner, Table } from "../_shared/ui";
+import { PageHeader, PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, SelectField, Toggle, Badge, Spinner, Table, ErrorState } from "../_shared/ui";
 import { API_BASE, apiGet, apiJson } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
 
@@ -40,6 +40,19 @@ interface Movement {
 type Draft = { name: string; sku: string; category: string; price: string; cost: string; stock: string; lowStockAt: string; trackStock: boolean; taxable: boolean; isActive: boolean };
 const emptyDraft: Draft = { name: "", sku: "", category: "general", price: "", cost: "", stock: "0", lowStockAt: "5", trackStock: true, taxable: true, isActive: true };
 
+type StockDraft = { mode: "delta" | "set"; value: string; reason: string; note: string };
+const emptyStockDraft: StockDraft = { mode: "delta", value: "", reason: "restock", note: "" };
+
+// The number the server is sent. A delivery always adds and a write-off always
+// removes, whichever sign was typed; only "other adjustment" takes the sign as
+// entered.
+function signedQuantity(d: StockDraft): number {
+  const n = Math.trunc(Number(d.value)) || 0;
+  if (d.reason === "waste") return -Math.abs(n);
+  if (d.reason === "restock") return Math.abs(n);
+  return n;
+}
+
 export default function InventoryPage() {
   const { can } = usePermissions();
   const editable = can("pos", "manage");
@@ -51,9 +64,13 @@ export default function InventoryPage() {
   const [editing, setEditing] = useState<Product | null>(null);
   const [draft, setDraft] = useState<Draft>(emptyDraft);
   const [stockFor, setStockFor] = useState<Product | null>(null);
-  const [stockDraft, setStockDraft] = useState({ mode: "delta", value: "", reason: "restock", note: "" });
+  const [stockDraft, setStockDraft] = useState<StockDraft>(emptyStockDraft);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
+  // A failed load is not an empty shop, and a failed save belongs in the
+  // dialog that was being filled in, not on the page behind it.
+  const [loadError, setLoadError] = useState("");
+  const [modalError, setModalError] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -62,8 +79,9 @@ export default function InventoryPage() {
       setRows(p.data || []);
       setCurrency(p.currency || "");
       setMovements(m.data || []);
+      setLoadError("");
     } catch (e) {
-      setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not load products" });
+      setLoadError(e instanceof Error ? e.message : "Could not load products");
     } finally {
       setLoading(false);
     }
@@ -76,17 +94,25 @@ export default function InventoryPage() {
   const openCreate = () => {
     setEditing(null);
     setDraft(emptyDraft);
+    setModalError("");
     setOpen(true);
   };
   const openEdit = (p: Product) => {
     setEditing(p);
     setDraft({ name: p.name, sku: p.sku, category: p.category, price: String(p.price), cost: String(p.cost), stock: String(p.stock), lowStockAt: String(p.low_stock_at), trackStock: p.track_stock, taxable: p.taxable, isActive: p.is_active });
+    setModalError("");
     setOpen(true);
+  };
+  const openStock = (p: Product) => {
+    setStockFor(p);
+    setStockDraft(emptyStockDraft);
+    setModalError("");
   };
 
   const save = async () => {
     setSaving(true);
     setNotice(null);
+    setModalError("");
     const body = { name: draft.name, sku: draft.sku, category: draft.category, price: Number(draft.price) || 0, cost: Number(draft.cost) || 0, lowStockAt: Number(draft.lowStockAt) || 0, trackStock: draft.trackStock, taxable: draft.taxable, isActive: draft.isActive, ...(editing ? {} : { stock: Number(draft.stock) || 0 }) };
     try {
       if (editing) await apiJson(`${POS_API}/products/${editing.id}`, "PUT", body);
@@ -94,7 +120,7 @@ export default function InventoryPage() {
       setOpen(false);
       await load();
     } catch (e) {
-      setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not save" });
+      setModalError(e instanceof Error ? e.message : "Could not save");
     } finally {
       setSaving(false);
     }
@@ -103,14 +129,16 @@ export default function InventoryPage() {
   const adjust = async () => {
     if (!stockFor) return;
     setSaving(true);
+    setNotice(null);
+    setModalError("");
     try {
-      const body = stockDraft.mode === "set" ? { set: Number(stockDraft.value), reason: "count", note: stockDraft.note } : { delta: Number(stockDraft.value), reason: stockDraft.reason, note: stockDraft.note };
+      const body = stockDraft.mode === "set" ? { set: Number(stockDraft.value), reason: "count", note: stockDraft.note } : { delta: signedQuantity(stockDraft), reason: stockDraft.reason, note: stockDraft.note };
       const r = await apiJson<{ message: string }>(`${POS_API}/products/${stockFor.id}/stock`, "POST", body);
       setNotice({ tone: "ok", text: r.message });
       setStockFor(null);
       await load();
     } catch (e) {
-      setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not adjust stock" });
+      setModalError(e instanceof Error ? e.message : "Could not adjust stock");
     } finally {
       setSaving(false);
     }
@@ -146,6 +174,8 @@ export default function InventoryPage() {
       {notice && <p className={`mb-4 rounded-lg px-3 py-2 text-sm ${notice.tone === "ok" ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}>{notice.text}</p>}
       {loading ? (
         <Spinner />
+      ) : loadError ? (
+        <ErrorState message={loadError} onRetry={load} />
       ) : (
         <>
           <Table
@@ -171,7 +201,7 @@ export default function InventoryPage() {
               <Badge key="a" color={p.is_active ? "green" : "neutral"}>{p.is_active ? "On sale" : "Hidden"}</Badge>,
               editable ? (
                 <div key="x" className="flex flex-wrap gap-1.5">
-                  <SecondaryButton onClick={() => { setStockFor(p); setStockDraft({ mode: "delta", value: "", reason: "restock", note: "" }); }}>Stock</SecondaryButton>
+                  <SecondaryButton onClick={() => openStock(p)}>Stock</SecondaryButton>
                   <SecondaryButton onClick={() => openEdit(p)}>Edit</SecondaryButton>
                   <DangerButton onClick={() => remove(p)}>Delete</DangerButton>
                 </div>
@@ -213,6 +243,7 @@ export default function InventoryPage() {
           <Toggle label="Taxable" checked={draft.taxable} onChange={(v) => setDraft({ ...draft, taxable: v })} />
           <Toggle label="On sale" checked={draft.isActive} onChange={(v) => setDraft({ ...draft, isActive: v })} />
         </div>
+        {modalError && <p role="alert" className="mt-4 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{modalError}</p>}
         <div className="mt-6 flex justify-end gap-2">
           <SecondaryButton onClick={() => setOpen(false)} disabled={saving}>Cancel</SecondaryButton>
           <PrimaryButton onClick={save} disabled={saving || !draft.name.trim() || draft.price === ""}>{saving ? "Saving…" : "Save"}</PrimaryButton>
@@ -222,11 +253,12 @@ export default function InventoryPage() {
       <Modal open={!!stockFor} onClose={() => setStockFor(null)} title={stockFor ? `Stock · ${stockFor.name} (now ${stockFor.stock})` : ""} size="sm">
         <div className="space-y-4">
           <SelectField label="What happened" value={stockDraft.mode === "set" ? "set" : stockDraft.reason} allowClear={false} onChange={(v) => setStockDraft({ ...stockDraft, mode: v === "set" ? "set" : "delta", reason: v === "set" ? "count" : v })} options={[{ value: "restock", label: "Delivery / restock (add)" }, { value: "waste", label: "Damaged or expired (remove)" }, { value: "adjust", label: "Other adjustment (+/−)" }, { value: "set", label: "Stock count (set the total)" }]} />
-          <TextField label={stockDraft.mode === "set" ? "Counted total" : stockDraft.reason === "waste" ? "Quantity removed" : "Quantity (negative to remove)"} type="number" value={stockDraft.value} onChange={(v) => setStockDraft({ ...stockDraft, value: v })} />
+          <TextField label={stockDraft.mode === "set" ? "Counted total" : stockDraft.reason === "waste" ? "Quantity removed" : stockDraft.reason === "restock" ? "Quantity added" : "Quantity (negative to remove)"} type="number" value={stockDraft.value} onChange={(v) => setStockDraft({ ...stockDraft, value: v })} />
           <TextField label="Note" value={stockDraft.note} onChange={(v) => setStockDraft({ ...stockDraft, note: v })} />
+          {modalError && <p role="alert" className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{modalError}</p>}
           <div className="flex justify-end gap-2">
             <SecondaryButton onClick={() => setStockFor(null)} disabled={saving}>Cancel</SecondaryButton>
-            <PrimaryButton onClick={() => { if (stockDraft.reason === "waste" && stockDraft.mode !== "set") setStockDraft((d) => ({ ...d, value: String(-Math.abs(Number(d.value) || 0)) })); adjust(); }} disabled={saving || stockDraft.value === ""}>Apply</PrimaryButton>
+            <PrimaryButton onClick={adjust} disabled={saving || stockDraft.value === ""}>{saving ? "Saving…" : "Apply"}</PrimaryButton>
           </div>
         </div>
       </Modal>

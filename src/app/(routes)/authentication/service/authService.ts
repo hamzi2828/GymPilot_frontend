@@ -1,5 +1,40 @@
 const API_BASE_URL = process.env.NEXT_PUBLIC_BACKEND_URL;
 
+// What the screen says when the request never got an answer. The browser's own
+// wording for this is "Failed to fetch", which tells a person nothing they can
+// act on.
+const UNREACHABLE = "We can't reach the server right now. Check your internet connection and try again.";
+const NO_ANSWER = "The server didn't answer properly. Please try again in a moment.";
+
+/**
+ * One POST to the API, answered with JSON. Throws an Error whose message is
+ * fit to show as-is: the server's own sentence when it sent one, otherwise
+ * `fallback` (or, for a network failure or a gateway error page, the two
+ * sentences above).
+ */
+async function post<T>(path: string, body: unknown, fallback: string): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE_URL}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  } catch {
+    throw new Error(UNREACHABLE);
+  }
+
+  // A proxy's error page is HTML, not JSON; it is not a message for people.
+  const json = await res.json().catch(() => null);
+
+  if (!res.ok) {
+    const message = (json && (json.message || json.error)) as string | undefined;
+    throw new Error(typeof message === "string" && message ? message : res.status >= 500 ? NO_ANSWER : fallback);
+  }
+  if (!json || typeof json !== "object") throw new Error(NO_ANSWER);
+  return json as T;
+}
+
 export interface SignUpPayload {
   firstName: string;
   lastName: string;
@@ -8,24 +43,7 @@ export interface SignUpPayload {
 }
 
 export async function signUp(payload: SignUpPayload) {
-  const res = await fetch(`${API_BASE_URL}/user/signup`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(payload),
-  });
-
-  if (!res.ok) {
-    let msg = "Sign up failed";
-    try {
-      const err = await res.json();
-      msg = err?.message || err?.error || msg;
-    } catch {}
-    throw new Error(msg);
-  }
-
-  return res.json();
+  return post<{ message?: string }>("/user/signup", payload, "Sign up failed");
 }
 
 export interface LoginPayload {
@@ -46,42 +64,27 @@ export interface LoginResponse {
     _id: string;
     firstName: string;
     lastName: string;
-    email: string;
-    role: 'user' | 'admin' | 'moderator';
+    /** Absent for an account that signs in by username. */
+    email?: string;
+    /** The slug of the account's role: "user", "admin", or one the gym made. */
+    role: string;
   };
+}
+
+// A sign-in answer is either a token or a second step. Anything else is the
+// server not answering properly, and must not be stored as a session.
+function checked(res: LoginResponse): LoginResponse {
+  if (res.token || (res.requires2fa && res.challengeId)) return res;
+  throw new Error(NO_ANSWER);
 }
 
 /** Second sign-in step: exchanges the emailed code for the token. */
 export async function verifyTwoFactor(payload: { challengeId: string; code: string }): Promise<LoginResponse> {
-  const res = await fetch(`${API_BASE_URL}/user/login/2fa`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
-  const json = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(json?.message || json?.error || 'Could not verify the code');
-  return json;
+  return checked(await post<LoginResponse>("/user/login/2fa", payload, "Could not verify the code"));
 }
 
 export async function login(payload: LoginPayload): Promise<LoginResponse> {
-  const res = await fetch(`${API_BASE_URL}/user/login`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(payload),
-  });
-
-  if (!res.ok) {
-    let msg = 'Login failed';
-    try {
-      const err = await res.json();
-      msg = err?.message || err?.error || msg;
-    } catch {}
-    throw new Error(msg);
-  }
-
-  return res.json();
+  return checked(await post<LoginResponse>("/user/login", payload, "Login failed"));
 }
 
 /**
@@ -93,19 +96,7 @@ export async function login(payload: LoginPayload): Promise<LoginResponse> {
  * into "check your inbox", which would imply an email was definitely sent.
  */
 export async function requestPasswordReset(email: string): Promise<{ message: string }> {
-  const res = await fetch(`${API_BASE_URL}/user/forgot-password`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email }),
-  });
-
-  const body = await res.json().catch(() => ({}));
-
-  if (!res.ok) {
-    throw new Error(body?.message || body?.error || 'Could not send the reset email');
-  }
-
-  return body;
+  return post<{ message: string }>("/user/forgot-password", { email }, "Could not send the reset email");
 }
 
 /**
@@ -115,17 +106,5 @@ export async function resetPassword(payload: {
   token: string;
   password: string;
 }): Promise<{ message: string }> {
-  const res = await fetch(`${API_BASE_URL}/user/reset-password`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
-
-  const body = await res.json().catch(() => ({}));
-
-  if (!res.ok) {
-    throw new Error(body?.message || body?.error || 'Could not reset your password');
-  }
-
-  return body;
+  return post<{ message: string }>("/user/reset-password", payload, "Could not reset your password");
 }

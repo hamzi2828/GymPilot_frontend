@@ -4,22 +4,51 @@
 // place of the sign-in form once a password has been accepted for an account
 // that requires it.
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
+
+// How long "Send a new code" rests after each send, so a slow email is not
+// answered with a burst of them (only the newest code works).
+const RESEND_WAIT_SECONDS = 30;
 
 export default function TwoFactorStep({
   message,
   onVerify,
   onBack,
+  onResend,
   isLoading,
   notice,
 }: {
   message: string;
   onVerify: (code: string) => Promise<void>;
   onBack: () => void;
+  /** Emails a fresh code; resolves true when one was sent. */
+  onResend: () => Promise<boolean>;
   isLoading: boolean;
   notice: { tone: "ok" | "error"; text: string } | null;
 }) {
   const [code, setCode] = useState("");
+  const [resending, setResending] = useState(false);
+  // Counts down from the moment this step opens: a code has only just gone.
+  const [wait, setWait] = useState(RESEND_WAIT_SECONDS);
+
+  useEffect(() => {
+    if (wait <= 0) return;
+    const timer = setTimeout(() => setWait((s) => s - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [wait]);
+
+  const resend = async () => {
+    setResending(true);
+    try {
+      if (await onResend()) {
+        // The old code no longer works; do not leave it in the box.
+        setCode("");
+        setWait(RESEND_WAIT_SECONDS);
+      }
+    } finally {
+      setResending(false);
+    }
+  };
 
   return (
     <div className="w-full lg:w-1/2 flex items-center justify-center px-6 py-12">
@@ -59,10 +88,18 @@ export default function TwoFactorStep({
         >
           {isLoading ? "Checking…" : "Sign in"}
         </button>
+        <button
+          type="button"
+          onClick={resend}
+          disabled={isLoading || resending || wait > 0}
+          className="mt-3 w-full rounded-lg border border-gray-300 px-4 py-3 text-sm font-semibold text-gray-800 hover:bg-gray-50 disabled:opacity-50"
+        >
+          {resending ? "Sending…" : wait > 0 ? `Send a new code (in ${wait}s)` : "Send a new code"}
+        </button>
         <button type="button" onClick={onBack} className="mt-3 w-full text-sm text-gray-600 underline underline-offset-2">
           Back to sign in
         </button>
-        <p className="mt-6 text-xs text-gray-500">The code expires in 10 minutes. Didn&apos;t get it? Check your spam folder, then sign in again to get a new one.</p>
+        <p className="mt-6 text-xs text-gray-500">The code expires in 10 minutes. Didn&apos;t get it? Check your spam folder, then send a new one — only the newest code works.</p>
       </form>
     </div>
   );

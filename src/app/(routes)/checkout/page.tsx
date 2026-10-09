@@ -19,6 +19,10 @@ const CheckoutPageContent = () => {
   const [packageData, setPackageData] = useState<Package | null>(null);
   const [submitHandler, setSubmitHandler] = useState<(() => void) | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // Why the last attempt to pay did not go ahead, shown beside the Pay button.
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  // The package could not be loaded: said on the page, with a way back.
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // How the member pays. Card is offered when the gym has Stripe set up, bank
   // transfer when it has an account on file; the first available one is
@@ -70,15 +74,13 @@ const CheckoutPageContent = () => {
           if (selectedPackage) {
             setPackageData(selectedPackage);
           } else {
-            alert("Package not found");
-            router.push("/packages");
+            setLoadError("This package is no longer on sale. Choose another one from Packages.");
             return;
           }
         }
       } catch (error) {
         console.error("Error fetching package:", error);
-        alert("Failed to load package details");
-        router.push("/packages");
+        setLoadError("We could not load this package. Check your connection and try again.");
         return;
       } finally {
         setLoading(false);
@@ -104,6 +106,27 @@ const CheckoutPageContent = () => {
     );
   }
 
+  if (loadError) {
+    return (
+      <main className="pt-24">
+        <section className="px-4 sm:px-6 lg:px-20 py-12 sm:py-16 lg:py-20 bg-white">
+          <div role="alert" className="mx-auto max-w-xl rounded-2xl border-2 border-red-200 bg-red-50 p-8 text-center">
+            <h1 className="text-lg font-bold text-gray-900">Checkout could not open</h1>
+            <p className="mt-1 text-sm text-gray-700">{loadError} Nothing has been charged.</p>
+            <div className="mt-5 flex flex-wrap justify-center gap-3">
+              <button type="button" onClick={() => window.location.reload()} className="rounded-lg bg-gray-900 px-5 py-2.5 text-sm font-semibold text-white">
+                Try again
+              </button>
+              <Link href="/packages" className="rounded-lg border border-gray-300 bg-white px-5 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50">
+                Back to packages
+              </Link>
+            </div>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
   return (
     <main className="pt-24">
       <section className="px-4 sm:px-6 lg:px-20 py-12 sm:py-16 lg:py-20 bg-white">
@@ -122,11 +145,13 @@ const CheckoutPageContent = () => {
               onSubmitChange={handleSubmitChange}
               paymentMethod={paymentMethod}
               couponCode={coupon?.code}
+              onError={setSubmitError}
             />
             <OrderSummary
               packageData={packageData}
               onSubmit={submitHandler || undefined}
               isSubmitting={isSubmitting}
+              error={submitError}
               methods={methods}
               methodsError={methodsError}
               onRetryMethods={retryMethods}

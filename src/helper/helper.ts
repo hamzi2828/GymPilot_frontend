@@ -6,12 +6,15 @@ export interface JwtBasePayload {
     exp?: number;
   }
   
-  // Payload we issued from the backend
+  // Payload we issued from the backend. Only `id` is always there: an account
+  // the front desk created to sign in by username has no email, and its token
+  // carries none.
   export interface UserPayload extends JwtBasePayload {
     id: string;
-    email: string;
-    firstName: string;
-    lastName: string;
+    email?: string;
+    firstName?: string;
+    lastName?: string;
+    role?: string;
   }
   
   const TOKEN_KEY = 'auth_token';
@@ -55,8 +58,9 @@ export interface JwtBasePayload {
     if (!payload) return null;
     // Check expiration if present
     if (payload.exp && Date.now() >= payload.exp * 1000) return null;
-    // Minimal shape validation
-    if (!payload.id || !payload.email) return null;
+    // The id is what identifies a session. An email is optional (see
+    // UserPayload), so requiring one here signed those accounts out.
+    if (!payload.id) return null;
     return payload;
   }
   
@@ -86,12 +90,20 @@ export interface JwtBasePayload {
     return seconds > 0 ? `; max-age=${seconds}` : '';
   }
 
+  // Shared by every cookie this file writes or clears. `secure` on https, so
+  // the session cookie is never sent over a plain connection; left off on
+  // http (local development), where a Secure cookie would not be stored.
+  function cookieScope(): string {
+    const secure = typeof window !== 'undefined' && window.location.protocol === 'https:';
+    return `; path=/; samesite=lax${secure ? '; secure' : ''}`;
+  }
+
   // Set token in localStorage and cookie so middleware can read it
   export function setToken(token: string) {
     if (typeof window === 'undefined') return;
     localStorage.setItem(TOKEN_KEY, token);
     try {
-      document.cookie = `${TOKEN_KEY}=${encodeURIComponent(token)}; path=/; samesite=lax${cookieLifetime(token)}`;
+      document.cookie = `${TOKEN_KEY}=${encodeURIComponent(token)}${cookieScope()}${cookieLifetime(token)}`;
     } catch {}
   }
 
@@ -101,9 +113,74 @@ export interface JwtBasePayload {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(ROLE_KEY);
     try {
-      document.cookie = `${TOKEN_KEY}=; Max-Age=0; path=/; samesite=lax`;
-      document.cookie = `${ROLE_KEY}=; Max-Age=0; path=/; samesite=lax`;
+      document.cookie = `${TOKEN_KEY}=; Max-Age=0${cookieScope()}`;
+      document.cookie = `${ROLE_KEY}=; Max-Age=0${cookieScope()}`;
     } catch {}
+  }
+
+  /** Whether the cookie the route guard (src/middleware.ts) looks for is there. */
+  export function hasSessionCookie(): boolean {
+    if (typeof document === 'undefined') return false;
+    try {
+      return document.cookie.split(';').some((part) => part.trim().startsWith(`${TOKEN_KEY}=`) && part.trim().length > TOKEN_KEY.length + 1);
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Puts the session cookie back for someone who is still signed in but has
+   * lost it -- a sign-in from before the cookie outlived the browser window,
+   * or a browser that cleared cookies and kept localStorage. The route guard
+   * only sees the cookie, so without this it would send a signed-in person to
+   * the sign-in page. True only when a live session now has its cookie.
+   */
+  export function restoreSessionCookie(): boolean {
+    const token = getAuthToken();
+    const user = token ? getUserFromToken(token) : null;
+    if (!token || !user) return false;
+    if (hasSessionCookie()) return true;
+    setToken(token);
+    const role = getRole() || user.role;
+    if (role) setRole(role);
+    return hasSessionCookie();
+  }
+
+  /**
+   * A `redirect` value that is safe to navigate to: a path on this site and
+   * nothing else. Rejected: absolute and protocol-relative URLs, anything with
+   * a backslash (browsers read "/\evil.com" as "//evil.com") or a control
+   * character (dropped while parsing, turning "/<tab>/evil.com" into the
+   * same), and the sign-in page itself.
+   */
+  export function safeRedirect(value: string | null | undefined): string | null {
+    if (!value) return null;
+    if (/[\\\u0000-\u001f\u007f]/.test(value)) return null;
+    if (!value.startsWith('/') || value.startsWith('//')) return null;
+    try {
+      // Resolved against a made-up origin: whatever still has that origin is
+      // a path of ours, on the server as much as in the browser.
+      const base = 'http://same-site.invalid';
+      const url = new URL(value, base);
+      if (url.origin !== base) return null;
+      // Dot segments are resolved by now, and "/..//evil.com" has become
+      // "//evil.com" -- off this site again.
+      if (url.pathname.startsWith('//')) return null;
+      if (url.pathname === '/authentication' || url.pathname.startsWith('/authentication/')) return null;
+      return `${url.pathname}${url.search}${url.hash}`;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * The sign-in page, set to bring the person back afterwards -- to `returnTo`,
+   * or to the page the browser is on.
+   */
+  export function signInUrl(returnTo?: string): string {
+    const here = typeof window === 'undefined' ? '' : `${window.location.pathname}${window.location.search}`;
+    const back = safeRedirect(returnTo ?? here);
+    return back && back !== '/' ? `/authentication?redirect=${encodeURIComponent(back)}` : '/authentication';
   }
 
   // Fetch with Authorization header when token is present
@@ -132,7 +209,7 @@ export interface JwtBasePayload {
     localStorage.setItem(ROLE_KEY, role);
     try {
       // Same lifetime as the token set just before it (see cookieLifetime).
-      document.cookie = `${ROLE_KEY}=${encodeURIComponent(role)}; path=/; samesite=lax${cookieLifetime(getAuthToken())}`;
+      document.cookie = `${ROLE_KEY}=${encodeURIComponent(role)}${cookieScope()}${cookieLifetime(getAuthToken())}`;
     } catch {}
   }
 
@@ -140,6 +217,6 @@ export interface JwtBasePayload {
     if (typeof window === 'undefined') return;
     localStorage.removeItem(ROLE_KEY);
     try {
-      document.cookie = `${ROLE_KEY}=; Max-Age=0; path=/; samesite=lax`;
+      document.cookie = `${ROLE_KEY}=; Max-Age=0${cookieScope()}`;
     } catch {}
   }

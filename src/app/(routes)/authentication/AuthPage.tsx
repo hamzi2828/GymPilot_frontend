@@ -6,18 +6,22 @@ import { LeftSide } from "./components/LeftSide";
 import { RightSide } from "./components/RightSide";
 import TwoFactorStep from "./components/TwoFactorStep";
 import { signUp, login, requestPasswordReset, resetPassword, verifyTwoFactor } from "./service/authService";
-import { setToken, setRole } from "@/helper/helper";
+import { setToken, setRole, getRole, decodeJwt, hasSessionCookie, restoreSessionCookie, safeRedirect } from "@/helper/helper";
 import type { Mode } from "./components/leftsSideComponents/types";
 
-/**
- * Only same-origin paths are honoured. Anything else — a protocol-relative
- * `//evil.com`, an absolute URL, a non-path value — is discarded so the
- * `?redirect=` param can't be used to bounce users off the site.
- */
-const safeRedirect = (value: string | null): string | null => {
-  if (!value) return null;
-  if (!value.startsWith("/") || value.startsWith("//")) return null;
-  return value;
+// Where someone lands when nothing asked for a particular page: the panel for
+// anyone who works here, the homepage for a member.
+const homeFor = (role: string | null | undefined) => (role && role !== "user" ? "/admin" : "/");
+
+// The one rule a chosen password must meet -- the API's own (passwordProblem
+// in its services/adminPasswords.js), checked here first so the person is told
+// beside the box instead of after a round trip.
+const MIN_PASSWORD_LENGTH = 8;
+const MAX_PASSWORD_LENGTH = 200;
+const passwordProblem = (password: string): string | null => {
+  if (password.length < MIN_PASSWORD_LENGTH) return `Use at least ${MIN_PASSWORD_LENGTH} characters`;
+  if (password.length > MAX_PASSWORD_LENGTH) return `That is too long. Use ${MAX_PASSWORD_LENGTH} characters or fewer`;
+  return null;
 };
 
 const AuthPage: React.FC = () => {
@@ -26,7 +30,8 @@ const AuthPage: React.FC = () => {
 
   // Where to land after a successful sign-in. Checkout sends buyers here when
   // they aren't logged in, so dropping this param strands them on the homepage
-  // mid-purchase.
+  // mid-purchase. Only a path on this site is honoured (see safeRedirect), so
+  // the param cannot be used to bounce anyone off it.
   const redirectTo = safeRedirect(searchParams.get("redirect"));
 
   const [isSignUp, setIsSignUp] = useState(false);
@@ -65,12 +70,29 @@ const AuthPage: React.FC = () => {
   // What happens once a token is in hand, whichever step produced it.
   const finishSignIn = (res: { token: string; data?: { role?: string } }) => {
     setToken(res.token);
+    // The token carries the role too, should the account view ever come
+    // without one.
+    const role = res?.data?.role || decodeJwt<{ role?: string }>(res.token)?.role;
     try {
-      if (res?.data?.role) setRole(res.data.role);
+      if (role) setRole(role);
     } catch {}
-    const worksHere = !!res?.data?.role && res.data.role !== "user";
-    router.replace(worksHere ? "/admin" : redirectTo || "/");
+    // Back to the page that sent them here -- staff as well as members: a
+    // session that ended on Attendance resumes on Attendance. Otherwise staff
+    // land on the panel and members on the homepage.
+    router.replace(redirectTo || homeFor(role));
   };
+
+  // Someone still signed in can be sent here by the route guard, which only
+  // sees a cookie they may have lost (an older sign-in, or cleared cookies).
+  // Put it back and send them on, rather than asking for a password they do
+  // not need to type. Only when the cookie is really there afterwards --
+  // otherwise the guard would send them straight back here.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("token") || params.get("mode")) return;
+    if (hasSessionCookie() || !restoreSessionCookie()) return;
+    router.replace(safeRedirect(params.get("redirect")) || homeFor(getRole()));
+  }, [router]);
 
   const verifyCode = async (code: string) => {
     if (!twoFactor) return;
@@ -83,6 +105,27 @@ const AuthPage: React.FC = () => {
       setNotice({ tone: "error", text: err instanceof Error ? err.message : "Could not verify the code" });
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // "Send a new code": there is no separate endpoint for it -- signing in
+  // again is what issues one, and the email and password are still in the
+  // form behind this step. True when a new code went out.
+  const resendCode = async (): Promise<boolean> => {
+    setNotice(null);
+    try {
+      const res = await login({ email: formData.email, password: formData.password, remember: formData.rememberMe });
+      if (res.requires2fa && res.challengeId) {
+        setTwoFactor({ challengeId: res.challengeId, message: res.message });
+        setNotice({ tone: "ok", text: "A new code is on its way. The earlier one no longer works." });
+        return true;
+      }
+      // Two-factor was switched off in the meantime: the password was enough.
+      if (res.token) finishSignIn(res);
+      return false;
+    } catch (err: unknown) {
+      setNotice({ tone: "error", text: err instanceof Error ? err.message : "Could not send a new code" });
+      return false;
     }
   };
   type Errors = Partial<Record<
@@ -172,10 +215,14 @@ const AuthPage: React.FC = () => {
     // set until the person has proved they can read that mailbox.
     if (!isForgot && !formData.password.trim()) newErrors.password = "Password is required";
 
+    // Choosing a password (a new account, or a reset): the API's rule, told
+    // here rather than after the request.
+    if ((isSignUp || isReset) && formData.password.trim()) {
+      const problem = passwordProblem(formData.password);
+      if (problem) newErrors.password = problem;
+    }
+
     if (isReset) {
-      if (formData.password.trim() && formData.password.trim().length < 8) {
-        newErrors.password = "Password must be at least 8 characters";
-      }
       if (!formData.confirmPassword.trim()) {
         newErrors.confirmPassword = "Please confirm your new password";
       } else if (formData.password !== formData.confirmPassword) {
@@ -309,8 +356,10 @@ const AuthPage: React.FC = () => {
     updateMode(isSignUp ? "signin" : "signup");
   };
 
+  // <main>: the site layout hides its chrome on this page, so the page's own
+  // root is the landmark a screen reader jumps to.
   return (
-    <div className="min-h-screen flex overflow-hidden bg-gradient-to-br from-gray-50 via-white to-gray-100">
+    <main className="min-h-screen flex overflow-hidden bg-gradient-to-br from-gray-50 via-white to-gray-100">
       {/* Left Side - Auth Form, or the second step once a password is accepted */}
       {twoFactor ? (
         <TwoFactorStep
@@ -320,6 +369,7 @@ const AuthPage: React.FC = () => {
             setTwoFactor(null);
             setNotice(null);
           }}
+          onResend={resendCode}
           isLoading={isLoading}
           notice={notice}
         />
@@ -347,7 +397,7 @@ const AuthPage: React.FC = () => {
 
       <RightSide />
 
-    </div>
+    </main>
   );
 };
 

@@ -10,6 +10,8 @@ interface OrderSummaryProps {
   packageData?: Package | null;
   onSubmit?: () => void;
   isSubmitting?: boolean;
+  /** Why the last attempt to pay did not go ahead; shown above the button. */
+  error?: string | null;
   methods: PaymentMethods | null;
   /** The payment options failed to load; offer a retry. */
   methodsError?: boolean;
@@ -49,6 +51,7 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
   packageData,
   onSubmit,
   isSubmitting = false,
+  error = null,
   methods,
   methodsError = false,
   onRetryMethods,
@@ -285,6 +288,12 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
             </>
           )}
         </div>
+
+        {error && (
+          <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {error}
+          </p>
+        )}
 
         <button
           type="button"

@@ -3,6 +3,54 @@ import { getAuthHeader } from "@/helper/helper";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_BACKEND_URL;
 
+// The 401 codes that mean the session itself is over (the API's
+// middleware/auth.js; the admin panel reads the same list). A 401 without one
+// of these -- a wrong current password, say -- is an ordinary refusal and must
+// not sign anyone out.
+const SESSION_END_CODES = new Set(["TOKEN_MISSING", "TOKEN_INVALID", "TOKEN_WRONG_GYM", "SESSION_ENDED"]);
+
+/** The session is over; the page should send the member to sign in again. */
+export class SessionEndedError extends Error {
+  constructor() {
+    super("Your session has ended. Please sign in again.");
+    this.name = "SessionEndedError";
+  }
+}
+
+/** A refused request. `message` is fit to show; `code` is the API's reason, when it gave one. */
+export class RequestError extends Error {
+  status: number;
+  code?: string;
+
+  constructor(message: string, status: number, code?: string) {
+    super(message);
+    this.name = "RequestError";
+    this.status = status;
+    this.code = code;
+  }
+}
+
+// One request, with its failures turned into something a page can act on:
+// no answer at all, an ended session, or a refusal with the API's own words.
+async function send(path: string, init: RequestInit, fallback: string): Promise<Response> {
+  if (!API_BASE_URL) throw new Error("Missing NEXT_PUBLIC_BACKEND_URL");
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE_URL}${path}`, init);
+  } catch {
+    throw new RequestError("We can't reach the server right now. Check your internet connection and try again.", 0);
+  }
+  if (res.ok) return res;
+
+  const body = await res.json().catch(() => null);
+  const code = body && typeof body.code === "string" ? (body.code as string) : undefined;
+  if (res.status === 401 && code && SESSION_END_CODES.has(code)) throw new SessionEndedError();
+  const message = body && (body.message || body.error);
+  throw new RequestError(typeof message === "string" && message ? message : fallback, res.status, code);
+}
+
+const jsonHeaders = () => ({ "Content-Type": "application/json", ...getAuthHeader() });
+
 export interface Address {
   id: string;
   type: "home" | "work" | "other";
@@ -34,57 +82,67 @@ export interface UserProfile {
 export interface UpdateUserPayload {
   firstName: string;
   lastName: string;
-  email: string;
+  /**
+   * Sent only when the member is changing it. Left out, the API leaves the
+   * address alone -- which is how an account with no email saves its name
+   * and phone.
+   */
+  email?: string;
   phone: string;
   dateOfBirth: string;
   gender: "male" | "female" | "other";
+  /** Required by the API alongside a changed email; never sent otherwise. */
+  currentPassword?: string;
 }
 
-export async function updateUser( payload: UpdateUserPayload) {
-  if (!API_BASE_URL) {
-    throw new Error("Missing NEXT_PUBLIC_BACKEND_URL");
-  }
-  const res = await fetch(`${API_BASE_URL}/update/user`, {
-    method: "PUT",
-    headers: {
-      "Content-Type": "application/json",
-      ...getAuthHeader(),
-    },
-    body: JSON.stringify(payload),
-  });
+/** The API's two refusals when a change needs the current password. */
+export const PASSWORD_REQUIRED = "PASSWORD_REQUIRED";
+export const PASSWORD_INCORRECT = "PASSWORD_INCORRECT";
 
-  if (!res.ok) {
-    let msg = "Update failed";
-    try {
-      const err = await res.json();
-      msg = err?.message || err?.error || msg;
-    } catch {}
-    throw new Error(msg);
-  }
+export async function updateUser( payload: UpdateUserPayload) {
+  const res = await send("/update/user", { method: "PUT", headers: jsonHeaders(), body: JSON.stringify(payload) }, "Update failed");
+  return res.json();
+}
+
+/** Switches two-factor sign-in on or off. Switching it off needs the current password. */
+export async function setTwoFactor(enabled: boolean, currentPassword?: string): Promise<{ message?: string }> {
+  const res = await send(
+    "/user/two-factor",
+    { method: "PUT", headers: jsonHeaders(), body: JSON.stringify(currentPassword ? { enabled, currentPassword } : { enabled }) },
+    "Could not update two-factor sign-in"
+  );
   return res.json();
 }
 
 export async function getUserDetailForProfile() {
-  if (!API_BASE_URL) {
-    throw new Error("Missing NEXT_PUBLIC_BACKEND_URL");
-  }
-  const res = await fetch(`${API_BASE_URL}/userDetailForProfile`, {
-    method: "GET",
-    headers: {
-      "Content-Type": "application/json",
-      ...getAuthHeader(),
-    },
-  });
-
-  if (!res.ok) {
-    let msg = "Get user detail failed";
-    try {
-      const err = await res.json();
-      msg = err?.message || err?.error || msg;
-    } catch {}
-    throw new Error(msg);
-  }
+  const res = await send("/userDetailForProfile", { method: "GET", headers: jsonHeaders() }, "Could not load your profile");
   return res.json();
+}
+
+/**
+ * The member's bookings together with the gym's late-cancel rule, which the
+ * same endpoint returns: cancel inside `cancelHours` of the start and the
+ * session credit stays used.
+ */
+export interface MyBookingRow {
+  id: string;
+  class_id: string;
+  class_name: string;
+  date: string;
+  start_time: string;
+  end_time: string;
+  instructor_name: string;
+  status: "booked" | "waitlisted" | "cancelled" | "attended" | "no_show";
+  waitlist_position: number | null;
+  /** The booking took a session from a pack. */
+  credit_used?: boolean;
+}
+
+export async function getMyBookingsWithRules(scope: "upcoming" | "past"): Promise<{ rows: MyBookingRow[]; cancelHours: number }> {
+  const res = await send(`/api/gymfolio/bookings/me?scope=${scope}`, { method: "GET", headers: getAuthHeader() }, "Could not load your bookings");
+  const body = await res.json();
+  const hours = Number(body?.rules?.cancel_hours);
+  return { rows: body?.data || [], cancelHours: Number.isFinite(hours) && hours > 0 ? hours : 0 };
 }
 
 // ---------------------------------------------------------------------------
@@ -273,21 +331,7 @@ export async function downloadInvoice(orderId: string, number: string): Promise<
 
 /** The member's package purchases, newest first, in gym terms. */
 export async function getMembershipHistory(): Promise<MembershipOrder[]> {
-  if (!API_BASE_URL) throw new Error("Missing NEXT_PUBLIC_BACKEND_URL");
-
-  const res = await fetch(`${API_BASE_URL}/api/gymfolio/package-orders/me?limit=100`, {
-    method: "GET",
-    headers: { "Content-Type": "application/json", ...getAuthHeader() },
-  });
-
-  if (!res.ok) {
-    let msg = "Failed to load your membership history";
-    try {
-      const err = await res.json();
-      msg = err?.message || err?.error || msg;
-    } catch {}
-    throw new Error(msg);
-  }
+  const res = await send("/api/gymfolio/package-orders/me?limit=100", { method: "GET", headers: jsonHeaders() }, "We could not load your membership.");
 
   const json = await res.json();
   const raw: Array<Record<string, unknown>> = json?.data || json?.orders || [];
@@ -350,22 +394,7 @@ export async function getMembershipHistory(): Promise<MembershipOrder[]> {
  * the recent-visits window, so drilling into a month never shows part of it.
  */
 export async function getMyAttendance(month?: string): Promise<MyAttendance> {
-  if (!API_BASE_URL) throw new Error("Missing NEXT_PUBLIC_BACKEND_URL");
-
   const query = month ? `month=${encodeURIComponent(month)}` : "limit=180";
-  const res = await fetch(`${API_BASE_URL}/api/attendance/me?${query}`, {
-    method: "GET",
-    headers: { "Content-Type": "application/json", ...getAuthHeader() },
-  });
-
-  if (!res.ok) {
-    let msg = "Failed to load your attendance";
-    try {
-      const err = await res.json();
-      msg = err?.message || err?.error || msg;
-    } catch {}
-    throw new Error(msg);
-  }
-
+  const res = await send(`/api/attendance/me?${query}`, { method: "GET", headers: jsonHeaders() }, "We could not load your visits.");
   return res.json();
 }

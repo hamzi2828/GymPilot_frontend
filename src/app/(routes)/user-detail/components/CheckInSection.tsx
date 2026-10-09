@@ -47,17 +47,20 @@ export const CheckInSection: React.FC = () => {
   return (
     <div className="space-y-6">
       <section className="rounded-2xl border-2 border-gray-200 bg-white p-6 sm:p-8">
-        <div className="grid gap-8 md:grid-cols-[auto_1fr] md:items-center">
-          <div className="mx-auto">
+        {/* The code is a square as wide as the card allows, up to 320px. Fixed
+            at 320px it was wider than the card on a phone and ran off the
+            edge -- and a clipped QR code does not scan. */}
+        <div className="grid gap-8 md:grid-cols-[320px_1fr] md:items-center">
+          <div className="mx-auto w-full max-w-[320px]">
             {loading ? (
-              <div className="flex h-[320px] w-[320px] items-center justify-center rounded-2xl bg-gray-50">
+              <div className="flex aspect-square w-full items-center justify-center rounded-2xl bg-gray-50">
                 <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-primary" />
               </div>
             ) : image ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={image} alt="Your check-in QR code" className="h-[320px] w-[320px] rounded-2xl border border-gray-200" />
+              <img src={image} alt="Your check-in QR code" width={320} height={320} className="block aspect-square h-auto w-full rounded-2xl border border-gray-200" />
             ) : (
-              <div className="flex h-[320px] w-[320px] items-center justify-center rounded-2xl bg-gray-50 text-sm text-gray-500">{error || "No code"}</div>
+              <div className="flex aspect-square w-full items-center justify-center rounded-2xl bg-gray-50 px-4 text-center text-sm text-gray-500">{error || "No code"}</div>
             )}
           </div>
           <div>

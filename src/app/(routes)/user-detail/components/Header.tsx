@@ -10,6 +10,7 @@ export interface HeaderProps {
     email: string;
     phone: string;
     profileImage: string;
+    username?: string;
   };
 }
 
@@ -23,7 +24,7 @@ function resolveAvatar(src: string): string {
 }
 
 export const Header: React.FC<HeaderProps> = ({ userProfile }) => {
-  const initial = (userProfile.firstName?.[0] || userProfile.email?.[0] || "?").toUpperCase();
+  const initial = (userProfile.firstName?.[0] || userProfile.email?.[0] || userProfile.username?.[0] || "?").toUpperCase();
   const [imgError, setImgError] = useState(false);
   const [imgLoaded, setImgLoaded] = useState(false);
   const imageSrc = useMemo(() => resolveAvatar(userProfile.profileImage?.trim() || ""), [userProfile.profileImage]);
@@ -69,13 +70,22 @@ export const Header: React.FC<HeaderProps> = ({ userProfile }) => {
             {userProfile.firstName} {userProfile.lastName}
           </h1>
           <div className="flex flex-wrap items-center gap-4 mt-2 text-gray-600">
-            <span className="flex items-center">
-              <i className="fas fa-envelope mr-2" />
-              {userProfile.email}
-            </span>
+            {/* An account that signs in by username may have no email; its
+                username is shown in its place. */}
+            {userProfile.email ? (
+              <span className="flex items-center">
+                <i className="fas fa-envelope mr-2" />
+                {userProfile.email}
+              </span>
+            ) : userProfile.username ? (
+              <span className="flex items-center">
+                <i className="fas fa-user mr-2" />
+                {userProfile.username}
+              </span>
+            ) : null}
             {userProfile.phone && (
               <>
-                <span className="hidden sm:block w-1 h-1 bg-gray-300 rounded-full" />
+                {(userProfile.email || userProfile.username) && <span className="hidden sm:block w-1 h-1 bg-gray-300 rounded-full" />}
                 <span className="flex items-center">
                   <i className="fas fa-phone mr-2" />
                   {userProfile.phone}

@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import { FiExternalLink } from "react-icons/fi";
 import AdminHeader from "@/components/admin/AdminHeader";
 import AdminSidebar from "@/components/admin/AdminSidebar";
 import { PermissionsProvider, usePermissions } from "@/components/admin/PermissionsProvider";
-import { isAuthenticated, removeToken } from "@/helper/helper";
+import { isAuthenticated, removeToken, signInUrl } from "@/helper/helper";
 import { getSubscription, type BillingSubscription } from "./settings/billingApi";
 
 // Which tab each admin route belongs to. Longest prefix wins, so
@@ -13,6 +14,7 @@ import { getSubscription, type BillingSubscription } from "./settings/billingApi
 const ROUTE_TABS: { prefix: string; tab: string }[] = [
   { prefix: "/admin/reports", tab: "reports" },
   { prefix: "/admin/classes", tab: "classes" },
+  { prefix: "/admin/bookings", tab: "bookings" },
   { prefix: "/admin/timetable-changes", tab: "classes" },
   { prefix: "/admin/pt", tab: "pt" },
   { prefix: "/admin/trainers", tab: "trainers" },
@@ -39,6 +41,7 @@ const ROUTE_TABS: { prefix: string; tab: string }[] = [
   { prefix: "/admin/testimonials", tab: "testimonials" },
   { prefix: "/admin/blog-settings", tab: "blog-settings" },
   { prefix: "/admin/blogs", tab: "blogs" },
+  { prefix: "/admin/pages", tab: "pages" },
   { prefix: "/admin/settings", tab: "settings" },
   { prefix: "/admin/setup", tab: "settings" },
   { prefix: "/admin/audit-log", tab: "audit" },
@@ -140,7 +143,7 @@ function AdminShell({ children }: { children: React.ReactNode }) {
               type="button"
               onClick={() => {
                 removeToken();
-                router.replace("/authentication");
+                router.replace(signInUrl());
               }}
               className="inline-flex h-9 items-center rounded-lg border border-neutral-200 px-4 text-sm font-medium text-neutral-700"
             >
@@ -160,6 +163,25 @@ function AdminShell({ children }: { children: React.ReactNode }) {
 
       <div className="flex flex-1 flex-col overflow-hidden">
         <AdminHeader isSidebarOpen={sidebarOpen} onToggleSidebar={() => setSidebarOpen((v) => !v)} />
+
+        {/* The door check-in screen is its own full-screen page (/kiosk), so
+            it has no entry of its own in the menu; this is the way to it for
+            anyone whose role includes Attendance. A new tab, because the
+            kiosk takes the whole window and is left running at the desk. */}
+        {can("attendance") && (
+          <nav aria-label="Front desk" className="flex shrink-0 items-center justify-end border-b border-neutral-200 bg-neutral-50 px-6 py-1.5 lg:px-10">
+            <a
+              href="/kiosk"
+              target="_blank"
+              rel="noopener"
+              title="Opens the door check-in screen in a new tab. Sign in there with a staff account that is allowed to use the attendance app."
+              className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-semibold text-neutral-700 hover:bg-neutral-200/60 hover:text-neutral-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-neutral-300"
+            >
+              Open check-in kiosk
+              <FiExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+            </a>
+          </nav>
+        )}
 
         <main className="admin-scroll flex-1 overflow-y-auto px-6 py-8 lg:px-10 lg:py-10">
           <div className="mx-auto max-w-[1400px]">
@@ -225,7 +247,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   useEffect(() => {
     if (!isAuthenticated()) {
-      router.replace("/authentication");
+      // The sign-in page brings them back to the page they were on.
+      router.replace(signInUrl());
       return;
     }
     setAuthed(true);

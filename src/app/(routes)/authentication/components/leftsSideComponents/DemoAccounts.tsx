@@ -13,29 +13,34 @@ interface DemoAccountsProps {
 // sign-in page renders this component, so it stays hidden unless the build sets
 // NEXT_PUBLIC_SHOW_DEMO_LOGINS=true. next.config.ts always defines the flag, so
 // in a normal build this is a constant `false` and the minifier drops the
-// credentials below from the bundle entirely.
+// accounts below from the bundle entirely.
 export const SHOW_DEMO_LOGINS = process.env.NEXT_PUBLIC_SHOW_DEMO_LOGINS === 'true';
 
-// The credentials match the accounts seeded into the dev database:
-//   - admin@demogym.test / admin123     (Seeder/createAdmin.js)
-//   - ...@gympilot.test / Gym@12345     (Seeder/createAttendance.js members)
+// Which accounts the buttons fill in comes from the build's environment, never
+// from this file: the source is public, and a sign-in name and password written
+// here are published with it. A demo build sets, for the accounts it has seeded:
+//
+//   NEXT_PUBLIC_DEMO_ADMIN_LOGIN   / NEXT_PUBLIC_DEMO_ADMIN_PASSWORD
+//   NEXT_PUBLIC_DEMO_MEMBER_LOGIN  / NEXT_PUBLIC_DEMO_MEMBER_PASSWORD
+//
+// A button appears only for a pair that is set in full. (Like every
+// NEXT_PUBLIC_ value these end up in that build's JavaScript, which is the
+// point of a demo login -- so only ever demo accounts.)
 const DEMO = SHOW_DEMO_LOGINS
   ? [
       {
         key: 'admin',
         label: 'Admin',
-        caption: 'admin@demogym.test',
-        email: 'admin@demogym.test',
-        password: 'admin123',
+        email: process.env.NEXT_PUBLIC_DEMO_ADMIN_LOGIN || '',
+        password: process.env.NEXT_PUBLIC_DEMO_ADMIN_PASSWORD || '',
       },
       {
         key: 'user',
         label: 'Member',
-        caption: 'ayesha.khan@gympilot.test',
-        email: 'ayesha.khan@gympilot.test',
-        password: 'Gym@12345',
+        email: process.env.NEXT_PUBLIC_DEMO_MEMBER_LOGIN || '',
+        password: process.env.NEXT_PUBLIC_DEMO_MEMBER_PASSWORD || '',
       },
-    ]
+    ].filter((acct) => acct.email && acct.password)
   : [];
 
 // The super admin signs in on the platform panel, which lives in its own app
@@ -70,7 +75,7 @@ export const DemoAccounts: React.FC<DemoAccountsProps> = ({ show, fillCredential
               {acct.label}
             </span>
             <span className="mt-0.5 truncate text-xs font-medium text-gray-500 w-full">
-              {acct.caption}
+              {acct.email}
             </span>
           </button>
         ))}

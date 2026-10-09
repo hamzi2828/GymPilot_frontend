@@ -27,6 +27,13 @@ const SCAN_COOLDOWN_MS = 4000;
 // on one unlock is longer; this is what keeps it from being left open.
 const STAFF_IDLE_MS = 60 * 1000;
 const STAFF_UNLOCK_REQUIRED = "STAFF_UNLOCK_REQUIRED";
+// How often the kiosk asks the server "are you there": every half minute
+// while all is well, so a dropped connection is noticed before the next
+// member walks up, and every few seconds while it is down, so it comes back
+// by itself.
+const HEARTBEAT_MS = 30 * 1000;
+const RECONNECT_MS = 5 * 1000;
+const NOT_CONNECTED = "Not connected. Check the internet connection and try again.";
 
 interface ReceiptRow { caption: string; value: string }
 // Which sound a member's punch gets and what to say after it -- decided by the
@@ -62,12 +69,25 @@ function readToken(): string | null {
   }
 }
 
-async function desk<T>(path: string, body: Record<string, unknown> = {}, token?: string | null): Promise<T & { success: boolean; message?: string; code?: string; http_status?: number }> {
-  const res = await fetch(`${API_BASE}/api/desktop/${path}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-    body: JSON.stringify({ ...body, client_app: CLIENT_APP, device_label: "Web kiosk" }),
-  });
+type DeskAnswer<T> = T & { success: boolean; message?: string; code?: string; http_status?: number; offline?: boolean };
+
+// Never throws. A request that got no answer -- the network is down, or the
+// proxy in front of the API answered for it (502/503/504) -- comes back as
+// `offline`, which every caller checks: it used to be an unhandled rejection,
+// so a scan with the network down did nothing at all, no message, no sound.
+async function desk<T>(path: string, body: Record<string, unknown> = {}, token?: string | null): Promise<DeskAnswer<T>> {
+  const unreachable = { success: false, offline: true, http_status: 0, message: NOT_CONNECTED } as unknown as DeskAnswer<T>;
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}/api/desktop/${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify({ ...body, client_app: CLIENT_APP, device_label: "Web kiosk" }),
+    });
+  } catch {
+    return unreachable;
+  }
+  if (res.status === 502 || res.status === 503 || res.status === 504) return { ...unreachable, http_status: res.status };
   const json = await res.json().catch(() => ({}));
   return { ...json, http_status: res.status };
 }
@@ -169,13 +189,40 @@ export default function KioskPage() {
   const receiptTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const speechTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const loadRecent = useCallback(async (t: string) => {
-    const res = await desk<{ entries: RecentEntry[]; date_label: string }>("recent", { limit: 10 }, t);
-    if (res.success) {
-      setRecent(res.entries || []);
-      setDateLabel(res.date_label || "");
-    }
+  // The server cannot be reached. While this is set nothing the kiosk is
+  // shown gets recorded, so the screen says so in red until it is back.
+  const [offline, setOffline] = useState(false);
+  const offlineRef = useRef(false);
+
+  // `sound`: the low tune once, at the moment the connection is found gone.
+  // A failed punch plays its own, so it passes false.
+  const markOffline = useCallback((sound = true) => {
+    if (offlineRef.current) return;
+    offlineRef.current = true;
+    setOffline(true);
+    if (sound) beep("bad");
   }, []);
+
+  const markOnline = useCallback(() => {
+    if (!offlineRef.current) return;
+    offlineRef.current = false;
+    setOffline(false);
+  }, []);
+
+  const loadRecent = useCallback(
+    async (t: string) => {
+      const res = await desk<{ entries: RecentEntry[]; date_label: string }>("recent", { limit: 10 }, t);
+      if (res.offline) {
+        markOffline();
+        return;
+      }
+      if (res.success) {
+        setRecent(res.entries || []);
+        setDateLabel(res.date_label || "");
+      }
+    },
+    [markOffline]
+  );
 
   // Resume a saved session.
   useEffect(() => {
@@ -186,7 +233,12 @@ export default function KioskPage() {
     }
     desk<{ user: { name: string; location?: string } }>("session", {}, saved)
       .then((res) => {
-        if (res.success) {
+        if (res.offline) {
+          // No answer is not a refusal: the kiosk keeps its sign-in, shows
+          // "not connected", and checks the session as soon as it is back.
+          setToken(saved);
+          markOffline(false);
+        } else if (res.success) {
           setToken(saved);
           setOperator(res.user);
           loadRecent(saved);
@@ -195,7 +247,7 @@ export default function KioskPage() {
         }
       })
       .finally(() => setBooting(false));
-  }, [loadRecent]);
+  }, [loadRecent, markOffline]);
 
   const showReceipt = (r: Receipt | null, message: { tone: "good" | "warn" | "bad"; text: string } | null) => {
     setReceipt(r);
@@ -247,10 +299,54 @@ export default function KioskPage() {
     [lockStaff]
   );
 
+  // Is the server there? Asked on a timer while signed in, and at once when
+  // the browser reports the network going or coming back.
+  useEffect(() => {
+    if (!token) return;
+    let stopped = false;
+    const probe = async () => {
+      const res = await desk<{ user?: { name: string; location?: string } }>("session", {}, token);
+      if (stopped) return;
+      if (res.offline) {
+        markOffline();
+        return;
+      }
+      const wasOffline = offlineRef.current;
+      markOnline();
+      if (res.http_status === 401 || res.http_status === 403) {
+        endSession(res.message);
+        return;
+      }
+      if (res.success && res.user) setOperator(res.user);
+      if (wasOffline) loadRecent(token);
+    };
+    const gone = () => markOffline();
+    const timer = setInterval(probe, offline ? RECONNECT_MS : HEARTBEAT_MS);
+    window.addEventListener("online", probe);
+    window.addEventListener("offline", gone);
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+      window.removeEventListener("online", probe);
+      window.removeEventListener("offline", gone);
+    };
+  }, [token, offline, markOffline, markOnline, endSession, loadRecent]);
+
   const punch = useCallback(
     async (body: Record<string, unknown>) => {
       if (!token) return;
       const res = await desk<{ detail: Receipt | null }>("punch", body, token);
+      if (res.offline) {
+        // Said out loud and in red: the person at the door must not walk in
+        // believing they were checked in. What they typed is kept, to send
+        // again once the connection is back.
+        markOffline(false);
+        if (speechTimer.current) clearTimeout(speechTimer.current);
+        beep("bad");
+        showReceipt(null, { tone: "bad", text: "Not connected, so this was NOT recorded. Please tell the front desk." });
+        return;
+      }
+      markOnline();
       if (res.http_status === 401 || res.http_status === 403) {
         endSession(res.message);
         return;
@@ -282,7 +378,7 @@ export default function KioskPage() {
       setQuery("");
       setPeople([]);
     },
-    [token, loadRecent, endSession, lockStaff]
+    [token, loadRecent, endSession, lockStaff, markOffline, markOnline]
   );
 
   // Camera scanning.
@@ -376,6 +472,11 @@ export default function KioskPage() {
     setUnlockError(null);
     try {
       const res = await desk<{ unlock: string; expires_in?: number }>("unlock", { password: unlockPassword }, token);
+      if (res.offline) {
+        markOffline();
+        setUnlockError(NOT_CONNECTED);
+        return;
+      }
       if (res.http_status === 401 || res.http_status === 403) {
         endSession(res.message);
         return;
@@ -406,6 +507,11 @@ export default function KioskPage() {
     setSearching(true);
     try {
       const res = await desk<{ members: Person[]; staff: Person[] }>("people", { q: q.trim(), staff_unlock: staffUnlock.grant }, token);
+      if (res.offline) {
+        markOffline();
+        setPeople([]);
+        return;
+      }
       if (res.http_status === 401 || res.http_status === 403) {
         endSession(res.message);
         return;
@@ -473,6 +579,15 @@ export default function KioskPage() {
           </button>
         )}
       </header>
+
+      {/* Nothing is being recorded while this shows, so it is not subtle. It
+          clears by itself when the server answers again. */}
+      {offline && (
+        <div role="alert" className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 bg-rose-600 px-6 py-3 text-center text-white">
+          <span className="text-base font-bold">Not connected</span>
+          <span className="text-sm">Check-ins are not being recorded. Check the internet connection. The kiosk reconnects by itself.</span>
+        </div>
+      )}
 
       <div className="grid gap-6 p-6 lg:grid-cols-[1.2fr_1fr]">
         {/* Left: scanner + manual */}
@@ -637,9 +752,19 @@ export default function KioskPage() {
               </div>
             ) : (
               <div className="flex h-full min-h-[200px] flex-col items-center justify-center text-center">
-                <div className="mb-3 h-16 w-16 animate-pulse rounded-full border-2 border-emerald-500/40" />
-                <p className="text-lg font-semibold text-white">Ready</p>
-                <p className="text-sm text-neutral-500">Scan or type a member number to check in or out.</p>
+                {offline ? (
+                  <>
+                    <div className="mb-3 h-16 w-16 rounded-full border-2 border-rose-500/60" />
+                    <p className="text-lg font-semibold text-rose-300">Not connected</p>
+                    <p className="text-sm text-neutral-400">Please see the front desk to check in.</p>
+                  </>
+                ) : (
+                  <>
+                    <div className="mb-3 h-16 w-16 animate-pulse rounded-full border-2 border-emerald-500/40" />
+                    <p className="text-lg font-semibold text-white">Ready</p>
+                    <p className="text-sm text-neutral-500">Scan or type a member number to check in or out.</p>
+                  </>
+                )}
               </div>
             )}
           </div>
