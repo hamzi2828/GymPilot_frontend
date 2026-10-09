@@ -51,6 +51,7 @@ function Heading({ title, hint }: { title: string; hint?: string }) {
 export default function MessagingSettings({
   value,
   saved,
+  secretError,
   onChange,
   onSave,
   onReload,
@@ -60,6 +61,8 @@ export default function MessagingSettings({
   value: MessagingConfig;
   /** The copy last read from the server, to tell when a gateway address has been edited. */
   saved?: MessagingConfig;
+  /** A token the API asked to be typed again ("messaging.sms.webhookToken"), with its sentence. */
+  secretError?: { field: string; message: string } | null;
   onChange: (next: MessagingConfig) => void;
   onSave: () => Promise<void> | void;
   onReload: () => Promise<void> | void;
@@ -104,6 +107,7 @@ export default function MessagingSettings({
     const cfg = kind === "sms" ? sms : wa;
     const provider = cfg.provider || "none";
     const tokenStale = gatewayTokenStale(kind, m, saved);
+    const tokenRefused = secretError?.field === `messaging.${kind}.webhookToken` ? secretError.message : null;
     return (
       <>
         {provider === "twilio" && (
@@ -131,7 +135,9 @@ export default function MessagingSettings({
             <TextField label="Gateway URL" value={cfg.webhookUrl || ""} onChange={(v) => patch(kind, { webhookUrl: v })} placeholder="https://gateway.example.com/send" />
             <div>
               <TextField label="Bearer token (optional)" type="password" value={tokenStale ? "" : cfg.webhookToken || ""} onChange={(v) => patch(kind, { webhookToken: v })} />
-              {tokenStale ? (
+              {tokenRefused ? (
+                <p role="alert" className="mt-1 text-xs text-rose-700">{tokenRefused}</p>
+              ) : tokenStale ? (
                 <p className="mt-1 text-xs text-amber-700">
                   The gateway address has changed, so the saved token is not sent to it. Type the token for the new address, or leave this empty if it needs none.
                 </p>

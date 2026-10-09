@@ -26,13 +26,16 @@ export class ApiError extends Error {
   code?: string;
   /** The figures behind a refusal, when the backend sent any (CREDIT_EXCEEDS_PRICE). */
   details?: Record<string, unknown>;
+  /** The form field a refusal is about, when the backend named one (SECRET_REQUIRED: "smtp.pass"). */
+  field?: string;
 
-  constructor(message: string, status: number, code?: string, details?: Record<string, unknown>) {
+  constructor(message: string, status: number, code?: string, details?: Record<string, unknown>, field?: string) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.code = code;
     this.details = details;
+    this.field = field;
   }
 }
 
@@ -119,12 +122,14 @@ async function readJson(res: Response): Promise<{ text: string; json: unknown }>
 // A refused call as an error fit to show, with the sign-out when it was
 // refused because the session is over.
 function refusal(res: Response, json: unknown): ApiError {
-  const body = json && typeof json === "object" ? (json as { message?: unknown; code?: unknown; details?: unknown }) : {};
+  const body = json && typeof json === "object" ? (json as { message?: unknown; code?: unknown; details?: unknown; field?: unknown }) : {};
   const serverMessage = typeof body.message === "string" ? body.message.trim() : "";
   const code = typeof body.code === "string" ? body.code : undefined;
   const details = body.details && typeof body.details === "object" ? (body.details as Record<string, unknown>) : undefined;
 
-  const error = new ApiError(failureMessage(res.status, serverMessage, code), res.status, code, details);
+  const field = typeof body.field === "string" ? body.field : undefined;
+
+  const error = new ApiError(failureMessage(res.status, serverMessage, code), res.status, code, details, field);
   if (isSessionEndError(error)) {
     error.message = "Your session has ended. Please sign in again.";
     endSession();

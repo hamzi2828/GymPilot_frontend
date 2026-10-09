@@ -21,7 +21,7 @@ import {
   ErrorState,
 } from "../_shared/ui";
 import { countryOptions, currencyOptions, countryByCode } from "@/data/countries";
-import { API_BASE, GYMFOLIO_API, apiForm, apiGet, apiJson, isMaskedSecret } from "../_shared/api";
+import { API_BASE, ApiError, GYMFOLIO_API, apiForm, apiGet, apiJson, isMaskedSecret } from "../_shared/api";
 import { THEMES, DEFAULT_THEME_KEY } from "@/theme/themes";
 import { setActiveTheme } from "@/components/ThemeProvider";
 import MessagingSettings, { messagingToSave, type MessagingConfig } from "./MessagingSettings";
@@ -231,6 +231,18 @@ function smtpNeedsPassword(now: Settings | null, saved: Settings | null): boolea
   return (now?.smtp?.host || "").trim() !== (saved.smtp.host || "").trim() && isMaskedSecret(now?.smtp?.pass);
 }
 
+// The API's refusal when a save would send a saved secret to a server it was
+// not saved for: the mail host or a gateway address was changed and the
+// secret left as it was (400 SECRET_REQUIRED, naming the field). The checks
+// above catch it first; this is for the copy on screen being out of date.
+const SECRET_REQUIRED = "SECRET_REQUIRED";
+// The tab each of those fields is on.
+const SECRET_FIELD_TABS: Record<string, TabKey> = {
+  "smtp.pass": "smtp",
+  "messaging.sms.webhookToken": "messaging",
+  "messaging.whatsapp.webhookToken": "messaging",
+};
+
 function isTabKey(v: string | null): v is TabKey {
   return !!v && TABS.some((t) => t.key === v);
 }
@@ -264,6 +276,8 @@ function SettingsAdminPageInner() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<{ tone: "ok" | "warn" | "error"; text: string } | null>(null);
+  // A secret the API asked to be typed again, shown beside its own box.
+  const [secretError, setSecretError] = useState<{ field: string; message: string } | null>(null);
 
   // Stripe tab: whether members can pay by card right now, as the API
   // decides it (so a default gym's environment keys count too).
@@ -382,6 +396,7 @@ function SettingsAdminPageInner() {
     }
     setSaving(true);
     setNotice(null);
+    setSecretError(null);
     try {
       // Everything unedited goes back as it came, masked secrets included
       // (the API keeps what is saved for those).
@@ -398,6 +413,12 @@ function SettingsAdminPageInner() {
       );
     } catch (e) {
       setNotice({ tone: "error", text: e instanceof Error ? e.message : "Save failed" });
+      // Said again beside the box it is about, on the tab that box is on:
+      // Save may have been pressed on another one.
+      if (e instanceof ApiError && e.code === SECRET_REQUIRED && e.field && SECRET_FIELD_TABS[e.field]) {
+        setSecretError({ field: e.field, message: e.message });
+        if (tab !== SECRET_FIELD_TABS[e.field]) setTab(SECRET_FIELD_TABS[e.field]);
+      }
     } finally {
       setSaving(false);
     }
@@ -1044,7 +1065,9 @@ function SettingsAdminPageInner() {
             <TextField label="Username" value={smtp.user} onChange={(v) => setSmtp({ user: v })} />
             <div>
               <TextField label="Password" type="password" required={smtpPassAgain} value={smtpPassAgain ? "" : smtp.pass} onChange={(v) => setSmtp({ pass: v })} />
-              {smtpPassAgain ? (
+              {secretError?.field === "smtp.pass" ? (
+                <p role="alert" className="text-xs text-rose-700 mt-1">{secretError.message}</p>
+              ) : smtpPassAgain ? (
                 <p className="text-xs text-amber-700 mt-1">
                   The host has changed, so the saved password is not sent to it. Type the password for the new mail server.
                 </p>
@@ -1076,6 +1099,7 @@ function SettingsAdminPageInner() {
         <MessagingSettings
           value={settings.messaging || {}}
           saved={saved?.messaging}
+          secretError={secretError}
           onChange={(next) => setSettings({ ...settings, messaging: next })}
           onSave={save}
           onReload={load}
