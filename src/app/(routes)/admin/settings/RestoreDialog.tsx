@@ -58,7 +58,7 @@ export default function RestoreDialog({
   };
 
   return (
-    <Modal open onClose={restoring ? () => {} : onClose} title={`Restore ${label}`} size="lg">
+    <Modal open onClose={onClose} title={`Restore ${label}`} size="lg" busy={restoring}>
       {!preview && !error && <p className="text-sm text-neutral-600">Reading the whole backup to check it… this changes nothing.</p>}
 
       {error && <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">{error}</div>}

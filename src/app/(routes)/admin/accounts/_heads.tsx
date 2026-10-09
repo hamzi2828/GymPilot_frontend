@@ -136,7 +136,11 @@ export function ManageHeadsModal({
                             onChange={(e) => setRenaming({ id: renaming.id, label: e.target.value })}
                             onKeyDown={(e) => {
                               if (e.key === "Enter") rename();
-                              if (e.key === "Escape") setRenaming(null);
+                              if (e.key === "Escape") {
+                                // Used here: the dialog around it stays open.
+                                e.preventDefault();
+                                setRenaming(null);
+                              }
                             }}
                             aria-label={`New name for ${head.label}`}
                             className="h-8 flex-1 rounded-lg border border-neutral-200 px-2 text-sm focus:border-[var(--accent)] focus:outline-none"

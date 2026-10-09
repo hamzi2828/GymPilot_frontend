@@ -60,7 +60,7 @@ export function CopyButton({ text, label = "Copy" }: { text: string; label?: str
 /** The password, shown once. Closing it is final: it cannot be fetched again. */
 export function PasswordReveal({ reveal, onClose }: { reveal: RevealedPassword | null; onClose: () => void }) {
   return (
-    <Modal open={!!reveal} onClose={onClose} title="Password — shown once" size="sm">
+    <Modal open={!!reveal} onClose={onClose} title="Password — shown once" size="sm" dismissible={false}>
       {reveal && (
         <div className="space-y-4">
           <p className="text-sm text-neutral-600">
@@ -163,7 +163,7 @@ export function SetPasswordModal({
   if (reveal) return <PasswordReveal reveal={reveal} onClose={onClose} />;
 
   return (
-    <Modal open onClose={onClose} title={`Set a password for ${target.who}`} size="sm">
+    <Modal open onClose={onClose} title={`Set a password for ${target.who}`} size="sm" busy={busy}>
       <div className="space-y-4">
         <p className="text-sm text-neutral-600">
           For when they cannot reset it by email. Their current password stops working and they are signed out of every
@@ -190,7 +190,7 @@ export function SetPasswordModal({
         )}
         {error && <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>}
         <div className="flex justify-end gap-2 pt-1">
-          <SecondaryButton onClick={onClose}>Cancel</SecondaryButton>
+          <SecondaryButton onClick={onClose} disabled={busy}>Cancel</SecondaryButton>
           <PrimaryButton onClick={submit} disabled={busy}>
             {busy ? "Setting…" : mode === "type" ? "Set password" : "Generate password"}
           </PrimaryButton>

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useId, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { BILLING_PATH } from "./api";
@@ -231,6 +231,7 @@ export function Select2({
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const listboxId = useId();
+  const markDialogTouched = useContext(DialogTouchedContext);
 
   const selected = useMemo(() => options.find((o) => o.value === value) || null, [options, value]);
   const showSearch = searchable ?? options.length > SEARCH_THRESHOLD;
@@ -311,6 +312,7 @@ export function Select2({
   }, [active, open]);
 
   const commit = (option: SelectOption) => {
+    markDialogTouched?.();
     onChange(option.value);
     setOpen(false);
     triggerRef.current?.focus();
@@ -340,9 +342,16 @@ export function Select2({
     } else if (event.key === "Enter") {
       event.preventDefault();
       if (filtered[active]) commit(filtered[active]);
-    } else if (event.key === "Escape" || event.key === "Tab") {
+    } else if (event.key === "Escape") {
+      // Marked as used, so a dialog this field sits in closes the list only.
+      event.preventDefault();
       setOpen(false);
-      if (event.key === "Escape") triggerRef.current?.focus();
+      triggerRef.current?.focus();
+    } else if (event.key === "Tab") {
+      // Back to the field first: Tab then moves on from where the field is,
+      // not from the panel, which is drawn at the end of the page.
+      setOpen(false);
+      triggerRef.current?.focus();
     }
   };
 
@@ -378,6 +387,7 @@ export function Select2({
             aria-label="Clear selection"
             onClick={(event) => {
               event.stopPropagation();
+              markDialogTouched?.();
               onChange("");
             }}
             className="shrink-0 rounded px-1 text-neutral-400 hover:text-neutral-700"
@@ -404,6 +414,7 @@ export function Select2({
         createPortal(
           <div
             ref={panelRef}
+            data-dialog-popover=""
             style={{
               position: "fixed",
               top: coords.top,
@@ -620,44 +631,197 @@ export function Spinner() {
   );
 }
 
-export function Modal({
-  open,
-  onClose,
-  title,
-  children,
-  size = "md",
-}: {
+// ---------------------------------------------------------------------------
+// Modal
+//
+// The rules a dialog follows, so no screen has to think about them:
+//
+//   * A dialog with anything to fill in never closes on a tap outside it: a
+//     stray tap, or a text selection dragged out past the edge, must not
+//     throw a half-filled form away. It closes by its own Cancel / Save
+//     buttons or the ✕. One with nothing to fill in (a receipt, a profile, a
+//     yes/no question) still closes on a tap outside.
+//   * Escape closes it until something has been typed or picked in it.
+//   * `busy` (a save in flight) blocks every way out until it settles.
+//   * `dismissible={false}` leaves only the dialog's own button: for the
+//     "password, shown once" kind of screen that must be read before it goes.
+//   * `error` is shown inside the dialog, above the scrolling body, so a
+//     failed save is never hidden on the page behind.
+//
+// Focus moves into the dialog when it opens, stays inside it on Tab, and goes
+// back to whatever opened it on close.
+// ---------------------------------------------------------------------------
+
+// Open dialogs, outermost first. Escape and Tab belong to the last one only,
+// so a confirm over a form closes itself and not the form underneath.
+const openDialogs: object[] = [];
+
+// What makes a dialog a form. Select2 draws a button with this role.
+const FIELDS = 'input:not([type="hidden"]), select, textarea, [role="combobox"]';
+
+const FOCUSABLE =
+  'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+// How a field that is not a native input (Select2) tells the dialog it sits
+// in that the form has been touched.
+const DialogTouchedContext = createContext<(() => void) | null>(null);
+
+interface ModalProps {
   open: boolean;
   onClose: () => void;
   title: string;
   children: React.ReactNode;
   size?: "sm" | "md" | "lg" | "xl";
-}) {
+  /** A save is in flight: nothing closes the dialog until it settles. */
+  busy?: boolean;
+  /** False leaves the dialog's own button as the only way out. */
+  dismissible?: boolean;
+  /** Why the last save failed, shown inside the dialog. */
+  error?: React.ReactNode;
+}
+
+export function Modal({ open, ...rest }: ModalProps) {
+  // Mounted only while open, so each opening starts untouched.
   if (!open) return null;
+  return <ModalDialog {...rest} />;
+}
+
+function ModalDialog({ onClose, title, children, size = "md", busy = false, dismissible = true, error }: Omit<ModalProps, "open">) {
+  const titleId = useId();
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const touched = useRef(false);
+  const pressedBackdrop = useRef(false);
+  const markTouched = useCallback(() => {
+    touched.current = true;
+  }, []);
+
+  // The document listener below is bound once; it reads these through a ref.
+  const live = useRef({ onClose, busy, dismissible });
+  useEffect(() => {
+    live.current = { onClose, busy, dismissible };
+  });
+
+  useEffect(() => {
+    const token = {};
+    openDialogs.push(token);
+
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const dialog = dialogRef.current;
+    // A field that asked for focus itself (autoFocus) keeps it. Otherwise the
+    // dialog takes it rather than its first field, which on a phone would
+    // throw the keyboard up over a form nobody has read yet.
+    if (dialog && !dialog.contains(document.activeElement)) dialog.focus();
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (openDialogs[openDialogs.length - 1] !== token) return;
+      const node = dialogRef.current;
+      if (!node) return;
+
+      if (event.key === "Escape") {
+        // Something inside (an open dropdown) already used this Escape.
+        if (event.defaultPrevented || event.isComposing) return;
+        const now = live.current;
+        if (now.busy || !now.dismissible || touched.current) return;
+        event.preventDefault();
+        now.onClose();
+        return;
+      }
+
+      if (event.key !== "Tab") return;
+      const current = document.activeElement;
+      // A dropdown panel is drawn outside the dialog but belongs to it.
+      if (current instanceof HTMLElement && current.closest("[data-dialog-popover]")) return;
+      const fields = Array.from(node.querySelectorAll<HTMLElement>(FOCUSABLE)).filter((el) => el.getClientRects().length > 0);
+      if (!fields.length) {
+        event.preventDefault();
+        node.focus();
+        return;
+      }
+      const first = fields[0];
+      const last = fields[fields.length - 1];
+      if (!node.contains(current)) {
+        event.preventDefault();
+        first.focus();
+      } else if (event.shiftKey && (current === first || current === node)) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && current === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      const index = openDialogs.indexOf(token);
+      if (index >= 0) openDialogs.splice(index, 1);
+      if (opener && opener.isConnected) opener.focus();
+    };
+  }, []);
+
   const sizeCls = {
     sm: "max-w-md",
     md: "max-w-xl",
     lg: "max-w-3xl",
     xl: "max-w-5xl",
   }[size];
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-      <div
-        className={`w-full ${sizeCls} bg-white rounded-lg shadow-2xl max-h-[90vh] overflow-hidden flex flex-col`}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between px-6 py-4 border-b border-neutral-200">
-          <h2 className="text-sm font-semibold text-neutral-900">{title}</h2>
-          <button
-            onClick={onClose}
-            className="p-1 text-neutral-400 hover:text-neutral-700 rounded"
-            aria-label="Close"
-          >
-            ✕
-          </button>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      // Both the press and the release must land on the backdrop: a drag that
+      // starts inside a field and ends outside the box is not a dismissal.
+      onMouseDown={(event) => {
+        pressedBackdrop.current = event.target === event.currentTarget;
+      }}
+      onClick={(event) => {
+        const onBackdrop = event.target === event.currentTarget && pressedBackdrop.current;
+        pressedBackdrop.current = false;
+        if (!onBackdrop || busy || !dismissible) return;
+        if (dialogRef.current?.querySelector(FIELDS)) return;
+        onClose();
+      }}
+    >
+      <DialogTouchedContext.Provider value={markTouched}>
+        <div
+          ref={dialogRef}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={titleId}
+          aria-busy={busy || undefined}
+          tabIndex={-1}
+          // Every native field reports a change here, typed or picked.
+          onChange={markTouched}
+          // Nothing clicked inside reaches the backdrop, or the page behind.
+          onClick={(event) => event.stopPropagation()}
+          className={`w-full ${sizeCls} bg-white rounded-lg shadow-2xl max-h-[90vh] overflow-hidden flex flex-col focus:outline-none`}
+        >
+          <div className="flex items-center justify-between gap-3 px-6 py-4 border-b border-neutral-200">
+            <h2 id={titleId} className="min-w-0 text-sm font-semibold text-neutral-900">
+              {title}
+            </h2>
+            {dismissible && (
+              <button
+                type="button"
+                onClick={onClose}
+                disabled={busy}
+                className="p-1 text-neutral-400 hover:text-neutral-700 rounded disabled:opacity-40 disabled:cursor-not-allowed"
+                aria-label="Close"
+                title="Close"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+          {error ? (
+            <div role="alert" className="mx-6 mt-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+              {error}
+            </div>
+          ) : null}
+          <div className="px-6 py-5 overflow-y-auto admin-scroll">{children}</div>
         </div>
-        <div className="px-6 py-5 overflow-y-auto admin-scroll">{children}</div>
-      </div>
+      </DialogTouchedContext.Provider>
     </div>
   );
 }

@@ -420,7 +420,9 @@ export default function AddMemberModal({
   const who = [member.firstName.trim(), member.lastName.trim()].filter(Boolean).join(" ");
 
   return (
-    <Modal open={open} onClose={onClose} title={done ? "Member registered" : "Add member"} size="xl">
+    // Keyed, so the result is a dialog of its own: one that showed a password
+    // closes only by its Done button, since that password is never shown again.
+    <Modal key={done ? "done" : "form"} open={open} onClose={onClose} title={done ? "Member registered" : "Add member"} size="xl" busy={saving} dismissible={!done?.password}>
       {done ? (
         <Registered result={done} onPrint={print} printing={printing} error={error} onClose={onClose} />
       ) : (
@@ -612,7 +614,7 @@ export default function AddMemberModal({
           )}
 
           <div className="flex justify-end gap-2">
-            <SecondaryButton onClick={onClose}>Cancel</SecondaryButton>
+            <SecondaryButton onClick={onClose} disabled={saving}>Cancel</SecondaryButton>
             <PrimaryButton onClick={submit} disabled={saving}>
               {saving ? "Saving…" : canSell && selling ? `Register ${who || "member"} & take payment` : `Register ${who || "member"}`}
             </PrimaryButton>
