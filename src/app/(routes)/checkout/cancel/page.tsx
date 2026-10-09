@@ -12,7 +12,7 @@ export default function CheckoutCancelPage() {
   const { mobileNumber } = useSiteSettings();
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center py-12 px-4">
+    <main className="min-h-screen bg-gray-50 flex items-center justify-center py-12 px-4">
       <div className="max-w-md w-full">
         <div className="bg-white shadow-lg rounded-lg overflow-hidden">
           {/* Cancel Header */}
@@ -115,6 +115,6 @@ export default function CheckoutCancelPage() {
           </p>
         </div>
       </div>
-    </div>
+    </main>
   );
 }

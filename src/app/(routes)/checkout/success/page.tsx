@@ -73,15 +73,17 @@ function SuccessContent() {
     };
   }, [check]);
 
+  // Each state's root is the page's <main>: the site layout no longer wraps
+  // pages in one, so without it this page has no main landmark at all.
   if (status === "checking") {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <main className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center px-4" role="status">
           <div className="animate-spin rounded-full h-16 w-16 spinner-accent border-b-2 mx-auto"></div>
           <p className="mt-4 text-gray-600">Confirming your payment…</p>
           <p className="mt-1 text-sm text-gray-500">This can take a few seconds. Please keep this page open.</p>
         </div>
-      </div>
+      </main>
     );
   }
 
@@ -93,7 +95,7 @@ function SuccessContent() {
         ? "Your payment has not arrived yet"
         : "No payment to show";
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+      <main className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
         <div className="max-w-md w-full bg-white shadow-lg rounded-lg p-8">
           <div className="text-center">
             <div className="mx-auto flex items-center justify-center h-20 w-20 rounded-full bg-amber-100">
@@ -144,12 +146,12 @@ function SuccessContent() {
             </div>
           </div>
         </div>
-      </div>
+      </main>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-12">
+    <main className="min-h-screen bg-gray-50 py-12">
       <div className="max-w-3xl mx-auto px-4">
         <div className="bg-white shadow-lg rounded-lg overflow-hidden">
           {/* Success Header */}
@@ -227,19 +229,19 @@ function SuccessContent() {
           </p>
         </div>
       </div>
-    </div>
+    </main>
   );
 }
 
 export default function CheckoutSuccessPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <main className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
           <div className="animate-spin rounded-full h-16 w-16 spinner-accent border-b-2 mx-auto"></div>
           <p className="mt-4 text-gray-600">Loading...</p>
         </div>
-      </div>
+      </main>
     }>
       <SuccessContent />
     </Suspense>

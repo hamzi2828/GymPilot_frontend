@@ -356,8 +356,10 @@ const AuthPage: React.FC = () => {
     updateMode(isSignUp ? "signin" : "signup");
   };
 
+  // <main>: the site layout hides its chrome on this page, so the page's own
+  // root is the landmark a screen reader jumps to.
   return (
-    <div className="min-h-screen flex overflow-hidden bg-gradient-to-br from-gray-50 via-white to-gray-100">
+    <main className="min-h-screen flex overflow-hidden bg-gradient-to-br from-gray-50 via-white to-gray-100">
       {/* Left Side - Auth Form, or the second step once a password is accepted */}
       {twoFactor ? (
         <TwoFactorStep
@@ -395,7 +397,7 @@ const AuthPage: React.FC = () => {
 
       <RightSide />
 
-    </div>
+    </main>
   );
 };
 
