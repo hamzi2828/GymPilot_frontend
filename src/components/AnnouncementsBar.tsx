@@ -3,6 +3,9 @@
 // The gym's live announcements, as a bar above the site. Visitors see the
 // public ones; a signed-in member also sees the members-only ones. Each can
 // be dismissed for the session.
+//
+// The bar is part of the page, above the header: the header sits under it and
+// the bar scrolls away with the page (see `.site-header` in globals.css).
 
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
@@ -69,9 +72,9 @@ export default function AnnouncementsBar() {
   };
 
   return (
-    <div>
+    <div role="region" aria-label="Announcements">
       {visible.map((a) => (
-        <div key={a.id} className={`flex items-start justify-between gap-4 px-4 py-2.5 text-sm ${TONE[a.tone] || TONE.info}`} role="status">
+        <div key={a.id} className={`flex items-start justify-between gap-2 py-2.5 pl-4 pr-2 text-sm ${TONE[a.tone] || TONE.info}`} role="status">
           <p className="min-w-0">
             <span className="font-semibold">{a.title}</span>
             {a.body && <span className="ml-2 opacity-90">{a.body}</span>}
@@ -81,7 +84,8 @@ export default function AnnouncementsBar() {
               </a>
             )}
           </p>
-          <button type="button" onClick={() => dismiss(a.id)} aria-label="Dismiss" className="shrink-0 text-lg leading-none opacity-70 hover:opacity-100">
+          {/* A full-size target, so it can be hit with a thumb. */}
+          <button type="button" onClick={() => dismiss(a.id)} aria-label={`Dismiss: ${a.title}`} className="-my-2 flex h-10 w-10 shrink-0 items-center justify-center text-xl leading-none opacity-70 hover:opacity-100">
             ×
           </button>
         </div>

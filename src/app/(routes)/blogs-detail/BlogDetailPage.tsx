@@ -67,7 +67,7 @@ const BlogDetailContent = () => {
   }
 
   return (
-    <div className="min-h-screen gym-blog-custom-bg-dark text-white">
+    <main className="min-h-screen gym-blog-custom-bg-dark text-white">
       {/* Hero Section */}
       <HeroSection
         title={blogData.title}
@@ -115,7 +115,7 @@ const BlogDetailContent = () => {
         categoryId={blogData.categoryId?._id}
         categoryName={blogData.categoryId?.name}
       />
-    </div>
+    </main>
   );
 };
 

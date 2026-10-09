@@ -61,7 +61,7 @@ body {
 
 /* ===================================
      SITE HEADER
-     A single fixed bar with three states:
+     A single floating bar with three states:
        · over-hero  — no surface, only a scrim, so the banner reads full-bleed
        · resting    — glass panel tinted from the active palette's base colour
        · scrolled   — shorter, denser, lifted off the page with a shadow
@@ -70,14 +70,27 @@ body {
      page looking like a row of competing buttons.
      =================================== */
 
+/* Sticky at zero height rather than fixed. The bar still floats over the
+   page (heroes stay full-bleed, other pages keep their own top spacing), but
+   it now takes its place in the document after the announcements bar: with an
+   announcement showing, the header sits under it, and the two scroll together
+   until the header reaches the top edge and stays there. Fixed at top:0, it
+   covered the announcement and the button that dismisses it. */
 .site-header {
   --header-h: 78px;
   --header-h-condensed: 66px;
-  position: fixed;
+  position: sticky;
   top: 0;
+  height: 0;
+  z-index: 100;
+}
+
+/* With the drawer open the page is locked, so the bar pins to the top edge of
+   the screen, over any announcement, which is where the drawer expects it. */
+.site-header.is-open {
+  position: fixed;
   left: 0;
   right: 0;
-  z-index: 100;
 }
 
 .site-header__bar {

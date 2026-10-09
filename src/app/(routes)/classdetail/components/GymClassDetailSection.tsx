@@ -78,7 +78,7 @@ const GymClassDetailSection: React.FC<GymClassDetailSectionProps> = ({ gymClass 
       <section className="py-16 md:py-20 px-4 md:px-8 lg:px-20 relative ">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-16">
           {/* Left Content Area */}
-          <main className="lg:col-span-8 space-y-8 lg:space-y-16">
+          <div className="lg:col-span-8 space-y-8 lg:space-y-16">
             {/* Video Section -- the class's own video only. With none, the
                 class photo stands in; with neither, nothing is shown (this
                 used to play a stock sample clip on every gym's site). */}
@@ -207,7 +207,7 @@ const GymClassDetailSection: React.FC<GymClassDetailSectionProps> = ({ gymClass 
                 )}
               </div>
             </article>
-          </main>
+          </div>
 
           {/* Right Sidebar */}
           <aside
