@@ -161,15 +161,6 @@ const TrainerDetail: React.FC<TrainerDetailProps> = ({ trainer }) => {
                 <p className="text-gray-600">{trainer.experience} years of professional training</p>
               </div>
             )}
-
-            {/* Contact Info */}
-            {(trainer.email || trainer.phone) && (
-              <div>
-                <h2 className="text-lg font-semibold mb-2">Contact Info</h2>
-                {trainer.email && <p className="text-gray-600">📧 {trainer.email}</p>}
-                {trainer.phone && <p className="text-gray-600">📞 {trainer.phone}</p>}
-              </div>
-            )}
           </div>
         </div>
       </div>

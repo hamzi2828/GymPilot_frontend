@@ -17,8 +17,6 @@ export interface Trainer {
   role: string;
   bio?: string;
   image?: string;
-  email?: string;
-  phone?: string;
   specialties?: string[];
   certifications?: string[];
   experience?: number;

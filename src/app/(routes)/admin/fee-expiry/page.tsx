@@ -13,7 +13,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { FiChevronDown, FiDownload, FiPrinter } from "react-icons/fi";
 import { PageHeader, Card, SecondaryButton, Badge, Spinner, EmptyState, ErrorState } from "../_shared/ui";
-import { GYMFOLIO_API, apiGet, replaceParams } from "../_shared/api";
+import { GYMFOLIO_API, apiGet, csvField, replaceParams } from "../_shared/api";
 import { Pager, pageCount } from "../_ops/lists";
 import { PrintStyles, printReport } from "../reports/Print";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
@@ -144,15 +144,9 @@ function owed(row: MembershipRow) {
 }
 
 // Downloads the rows as a CSV the way the other admin lists do (a BOM so
-// Excel reads it as UTF-8). A cell a spreadsheet would run as a formula
-// (a member can type their own name) is kept as text.
+// Excel reads it as UTF-8). Quoted, and never a formula (see csvField).
 function downloadCsv(filename: string, header: string[], lines: (string | number | null | undefined)[][]) {
-  const escape = (value: unknown) => {
-    const text = String(value ?? "");
-    const safe = /^[=@\t\r]|^[+-](?![\d.\s(])/.test(text) ? `'${text}` : text;
-    return `"${safe.replace(/"/g, '""')}"`;
-  };
-  const csv = [header, ...lines].map((row) => row.map(escape).join(",")).join("\r\n");
+  const csv = [header, ...lines].map((row) => row.map(csvField).join(",")).join("\r\n");
   const blob = new Blob([`﻿${csv}`], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
