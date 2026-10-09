@@ -17,7 +17,8 @@ export type PermissionMap = Record<string, PermissionLevel>;
 export interface AdminIdentity {
   id: string;
   name: string;
-  email: string;
+  /** Absent for an account that signs in by username. */
+  email?: string;
   role: string;
   role_name: string;
   is_staff: boolean;

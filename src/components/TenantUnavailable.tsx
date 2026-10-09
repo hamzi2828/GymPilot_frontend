@@ -142,7 +142,7 @@ function RenewPanel() {
   const signIn = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email.trim() || !password) {
-      setError("Enter your email and password.");
+      setError("Enter your email or username, and your password.");
       return;
     }
     setBusy(true);
@@ -250,8 +250,8 @@ function RenewPanel() {
         <p className="text-sm font-semibold text-neutral-900">Sign in to renew</p>
         <p className="mt-1 text-xs text-neutral-500">Use the gym owner&apos;s account, or an admin&apos;s with Settings access.</p>
         <label className="mt-4 block">
-          <span className="text-xs font-medium text-neutral-600">Email</span>
-          <input type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} className={inputClass} />
+          <span className="text-xs font-medium text-neutral-600">Email or username</span>
+          <input type="text" autoComplete="username" autoCapitalize="none" value={email} onChange={(e) => setEmail(e.target.value)} className={inputClass} />
         </label>
         <label className="mt-3 block">
           <span className="text-xs font-medium text-neutral-600">Password</span>
