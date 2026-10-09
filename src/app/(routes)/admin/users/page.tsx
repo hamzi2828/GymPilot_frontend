@@ -7,7 +7,6 @@ import {
   Modal,
   SecondaryButton,
   PrimaryButton,
-  DangerButton,
   SelectField,
   TextField,
   TextArea,
@@ -18,6 +17,7 @@ import {
   UpgradePlanLink,
   Pager,
   useConfirm,
+  ActionMenu,
 } from "../_shared/ui";
 import { API_BASE, GYMFOLIO_API, apiGet, apiJson, isPlanLimitError, replaceParams } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
@@ -461,6 +461,32 @@ function UsersAdminPageInner() {
     }
   };
 
+  const recordConsent = async (u: User) => {
+    if (!confirm(`Record that ${displayName(u)} has consented to fingerprint storage (signed form)?`)) return;
+    try {
+      const r = await apiJson<{ message: string }>(`${API_BASE}/admin/users/${u._id}/consent`, "PUT", { biometric: true });
+      setNotice({ tone: "ok", text: r.message });
+    } catch (e) {
+      setNotice({ tone: "warn", text: e instanceof Error ? e.message : "Could not record consent" });
+    }
+  };
+
+  const signOut = async (u: User) => {
+    const answer = await ask({
+      title: `Sign ${displayName(u)} out of every device?`,
+      body: "They will have to sign in again on each phone and computer.",
+      confirmLabel: "Sign out",
+      danger: false,
+    });
+    if (answer === null) return;
+    try {
+      const r = await apiJson<{ message: string }>(`${API_BASE}/admin/users/${u._id}/logout-all`, "POST");
+      setNotice({ tone: "ok", text: r.message });
+    } catch (e) {
+      setNotice({ tone: "warn", text: e instanceof Error ? e.message : "Could not sign the user out" });
+    }
+  };
+
   const saveRole = async () => {
     if (!selected || !role) return;
     try {
@@ -663,6 +689,9 @@ function UsersAdminPageInner() {
         <ErrorState message={loadErr} onRetry={load} />
       ) : (
         <Table
+          // Thirteen columns do not fit a phone: the table scrolls sideways
+          // inside its card and the name stays in view.
+          stickyFirst
           // Members see what they hold instead of a role (every one of them
           // is a member).
           columns={
@@ -709,62 +738,26 @@ function UsersAdminPageInner() {
             // checks; an account from before the field is active.
             <Badge key="s" color={u.isActive === false ? "rose" : "green"}>{u.isActive === false ? "inactive" : "active"}</Badge>,
             u.createdAt ? new Date(u.createdAt).toLocaleDateString() : "—",
-            <div key="a" className="flex gap-2">
+            <div key="a" className="flex items-center gap-2">
               <SecondaryButton onClick={() => setProfileId(u._id)}>Profile</SecondaryButton>
               {canAssign && <SecondaryButton onClick={() => openAssign(u)}>Package</SecondaryButton>}
               {canManage && (
-                <>
-                  <SecondaryButton onClick={() => { setSelected(u); setRole(u.role || "user"); }}>Role</SecondaryButton>
-                  <SecondaryButton
-                    onClick={() =>
-                      setPasswordFor({
-                        endpoint: `${API_BASE}/admin/users/${u._id}/password`,
-                        who: displayName(u),
-                        username: u.username,
-                      })
-                    }
-                  >
-                    Set password
-                  </SecondaryButton>
-                  <SecondaryButton
-                    onClick={async () => {
-                      if (!confirm(`Record that ${displayName(u)} has consented to fingerprint storage (signed form)?`)) return;
-                      try {
-                        const r = await apiJson<{ message: string }>(`${API_BASE}/admin/users/${u._id}/consent`, "PUT", { biometric: true });
-                        setNotice({ tone: "ok", text: r.message });
-                      } catch (e) {
-                        setNotice({ tone: "warn", text: e instanceof Error ? e.message : "Could not record consent" });
-                      }
-                    }}
-                  >
-                    Consent
-                  </SecondaryButton>
-                  <SecondaryButton
-                    onClick={async () => {
-                      const answer = await ask({
-                        title: `Sign ${displayName(u)} out of every device?`,
-                        body: "They will have to sign in again on each phone and computer.",
-                        confirmLabel: "Sign out",
-                        danger: false,
-                      });
-                      if (answer === null) return;
-                      try {
-                        const r = await apiJson<{ message: string }>(`${API_BASE}/admin/users/${u._id}/logout-all`, "POST");
-                        setNotice({ tone: "ok", text: r.message });
-                      } catch (e) {
-                        setNotice({ tone: "warn", text: e instanceof Error ? e.message : "Could not sign the user out" });
-                      }
-                    }}
-                  >
-                    Sign out
-                  </SecondaryButton>
-                  {u.isActive === false ? (
-                    <SecondaryButton onClick={() => setActive(u, true)}>Activate</SecondaryButton>
-                  ) : (
-                    <SecondaryButton onClick={() => setActive(u, false)}>Deactivate</SecondaryButton>
-                  )}
-                  <DangerButton onClick={() => remove(u)}>Delete</DangerButton>
-                </>
+                <ActionMenu
+                  ariaLabel={`More for ${displayName(u)}`}
+                  actions={[
+                    { label: "Change role", onClick: () => { setSelected(u); setRole(u.role || "user"); } },
+                    {
+                      label: "Set password",
+                      onClick: () => setPasswordFor({ endpoint: `${API_BASE}/admin/users/${u._id}/password`, who: displayName(u), username: u.username }),
+                    },
+                    { label: "Record fingerprint consent", onClick: () => recordConsent(u) },
+                    { label: "Sign out of every device", onClick: () => signOut(u) },
+                    u.isActive === false
+                      ? { label: "Activate", onClick: () => setActive(u, true) }
+                      : { label: "Deactivate", onClick: () => setActive(u, false) },
+                    { label: "Delete", onClick: () => remove(u), danger: true },
+                  ]}
+                />
               )}
             </div>,
           ])}

@@ -33,7 +33,8 @@ export default function AdminHeader({
   };
 
   return (
-    <header className="flex items-center justify-between h-16 px-6 bg-white border-b border-neutral-200 lg:px-10">
+    // `relative`: on a phone the search box lays itself over the header.
+    <header className="relative flex items-center justify-between h-16 px-6 bg-white border-b border-neutral-200 lg:px-10">
       <div className="flex items-center gap-4">
         <button
           onClick={onToggleSidebar}

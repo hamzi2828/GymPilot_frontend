@@ -980,7 +980,9 @@ function AccountsAdminPageInner() {
         </div>
       </Card>
 
-      <div className="mb-4 flex items-center gap-1 border-b border-neutral-200">
+      {/* The strip scrolls sideways on a phone rather than pushing the page wide. */}
+      <div className="mb-4 border-b border-neutral-200">
+        <div className="-mb-px flex items-center gap-1 overflow-x-auto">
         {([
           { id: "overview", label: "Overview" },
           { id: "sales", label: "Sales" },
@@ -994,7 +996,7 @@ function AccountsAdminPageInner() {
               setTab(entry.id);
               replaceParams({ tab: entry.id === "overview" ? null : entry.id });
             }}
-            className={`-mb-px border-b-2 px-4 py-2.5 text-sm font-medium transition-colors ${
+            className={`shrink-0 whitespace-nowrap border-b-2 px-4 py-2.5 text-sm font-medium transition-colors ${
               tab === entry.id
                 ? "border-[var(--accent)] text-neutral-900"
                 : "border-transparent text-neutral-500 hover:text-neutral-800"
@@ -1003,6 +1005,7 @@ function AccountsAdminPageInner() {
             {entry.label}
           </button>
         ))}
+        </div>
       </div>
 
       {/* Held at reduced opacity on refetch rather than flashing a skeleton. */}

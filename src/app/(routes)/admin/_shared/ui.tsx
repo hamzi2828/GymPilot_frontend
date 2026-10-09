@@ -26,7 +26,8 @@ export function PageHeader({
           {title}
         </h1>
       </div>
-      {actions && <div className="flex items-center gap-2">{actions}</div>}
+      {/* Wraps: four buttons do not fit across a phone. */}
+      {actions && <div className="flex flex-wrap items-center gap-2 md:justify-end">{actions}</div>}
     </div>
   );
 }
@@ -958,14 +959,180 @@ export function useLatestRequest(): () => () => boolean {
   }, []);
 }
 
+// ---------------------------------------------------------------------------
+// ActionMenu
+//
+// The lesser actions on a table row, behind one "More" button, so a row is
+// two or three buttons wide instead of eight. Drawn at the end of the page at
+// fixed coordinates for the same reason Select2's panel is: a table scrolls
+// sideways inside its card, and a menu inside it would be clipped.
+// ---------------------------------------------------------------------------
+
+export interface MenuAction {
+  label: string;
+  onClick: () => void;
+  /** Shown in red: it deletes or cannot be undone. */
+  danger?: boolean;
+}
+
+const MENU_WIDTH = 224;
+
+export function ActionMenu({
+  actions,
+  label = "More",
+  ariaLabel,
+}: {
+  actions: MenuAction[];
+  label?: string;
+  /** Names whose actions these are, for a screen reader: "More for Sara Khan". */
+  ariaLabel?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [coords, setCoords] = useState<{ top: number; left: number; flipped: boolean } | null>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const menuId = useId();
+  const count = actions.length;
+
+  useEffect(() => {
+    if (!open) return;
+    const node = triggerRef.current;
+    if (node) {
+      const rect = node.getBoundingClientRect();
+      const below = window.innerHeight - rect.bottom;
+      const flipped = below < count * 40 + 24 && rect.top > below;
+      setCoords({
+        top: flipped ? rect.top - 6 : rect.bottom + 6,
+        // Under the button's right edge, kept on screen at either side.
+        left: Math.max(8, Math.min(rect.right - MENU_WIDTH, window.innerWidth - MENU_WIDTH - 8)),
+        flipped,
+      });
+    }
+
+    const close = () => setOpen(false);
+    const onPointerDown = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (menuRef.current?.contains(target) || triggerRef.current?.contains(target)) return;
+      setOpen(false);
+    };
+    // A fixed menu does not follow its row, so scrolling puts it away.
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+    document.addEventListener("mousedown", onPointerDown);
+    return () => {
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
+      document.removeEventListener("mousedown", onPointerDown);
+    };
+  }, [open, count]);
+
+  useEffect(() => {
+    if (!open || !coords) return;
+    menuRef.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
+  }, [open, coords]);
+
+  const onMenuKeyDown = (event: React.KeyboardEvent) => {
+    const items = Array.from(menuRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') || []);
+    const at = items.indexOf(document.activeElement as HTMLElement);
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      items[Math.min(items.length - 1, at + 1)]?.focus();
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      items[Math.max(0, at - 1)]?.focus();
+    } else if (event.key === "Home") {
+      event.preventDefault();
+      items[0]?.focus();
+    } else if (event.key === "End") {
+      event.preventDefault();
+      items[items.length - 1]?.focus();
+    } else if (event.key === "Escape") {
+      // Marked as used, so a dialog this menu sits in stays open.
+      event.preventDefault();
+      setOpen(false);
+      triggerRef.current?.focus();
+    } else if (event.key === "Tab") {
+      setOpen(false);
+      triggerRef.current?.focus();
+    }
+  };
+
+  if (!count) return null;
+
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-controls={open ? menuId : undefined}
+        aria-label={ariaLabel}
+        onClick={() => setOpen((v) => !v)}
+        className="inline-flex items-center h-9 gap-1 px-3 text-sm font-medium whitespace-nowrap text-neutral-700 bg-white border border-neutral-200 rounded-lg hover:bg-neutral-50 hover:border-neutral-300 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-neutral-300"
+      >
+        {label}
+        <svg aria-hidden="true" viewBox="0 0 20 20" className={`h-4 w-4 text-neutral-400 transition-transform ${open ? "rotate-180" : ""}`} fill="none" stroke="currentColor" strokeWidth="1.6">
+          <path d="M6 8l4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+
+      {open &&
+        coords &&
+        createPortal(
+          <div
+            ref={menuRef}
+            id={menuId}
+            role="menu"
+            aria-label={ariaLabel || label}
+            data-dialog-popover=""
+            onKeyDown={onMenuKeyDown}
+            style={{
+              position: "fixed",
+              top: coords.top,
+              left: coords.left,
+              width: MENU_WIDTH,
+              transform: coords.flipped ? "translateY(-100%)" : undefined,
+              zIndex: 70,
+            }}
+            className="overflow-hidden rounded-lg border border-neutral-200 bg-white py-1 shadow-lg shadow-neutral-900/10"
+          >
+            {actions.map((action) => (
+              <button
+                key={action.label}
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setOpen(false);
+                  action.onClick();
+                }}
+                className={`block w-full px-3 py-2.5 text-left text-sm focus:outline-none ${
+                  action.danger
+                    ? "text-rose-600 hover:bg-rose-50 focus:bg-rose-50"
+                    : "text-neutral-700 hover:bg-neutral-100 focus:bg-neutral-100"
+                }`}
+              >
+                {action.label}
+              </button>
+            ))}
+          </div>,
+          document.body
+        )}
+    </>
+  );
+}
+
 export function Table({
   columns,
   rows,
   empty,
+  stickyFirst = false,
 }: {
   columns: string[];
   rows: React.ReactNode[][];
   empty?: string;
+  /** Keeps the first column in view while a wide table is scrolled sideways. */
+  stickyFirst?: boolean;
 }) {
   if (!rows.length) {
     return <EmptyState title={empty || "No data yet"} />;
@@ -976,8 +1143,13 @@ export function Table({
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-neutral-200 bg-neutral-50/80">
-              {columns.map((c) => (
-                <th key={c} className="whitespace-nowrap px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-neutral-500">
+              {columns.map((c, j) => (
+                <th
+                  key={c}
+                  className={`whitespace-nowrap px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-neutral-500 ${
+                    stickyFirst && j === 0 ? "sticky left-0 z-[1] bg-neutral-50 shadow-[1px_0_0_#e5e5e5]" : ""
+                  }`}
+                >
                   {c}
                 </th>
               ))}
@@ -985,9 +1157,16 @@ export function Table({
           </thead>
           <tbody>
             {rows.map((row, i) => (
-              <tr key={i} className="border-b border-neutral-100 last:border-b-0 transition-colors hover:bg-neutral-50">
+              <tr key={i} className="group border-b border-neutral-100 last:border-b-0 transition-colors hover:bg-neutral-50">
                 {row.map((cell, j) => (
-                  <td key={j} className="px-5 py-3.5 align-middle text-neutral-700">{cell}</td>
+                  <td
+                    key={j}
+                    className={`px-5 py-3.5 align-middle text-neutral-700 ${
+                      stickyFirst && j === 0 ? "sticky left-0 z-[1] bg-white shadow-[1px_0_0_#e5e5e5] transition-colors group-hover:bg-neutral-50" : ""
+                    }`}
+                  >
+                    {cell}
+                  </td>
                 ))}
               </tr>
             ))}
