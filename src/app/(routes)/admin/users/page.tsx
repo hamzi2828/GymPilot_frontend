@@ -18,6 +18,7 @@ import {
   Pager,
   useConfirm,
   ActionMenu,
+  useRequestId,
 } from "../_shared/ui";
 import { API_BASE, GYMFOLIO_API, apiGet, apiJson, isPlanLimitError, replaceParams } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
@@ -267,8 +268,11 @@ function UsersAdminPageInner() {
   const [assigning, setAssigning] = useState(false);
   const emptyAssign = { packageId: "", paymentMethod: "cash", markPaid: "yes", durationMonths: "" };
   const [assignDraft, setAssignDraft] = useState(emptyAssign);
+  // Sent with the sale, so Assign pressed again after a lost reply sells once.
+  const requestId = useRequestId();
 
   const openAssign = async (u: User) => {
+    requestId.reset();
     setAssignFor(u);
     setAssignDraft(emptyAssign);
     setAssignErr(null);
@@ -288,13 +292,15 @@ function UsersAdminPageInner() {
     setAssigning(true);
     setAssignErr(null);
     try {
-      const res = await apiJson<{ message: string }>(`${GYMFOLIO_API}/package-orders/assign`, "POST", {
+      const body = {
         userId: assignFor._id,
         packageId: assignDraft.packageId,
         paymentMethod: assignDraft.paymentMethod,
         markPaid: assignDraft.markPaid === "yes",
         durationMonths: assignDraft.durationMonths ? Number(assignDraft.durationMonths) : undefined,
-      });
+      };
+      const res = await apiJson<{ message: string }>(`${GYMFOLIO_API}/package-orders/assign`, "POST", { ...body, requestId: requestId.for("assign", body) });
+      requestId.reset();
       setAssignFor(null);
       setNotice({ tone: "ok", text: res.message || "Package assigned." });
       setSummaries({});

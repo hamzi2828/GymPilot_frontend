@@ -21,6 +21,7 @@ import {
   useConfirm,
   ErrorState,
   useLatestRequest,
+  useRequestId,
 } from "../_shared/ui";
 import { ApiError, GYMFOLIO_API, apiBlob, apiGet, apiJson, absoluteUrl, replaceParams } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
@@ -185,6 +186,9 @@ function memberName(o: PackageOrder) {
 function PackageOrdersAdminPageInner() {
   const { can } = usePermissions();
   const { ask, dialog: confirmDialog } = useConfirm();
+  // Sent with a sale, a renewal and a part payment, so one pressed twice
+  // after a lost reply is recorded once.
+  const requestId = useRequestId();
   const manage = can("package-orders", "manage");
   // The filters live in the address as well, and it can name an order to
   // open (?id=, from the header search). Read again whenever the address
@@ -307,6 +311,7 @@ function PackageOrdersAdminPageInner() {
   };
 
   const openAssign = async () => {
+    requestId.reset();
     setAssignDraft(emptyAssign);
     setAssignMember(null);
     setError(null);
@@ -322,6 +327,7 @@ function PackageOrdersAdminPageInner() {
       const res = (await fn()) as { message?: string } | null | undefined;
       // null: they backed out of a question asked on the way. Nothing was done.
       if (res === null) return;
+      requestId.reset();
       setNotice((res && res.message) || label);
       setAction("");
       setSelected(null);
@@ -340,7 +346,7 @@ function PackageOrdersAdminPageInner() {
       const withTrainer = !!d.trainerId;
       // Amounts go as typed: the API reads "5,000" as readily as 5000, and
       // says which field it could not read.
-      const res = await apiJson<{ message: string }>(`${GYMFOLIO_API}/package-orders/assign`, "POST", {
+      const body = {
         userId: assignMember.id,
         packageId: d.packageId,
         paymentMethod: d.paymentMethod,
@@ -359,7 +365,8 @@ function PackageOrdersAdminPageInner() {
         trainerFee: withTrainer ? d.trainerFee || undefined : undefined,
         trainerCommissionType: withTrainer ? d.trainerCommissionType : undefined,
         trainerCommissionValue: withTrainer ? d.trainerCommissionValue || undefined : undefined,
-      });
+      };
+      const res = await apiJson<{ message: string }>(`${GYMFOLIO_API}/package-orders/assign`, "POST", { ...body, requestId: requestId.for("assign", body) });
       setAssignOpen(false);
       return res;
     });
@@ -395,6 +402,7 @@ function PackageOrdersAdminPageInner() {
   };
 
   const openAction = async (o: PackageOrder, a: typeof action) => {
+    requestId.reset();
     openOrder(o, a);
     if (a === "change" && !packages.length) await loadPickers();
   };
@@ -413,6 +421,8 @@ function PackageOrdersAdminPageInner() {
   }, [urlId]);
 
   const post = (o: PackageOrder, path: string, body?: unknown) => apiJson<{ message: string }>(`${GYMFOLIO_API}/package-orders/${o._id}/${path}`, "POST", body);
+  // The same, for money taken at the desk: carries this attempt's id.
+  const postOnce = (o: PackageOrder, path: string, body: Record<string, unknown>) => post(o, path, { ...body, requestId: requestId.for(`${path} ${o._id}`, body) });
 
   // Card payments go back through Stripe; cash, bank and desk-terminal ones
   // are only recorded -- the money moves by hand. Either way the membership
@@ -1032,7 +1042,7 @@ function PackageOrdersAdminPageInner() {
                 <div className="sm:col-span-2 flex justify-end">
                   <PrimaryButton
                     disabled={busy || !draft.payAmount}
-                    onClick={() => run("Payment recorded.", () => post(selected, "payments", { amount: draft.payAmount, method: draft.payMethod, note: draft.payNote || undefined }))}
+                    onClick={() => run("Payment recorded.", () => postOnce(selected, "payments", { amount: draft.payAmount, method: draft.payMethod, note: draft.payNote || undefined }))}
                   >
                     {busy ? "Recording…" : "Record payment"}
                   </PrimaryButton>
@@ -1104,7 +1114,7 @@ function PackageOrdersAdminPageInner() {
                     disabled={busy}
                     onClick={() =>
                       run("Renewed.", () =>
-                        post(selected, "renew", {
+                        postOnce(selected, "renew", {
                           paymentMethod: draft.paymentMethod,
                           markPaid: draft.markPaid === "yes",
                           months: draft.months || undefined,

@@ -13,7 +13,7 @@
 // order actually recorded.
 
 import { useEffect, useState, type ReactNode } from "react";
-import { Modal, PrimaryButton, SecondaryButton, SelectField, TextArea, TextField, Toggle, UpgradePlanLink } from "../_shared/ui";
+import { Modal, PrimaryButton, SecondaryButton, SelectField, TextArea, TextField, Toggle, UpgradePlanLink, useRequestId } from "../_shared/ui";
 import { API_BASE, GYMFOLIO_API, apiGet, apiJson, isPlanLimitError } from "../_shared/api";
 import { EMPTY_RECEIPT_PROFILE, loadReceiptProfile, printReceipt, type ReceiptProfile, type ThermalReceiptProps } from "@/components/receipts";
 import { CopyButton, CredentialsChoice, MIN_PASSWORD_LENGTH, type CredentialMode } from "./PasswordDialogs";
@@ -308,6 +308,8 @@ export default function AddMemberModal({
   const [limitHit, setLimitHit] = useState(false);
   const [done, setDone] = useState<RegisterResult | null>(null);
   const [printing, setPrinting] = useState(false);
+  // The sale carries this attempt's id, as every sale at the desk does.
+  const requestId = useRequestId();
 
   // A fresh form each time it opens, and the pickers read again (a package
   // or trainer added a minute ago should be there).
@@ -317,6 +319,7 @@ export default function AddMemberModal({
       setDone(null);
       return;
     }
+    requestId.reset();
     setMember(EMPTY_MEMBER);
     setCredentials("show");
     setPassword("");
@@ -341,7 +344,7 @@ export default function AddMemberModal({
     loadReceiptProfile(RECEIPT_PROFILE_URL)
       .then(setProfile)
       .catch(() => setProfile(EMPTY_RECEIPT_PROFILE));
-  }, [open, canSell]);
+  }, [open, canSell, requestId]);
 
   const pkg = packages.find((p) => p._id === sale.packageId);
   const currency = pkg?.currency || "";
@@ -369,7 +372,7 @@ export default function AddMemberModal({
     const withTrainer = !!sale.trainerId;
     try {
       // Amounts go as typed: the API reads "5,000" as readily as 5000.
-      const res = await apiJson<RegisterResult>(REGISTER_URL, "POST", {
+      const body = {
         ...member,
         credentials,
         ...(credentials === "set" ? { password } : {}),
@@ -391,7 +394,13 @@ export default function AddMemberModal({
               notes: sale.notes.trim() || undefined,
             }
           : undefined,
-      });
+      };
+      const res = await apiJson<RegisterResult>(
+        REGISTER_URL,
+        "POST",
+        body.membership ? { ...body, membership: { ...body.membership, requestId: requestId.for("register", body) } } : body
+      );
+      requestId.reset();
       setPassword("");
       setDone(res);
       onRegistered(res);

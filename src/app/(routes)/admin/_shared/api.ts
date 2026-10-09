@@ -208,6 +208,18 @@ export function replaceParams(changes: Record<string, string | null | undefined>
 }
 
 /**
+ * A new id for one desk action (the backend's `requestId`: 8 to 100 letters,
+ * digits, hyphens or underscores). See useRequestId in ui.tsx for when the
+ * same one is sent again.
+ */
+export function newRequestId(): string {
+  // randomUUID is missing outside https (a desk PC reaching the panel by IP).
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  const random = () => Math.random().toString(36).slice(2, 12);
+  return `${Date.now().toString(36)}-${random()}-${random()}`;
+}
+
+/**
  * One value as a quoted CSV field, for the exports the panel builds itself.
  * A value a spreadsheet would run as a formula (a member types their own
  * name, and "=HYPERLINK(...)" is a name) is kept as text with a leading

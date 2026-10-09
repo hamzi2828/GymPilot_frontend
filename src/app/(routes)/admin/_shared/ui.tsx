@@ -3,7 +3,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useId, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
-import { BILLING_PATH } from "./api";
+import { BILLING_PATH, newRequestId } from "./api";
 
 export function PageHeader({
   title,
@@ -972,6 +972,47 @@ export function useLatestRequest(): () => () => boolean {
     const mine = ++latest.current;
     return () => mine === latest.current;
   }, []);
+}
+
+// ---------------------------------------------------------------------------
+// useRequestId
+//
+// For money taken at the desk (a membership sold, a renewal, a part payment):
+// the API accepts a `requestId` with each, and answers a second request
+// carrying the same id with the first one's result instead of a second sale.
+// So pressing the button again after "Could not reach the server" is safe.
+//
+//   const requestId = useRequestId();
+//
+//   const body = { amount, method, note };
+//   apiJson(url, "POST", { ...body, requestId: requestId.for(url, body) });
+//   ...
+//   requestId.reset();                    // it went through, or the form was opened afresh
+//
+// `for` hands back the same id for as long as it is asked about the same
+// thing: the same `scope` (which order, which member) and the same body. A
+// different amount, method or date is a different sale and gets a new id.
+// Free text does not count: a note added before pressing again must not be
+// what records the money twice. Nor does a password, which is not kept here.
+// ---------------------------------------------------------------------------
+
+const NOT_MATERIAL = new Set(["note", "notes", "discountNote", "staffNotes", "password"]);
+
+export function useRequestId(): { for: (scope: string, body: unknown) => string; reset: () => void } {
+  const held = useRef<{ key: string; id: string } | null>(null);
+  return useMemo(
+    () => ({
+      for(scope: string, body: unknown) {
+        const key = `${scope} ${JSON.stringify(body, (name, value) => (NOT_MATERIAL.has(name) ? undefined : value))}`;
+        if (held.current?.key !== key) held.current = { key, id: newRequestId() };
+        return held.current.id;
+      },
+      reset() {
+        held.current = null;
+      },
+    }),
+    []
+  );
 }
 
 // ---------------------------------------------------------------------------

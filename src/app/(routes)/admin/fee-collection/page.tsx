@@ -14,7 +14,7 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { PageHeader, Card, Badge, Spinner } from "../_shared/ui";
+import { PageHeader, Card, Badge, Spinner, useRequestId } from "../_shared/ui";
 import { API_BASE, GYMFOLIO_API, apiGet, apiJson, absoluteUrl, replaceParams } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
 import { useSiteSettings } from "@/components/ThemeProvider";
@@ -158,6 +158,9 @@ function isExactCode(row: DeskSearchRow, term: string) {
 function FeeCollectionInner() {
   const { can, me } = usePermissions();
   const manage = can("package-orders", "manage");
+  // Sent with every renewal, payment and sale, so one sent twice after a
+  // lost reply takes the money once.
+  const requestId = useRequestId();
   const { siteName } = useSiteSettings();
   const searchParams = useSearchParams();
   const urlMember = searchParams.get("member");
@@ -391,6 +394,7 @@ function FeeCollectionInner() {
   const openMode = useCallback(
     async (next: Mode) => {
       if (!view) return;
+      requestId.reset();
       setError(null);
       setDone(null);
       if (next === "renew") {
@@ -418,7 +422,7 @@ function FeeCollectionInner() {
       }
       setMode(next);
     },
-    [view, canRenew, canDues, manage, m, collectableDues, packages, loadPackages, pkg]
+    [view, canRenew, canDues, manage, m, collectableDues, packages, loadPackages, pkg, requestId]
   );
 
   // Once a member is on screen: open what the address asked for, or hand
@@ -496,6 +500,7 @@ function FeeCollectionInner() {
     setError(null);
     try {
       const res = await send();
+      requestId.reset();
       setDone({ message: describe(res.data), receipt: receipt(res.data) });
       setMode("");
       void receiptProfile();
@@ -527,7 +532,7 @@ function FeeCollectionInner() {
     const member = view.member;
     void act(
       (order) => `Renewed until ${fmtDate(order.subscription?.endDate)}.`,
-      () => apiJson(`${GYMFOLIO_API}/package-orders/${m.orderId}/renew`, "POST", body),
+      () => apiJson(`${GYMFOLIO_API}/package-orders/${m.orderId}/renew`, "POST", { ...body, requestId: requestId.for(`renew ${m.orderId}`, body) }),
       (order) => membershipReceipt(order, member, cashier)
     );
   };
@@ -542,14 +547,10 @@ function FeeCollectionInner() {
     if (amount > chosenDue.balanceDue) return setError(`The balance due is ${money(chosenDue.balanceDue, chosenDue.currency)}; a payment cannot be more than that.`);
     const member = view.member;
     const method = duesDraft.method;
+    const body = { amount, method, note: duesDraft.note.trim() || undefined };
     void act(
       () => "Payment recorded.",
-      () =>
-        apiJson(`${GYMFOLIO_API}/package-orders/${chosenDue.orderId}/payments`, "POST", {
-          amount,
-          method,
-          note: duesDraft.note.trim() || undefined,
-        }),
+      () => apiJson(`${GYMFOLIO_API}/package-orders/${chosenDue.orderId}/payments`, "POST", { ...body, requestId: requestId.for(`payments ${chosenDue.orderId}`, body) }),
       (order) => paymentReceipt(order, member, amount, method, cashier)
     );
   };
@@ -563,21 +564,21 @@ function FeeCollectionInner() {
     if (problem) return setError(problem);
     if (d.startMode === "date" && !d.startDate) return setError("Choose the date the membership starts.");
     const member = view.member;
+    const body = {
+      userId: member.id,
+      packageId: d.packageId,
+      paymentMethod: d.method,
+      markPaid: true,
+      startDate: d.startMode === "date" ? d.startDate : undefined,
+      discountAmount: newQuote.discount > 0 ? newQuote.discount : undefined,
+      discountNote: d.discountNote.trim() || undefined,
+      amountOverride: newQuote.override !== null ? newQuote.override : undefined,
+      amountPaid: newQuote.paid !== null ? newQuote.paid : undefined,
+      waiveJoiningFee: d.waiveJoiningFee || undefined,
+    };
     void act(
       (order) => `${order.packageDetails.name} sold, ${fmtDate(order.subscription?.startDate)} – ${fmtDate(order.subscription?.endDate)}.`,
-      () =>
-        apiJson(`${GYMFOLIO_API}/package-orders/assign`, "POST", {
-          userId: member.id,
-          packageId: d.packageId,
-          paymentMethod: d.method,
-          markPaid: true,
-          startDate: d.startMode === "date" ? d.startDate : undefined,
-          discountAmount: newQuote.discount > 0 ? newQuote.discount : undefined,
-          discountNote: d.discountNote.trim() || undefined,
-          amountOverride: newQuote.override !== null ? newQuote.override : undefined,
-          amountPaid: newQuote.paid !== null ? newQuote.paid : undefined,
-          waiveJoiningFee: d.waiveJoiningFee || undefined,
-        }),
+      () => apiJson(`${GYMFOLIO_API}/package-orders/assign`, "POST", { ...body, requestId: requestId.for("assign", body) }),
       (order) => membershipReceipt(order, member, cashier)
     );
   };
