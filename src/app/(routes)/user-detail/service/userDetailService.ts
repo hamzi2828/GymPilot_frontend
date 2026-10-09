@@ -97,9 +97,19 @@ export interface UpdateUserPayload {
   currentPassword?: string;
 }
 
-/** The API's two refusals when a change needs the current password. */
+/**
+ * The API's refusals when a change needs the current password: none was
+ * sent, it was wrong (or wrong too often: the account's password is then
+ * paused for a while, and the message says so), or the account has none
+ * because it only ever signed in with Google. Each comes with a sentence
+ * fit to show; the API decides which applies, so the forms send what was
+ * typed, even nothing, and show the answer.
+ */
 export const PASSWORD_REQUIRED = "PASSWORD_REQUIRED";
 export const PASSWORD_INCORRECT = "PASSWORD_INCORRECT";
+export const PASSWORD_NOT_SET = "PASSWORD_NOT_SET";
+/** Where an account with no password sets one: the emailed "Forgot password" link. */
+export const FORGOT_PASSWORD_PATH = "/authentication?mode=forgot";
 
 export async function updateUser( payload: UpdateUserPayload) {
   const res = await send("/update/user", { method: "PUT", headers: jsonHeaders(), body: JSON.stringify(payload) }, "Update failed");

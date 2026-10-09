@@ -26,6 +26,7 @@ import {
   RequestError,
   PASSWORD_REQUIRED,
   PASSWORD_INCORRECT,
+  PASSWORD_NOT_SET,
 } from "./service/userDetailService";
 import { getCurrentUser, removeToken, signInUrl, UserPayload } from "@/helper/helper";
 import { localDateKey, toDateInputValue } from "@/helper/date";
@@ -281,11 +282,14 @@ const UserProfilePageContent: React.FC = () => {
         endSession();
         return { ok: false, message: e.message };
       }
-      if (e instanceof RequestError && e.code === PASSWORD_REQUIRED) {
-        return { ok: false, needsPassword: true, message: "Enter your current password to change your email." };
+      // The API's own sentence each time: it knows whether the address was
+      // being added, changed or removed, and when wrong tries have paused
+      // the password.
+      if (e instanceof RequestError && (e.code === PASSWORD_REQUIRED || e.code === PASSWORD_INCORRECT)) {
+        return { ok: false, needsPassword: true, message: e.message };
       }
-      if (e instanceof RequestError && e.code === PASSWORD_INCORRECT) {
-        return { ok: false, needsPassword: true, message: "That password is not right, so your email was not changed. Try again." };
+      if (e instanceof RequestError && e.code === PASSWORD_NOT_SET) {
+        return { ok: false, setPasswordFirst: true, message: e.message };
       }
       console.error("Update error:", e);
       return { ok: false, message: e instanceof Error ? e.message : "Failed to update profile" };

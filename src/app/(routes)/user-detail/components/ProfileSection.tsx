@@ -1,7 +1,8 @@
 "use client";
 
 import React, { Dispatch, SetStateAction, useEffect, useMemo, useState } from "react";
-import { getUserDetailForProfile, SessionEndedError } from "../service/userDetailService";
+import Link from "next/link";
+import { FORGOT_PASSWORD_PATH, getUserDetailForProfile, SessionEndedError } from "../service/userDetailService";
 import { toDateInputValue } from "@/helper/date";
 
 export interface UserProfileShape {
@@ -17,10 +18,11 @@ export interface UserProfileShape {
 
 /**
  * How a save went. A refusal comes back with the sentence to show beside the
- * form (a toast is gone in two seconds), and `needsPassword` when the API
- * wants the current password for it.
+ * form (a toast is gone in two seconds), `needsPassword` when the API wants
+ * the current password for it, and `setPasswordFirst` when the account has
+ * no password to give (it signs in with Google) and must set one first.
  */
-export type SaveResult = { ok: true } | { ok: false; message: string; needsPassword?: boolean };
+export type SaveResult = { ok: true } | { ok: false; message: string; needsPassword?: boolean; setPasswordFirst?: boolean };
 
 export interface ProfileSectionProps<T extends UserProfileShape> {
   userProfile: T | null;
@@ -91,12 +93,16 @@ export function ProfileSection<T extends UserProfileShape>({
   // Set when the API asked for the password although the email looked
   // unchanged from here.
   const [passwordAsked, setPasswordAsked] = useState(false);
+  // The account has no password (it signs in with Google): the refusal is
+  // shown with the way to set one.
+  const [setPasswordFirst, setSetPasswordFirst] = useState(false);
 
   const startEditing = () => {
     setBeforeEdit(userProfile);
     setCurrentPassword("");
     setFormError(null);
     setPasswordAsked(false);
+    setSetPasswordFirst(false);
     setIsEditing(true);
   };
 
@@ -107,6 +113,7 @@ export function ProfileSection<T extends UserProfileShape>({
     setCurrentPassword("");
     setFormError(null);
     setPasswordAsked(false);
+    setSetPasswordFirst(false);
     setIsEditing(false);
   };
 
@@ -178,11 +185,10 @@ export function ProfileSection<T extends UserProfileShape>({
       setFormError("That email address does not look right. Check it and try again.");
       return;
     }
-    if (needsPassword && !currentPassword) {
-      setFormError("Enter your current password to change your email.");
-      return;
-    }
+    // An empty password box is sent as it is: the API answers whether a
+    // password is missing or the account has none to give, and only it knows.
     setFormError(null);
+    setSetPasswordFirst(false);
 
     const result = await onSave(
       {
@@ -205,6 +211,7 @@ export function ProfileSection<T extends UserProfileShape>({
     }
     setFormError(result.message);
     if (result.needsPassword) setPasswordAsked(true);
+    setSetPasswordFirst(!!result.setPasswordFirst);
   };
 
   if (loading) {
@@ -304,18 +311,20 @@ export function ProfileSection<T extends UserProfileShape>({
         )}
       </div>
 
-      {/* Asked for only when the email is being changed: it is where sign-in
-          codes and password resets go, so the API wants proof it is still the
-          member at the keyboard. */}
+      {/* Asked for only when the email is being added, changed or removed: it
+          is where sign-in codes and password resets go, so the API wants
+          proof it is still the member at the keyboard. */}
       {isEditing && needsPassword && (
         <div className="rounded-xl border-2 border-gray-200 bg-gray-50 p-4">
           <label className="block text-sm font-semibold text-gray-900" htmlFor="profile-current-password">
             Current password
           </label>
           <p className="mt-1 text-sm text-gray-600">
-            {(userProfile?.email ?? "").trim()
-              ? "You are changing your email address. Enter your current password to confirm it is you."
-              : "You are removing your email address. Enter your current password to confirm it is you."}
+            {!(userProfile?.email ?? "").trim()
+              ? "You are removing your email address. Enter your current password to confirm it is you."
+              : (beforeEdit?.email ?? "").trim()
+                ? "You are changing your email address. Enter your current password to confirm it is you."
+                : "You are adding an email address. Enter your current password to confirm it is you."}
           </p>
           <input
             id="profile-current-password"
@@ -331,6 +340,14 @@ export function ProfileSection<T extends UserProfileShape>({
       {isEditing && formError && (
         <p role="alert" className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
           {formError}
+          {setPasswordFirst && (
+            <>
+              {" "}
+              <Link href={FORGOT_PASSWORD_PATH} className="font-semibold underline">
+                Set a password
+              </Link>
+            </>
+          )}
         </p>
       )}
 

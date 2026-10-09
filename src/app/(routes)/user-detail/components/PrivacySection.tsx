@@ -5,10 +5,11 @@
 // of their data.
 
 import React, { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { getAuthHeader, removeToken } from "@/helper/helper";
 import { localDateKey } from "@/helper/date";
-import { PASSWORD_INCORRECT, PASSWORD_REQUIRED, RequestError, setTwoFactor as saveTwoFactor } from "../service/userDetailService";
+import { FORGOT_PASSWORD_PATH, PASSWORD_NOT_SET, RequestError, setTwoFactor as saveTwoFactor } from "../service/userDetailService";
 
 const API_BASE = process.env.NEXT_PUBLIC_BACKEND_URL || "";
 
@@ -55,6 +56,9 @@ export const PrivacySection: React.FC<{ twoFactorEnabled?: boolean; biometricCon
   const [turningOff, setTurningOff] = useState(false);
   const [password, setPassword] = useState("");
   const [passwordError, setPasswordError] = useState<string | null>(null);
+  // The account has no password (it signs in with Google): the refusal is
+  // shown with the way to set one.
+  const [setPasswordFirst, setSetPasswordFirst] = useState(false);
 
   useEffect(() => setTwoFactor(twoFactorEnabled), [twoFactorEnabled]);
   useEffect(() => setConsent(biometricConsent), [biometricConsent]);
@@ -77,17 +81,17 @@ export const PrivacySection: React.FC<{ twoFactorEnabled?: boolean; biometricCon
     setTurningOff(false);
     setPassword("");
     setPasswordError(null);
+    setSetPasswordFirst(false);
   };
 
+  // An empty box is sent as it is: the API answers whether a password is
+  // missing or the account has none to give, and only it knows which.
   const turnOff = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!password) {
-      setPasswordError("Enter your current password to turn two-factor sign-in off.");
-      return;
-    }
     setBusy("2fa");
     setNotice(null);
     setPasswordError(null);
+    setSetPasswordFirst(false);
     try {
       const r = await saveTwoFactor(false, password);
       setTwoFactor(false);
@@ -95,13 +99,10 @@ export const PrivacySection: React.FC<{ twoFactorEnabled?: boolean; biometricCon
       setNotice({ tone: "ok", text: r.message || "Two-factor sign-in is off." });
       onChanged?.();
     } catch (err) {
-      if (err instanceof RequestError && err.code === PASSWORD_INCORRECT) {
-        setPasswordError("That password is not right. Two-factor sign-in is still on.");
-      } else if (err instanceof RequestError && err.code === PASSWORD_REQUIRED) {
-        setPasswordError("Enter your current password to turn two-factor sign-in off.");
-      } else {
-        setPasswordError(err instanceof Error ? err.message : "Something went wrong. Two-factor sign-in is still on.");
-      }
+      // The API's own sentence: a missing or wrong password (and, after too
+      // many wrong ones, that the password is paused), or no password at all.
+      setPasswordError(err instanceof Error ? err.message : "Something went wrong. Two-factor sign-in is still on.");
+      setSetPasswordFirst(err instanceof RequestError && err.code === PASSWORD_NOT_SET);
     } finally {
       setBusy(null);
     }
@@ -145,7 +146,19 @@ export const PrivacySection: React.FC<{ twoFactorEnabled?: boolean; biometricCon
                 onChange={(e) => setPassword(e.target.value)}
                 className="mt-2 w-full max-w-sm rounded-lg border-2 border-gray-200 bg-white px-4 py-3 focus:border-primary focus:outline-none"
               />
-              {passwordError && <p role="alert" className="mt-2 text-sm text-red-700">{passwordError}</p>}
+              {passwordError && (
+                <p role="alert" className="mt-2 text-sm text-red-700">
+                  {passwordError}
+                  {setPasswordFirst && (
+                    <>
+                      {" "}
+                      <Link href={FORGOT_PASSWORD_PATH} className="font-semibold underline">
+                        Set a password
+                      </Link>
+                    </>
+                  )}
+                </p>
+              )}
               <div className="mt-3 flex flex-wrap gap-2">
                 <button type="submit" disabled={busy === "2fa"} className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50">
                   {busy === "2fa" ? "Turning off…" : "Turn off two-factor sign-in"}
