@@ -4,7 +4,7 @@
 // the signed agreement, tags and the notes staff keep.
 
 import { useCallback, useEffect, useState } from "react";
-import { Modal, PrimaryButton, SecondaryButton, DangerButton, TextField, TextArea, SelectField, Badge, Spinner, useConfirm } from "../_shared/ui";
+import { Modal, PrimaryButton, SecondaryButton, DangerButton, TextField, TextArea, SelectField, Badge, Spinner, useConfirm, ErrorState } from "../_shared/ui";
 import { API_BASE, apiGet, apiJson, apiForm, absoluteUrl } from "../_shared/api";
 
 interface Profile {
@@ -59,6 +59,7 @@ export default function MemberProfileModal({ userId, onClose, onSaved }: { userI
   const { ask, dialog: confirmDialog } = useConfirm();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(false);
+  const [loadErr, setLoadErr] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
   const [docName, setDocName] = useState("");
@@ -77,8 +78,13 @@ export default function MemberProfileModal({ userId, onClose, onSaved }: { userI
     try {
       const res = await apiGet<{ data: Profile }>(`${API_BASE}/admin/users/${userId}/profile`);
       setProfile(res.data);
+      setLoadErr(null);
     } catch (e) {
-      setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not load the member" });
+      // With a profile already on screen (a reload after a save) it stays,
+      // under a line saying so; with none, the error takes its place.
+      const text = e instanceof Error ? e.message : "Could not load the member";
+      setLoadErr(text);
+      setNotice({ tone: "error", text });
     } finally {
       setLoading(false);
     }
@@ -184,8 +190,10 @@ export default function MemberProfileModal({ userId, onClose, onSaved }: { userI
   return (
     <Modal open={!!userId} onClose={onClose} title={name} size="xl">
       {confirmDialog}
-      {loading || !profile ? (
+      {loading ? (
         <Spinner />
+      ) : !profile ? (
+        <ErrorState message={loadErr || "Could not load the member"} onRetry={load} />
       ) : (
         <div>
           <div className="flex flex-wrap items-center gap-4">

@@ -17,6 +17,7 @@ import {
   EmptyState,
   Select2,
   useConfirm,
+  ErrorState,
 } from "../_shared/ui";
 import { ACCOUNTS_API, apiGet, apiJson, replaceParams } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
@@ -419,6 +420,10 @@ function AccountsAdminPageInner() {
 
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
+  // The open tab could not be read. Kept apart from `err` (a refused save or
+  // delete): this one replaces the tab, which would otherwise show the last
+  // period's figures, or "nothing to report", under the new dates.
+  const [loadErr, setLoadErr] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
   const [overview, setOverview] = useState<Overview | null>(null);
@@ -474,6 +479,7 @@ function AccountsAdminPageInner() {
   const load = useCallback(async () => {
     setLoading(true);
     setErr(null);
+    setLoadErr(null);
     try {
       const params = new URLSearchParams();
       if (from) params.set("from", from);
@@ -513,7 +519,7 @@ function AccountsAdminPageInner() {
         setAssets(res);
       }
     } catch (e) {
-      setErr(e instanceof Error ? e.message : "Could not load the accounts");
+      setLoadErr(e instanceof Error ? e.message : "Could not load the accounts");
     } finally {
       setLoading(false);
     }
@@ -995,6 +1001,8 @@ function AccountsAdminPageInner() {
       <div className={loading ? "pointer-events-none opacity-50 transition-opacity" : "transition-opacity"}>
         {loading && !overview && !sales && !expenses && !assets ? (
           <Spinner />
+        ) : loadErr && !loading ? (
+          <ErrorState message={loadErr} onRetry={load} />
         ) : tab === "overview" ? (
           <OverviewTab data={overview} format={format} />
         ) : tab === "sales" ? (

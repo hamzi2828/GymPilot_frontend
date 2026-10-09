@@ -18,6 +18,7 @@ import {
   Modal,
   Select2,
   useConfirm,
+  ErrorState,
 } from "../_shared/ui";
 import { countryOptions, currencyOptions, countryByCode } from "@/data/countries";
 import { API_BASE, GYMFOLIO_API, apiGet, apiJson, authHeaders } from "../_shared/api";
@@ -272,6 +273,7 @@ function SettingsAdminPageInner() {
   const [banks, setBanks] = useState<Bank[]>([]);
   const { ask, dialog: confirmDialog } = useConfirm();
   const [banksLoading, setBanksLoading] = useState(false);
+  const [banksErr, setBanksErr] = useState<string | null>(null);
   const [bankModal, setBankModal] = useState(false);
   const [editingBank, setEditingBank] = useState<Bank | null>(null);
   const emptyBank = { name: "", accountNumber: "", accountTitle: "", branch: "", iban: "", notes: "" };
@@ -349,8 +351,9 @@ function SettingsAdminPageInner() {
     try {
       const r = await apiGet<{ data?: Bank[]; banks?: Bank[] }>(BANKS_API);
       setBanks(r.data || r.banks || []);
-    } catch {
-      setBanks([]);
+      setBanksErr(null);
+    } catch (e) {
+      setBanksErr(e instanceof Error ? e.message : "Could not load the bank accounts");
     } finally {
       setBanksLoading(false);
     }
@@ -1081,6 +1084,8 @@ function SettingsAdminPageInner() {
 
           {banksLoading ? (
             <Spinner />
+          ) : banksErr ? (
+            <ErrorState message={banksErr} onRetry={loadBanks} />
           ) : banks.length === 0 ? (
             <div className="rounded-xl border border-dashed border-neutral-300 p-10 text-center">
               <p className="text-sm font-medium text-neutral-900">No bank accounts yet</p>

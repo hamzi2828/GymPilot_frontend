@@ -6,7 +6,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { FiPlus } from "react-icons/fi";
-import { PageHeader, Card, PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, SelectField, Badge, Spinner, Table, useConfirm } from "../_shared/ui";
+import { PageHeader, Card, PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, SelectField, Badge, Spinner, Table, useConfirm, ErrorState } from "../_shared/ui";
 import { GYMFOLIO_API, apiGet, apiJson } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
 import { useGymToday } from "@/components/ThemeProvider";
@@ -82,6 +82,7 @@ export default function PtAdminPage() {
   const [summary, setSummary] = useState<Summary[]>([]);
   const [trainers, setTrainers] = useState<TrainerOption[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadErr, setLoadErr] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState({ trainerId: "", date: today(), startTime: "", notes: "" });
@@ -100,8 +101,9 @@ export default function PtAdminPage() {
       const [s, sum] = await Promise.all([apiGet<{ data: Session[] }>(`${PT_API}/sessions?${params}`), apiGet<{ data: Summary[] }>(`${PT_API}/summary?from=${from}&to=${to}`)]);
       setRows(s.data || []);
       setSummary(sum.data || []);
+      setLoadErr(null);
     } catch (e) {
-      setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not load sessions" });
+      setLoadErr(e instanceof Error ? e.message : "Could not load sessions");
     } finally {
       setLoading(false);
     }
@@ -201,7 +203,7 @@ export default function PtAdminPage() {
         </div>
       </Card>
 
-      {summary.length > 0 && (
+      {!loadErr && summary.length > 0 && (
         <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {summary.map((t) => (
             <div key={t.trainer_id} className="rounded-lg border border-neutral-200 bg-white p-4">
@@ -224,6 +226,8 @@ export default function PtAdminPage() {
 
       {loading ? (
         <Spinner />
+      ) : loadErr ? (
+        <ErrorState message={loadErr} onRetry={load} />
       ) : (
         <Table
           columns={["When", "Trainer", "Member", "Paid by", "Status", ""]}

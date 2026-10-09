@@ -16,6 +16,7 @@ import {
   Spinner,
   Table,
   useConfirm,
+  ErrorState,
 } from "../_shared/ui";
 import { GYMFOLIO_API, apiGet, apiJson } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
@@ -90,6 +91,7 @@ export default function CouponsAdminPage() {
   const [draft, setDraft] = useState<Draft>(emptyDraft);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loadErr, setLoadErr] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -100,8 +102,9 @@ export default function CouponsAdminPage() {
       ]);
       setCoupons(c.data || []);
       setPackages(p.data || []);
+      setLoadErr(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not load coupons");
+      setLoadErr(e instanceof Error ? e.message : "Could not load coupons");
     } finally {
       setLoading(false);
     }
@@ -201,6 +204,8 @@ export default function CouponsAdminPage() {
 
       {loading ? (
         <Spinner />
+      ) : loadErr ? (
+        <ErrorState message={loadErr} onRetry={load} />
       ) : (
         <Table
           columns={["Code", "Discount", "Applies to", "Valid", "Used", "Status", ""]}

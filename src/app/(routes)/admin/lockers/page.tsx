@@ -5,7 +5,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { FiPlus } from "react-icons/fi";
-import { PageHeader, Card, PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, useConfirm } from "../_shared/ui";
+import { PageHeader, Card, PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, useConfirm, ErrorState, Spinner } from "../_shared/ui";
 import { API_BASE, apiGet, apiJson } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
 import { MemberPicker, type MemberOption } from "../_ops/MemberPicker";
@@ -31,6 +31,10 @@ export default function LockersPage() {
   const [rows, setRows] = useState<Locker[]>([]);
   const [counts, setCounts] = useState<{ total: number; free: number; assigned: number; maintenance: number; overdue: number } | null>(null);
   const [notice, setNotice] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
+  // True until the wall has been read once; a reload after a change keeps
+  // the wall on screen.
+  const [loading, setLoading] = useState(true);
+  const [loadErr, setLoadErr] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [addDraft, setAddDraft] = useState({ from: "1", to: "20", zone: "", fee: "0" });
   const [selected, setSelected] = useState<Locker | null>(null);
@@ -46,8 +50,11 @@ export default function LockersPage() {
       const r = await apiGet<{ counts: typeof counts; data: Locker[] }>(`${API_BASE}/admin/lockers`);
       setRows(r.data || []);
       setCounts(r.counts);
+      setLoadErr(null);
     } catch (e) {
-      setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not load lockers" });
+      setLoadErr(e instanceof Error ? e.message : "Could not load lockers");
+    } finally {
+      setLoading(false);
     }
   }, []);
 
@@ -132,7 +139,7 @@ export default function LockersPage() {
         }
       />
       {notice && <p className={`mb-4 rounded-lg px-3 py-2 text-sm ${notice.tone === "ok" ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}>{notice.text}</p>}
-      {counts && (
+      {counts && !loadErr && (
         <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-5">
           {[["Total", counts.total], ["Free", counts.free], ["Assigned", counts.assigned], ["Overdue", counts.overdue], ["Out of order", counts.maintenance]].map(([label, value]) => (
             <div key={String(label)} className="rounded-lg border border-neutral-200 bg-white p-4">
@@ -142,7 +149,17 @@ export default function LockersPage() {
           ))}
         </div>
       )}
-      {rows.length === 0 ? (
+      {loading ? (
+        <Spinner />
+      ) : loadErr ? (
+        <ErrorState
+          message={loadErr}
+          onRetry={() => {
+            setLoading(true);
+            load();
+          }}
+        />
+      ) : rows.length === 0 ? (
         <Card className="p-8 text-center text-sm text-neutral-500">No lockers yet. Add a range to draw the wall.</Card>
       ) : (
         zones.map((zone) => (

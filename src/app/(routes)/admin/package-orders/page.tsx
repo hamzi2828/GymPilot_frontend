@@ -19,6 +19,7 @@ import {
   Card,
   EmptyState,
   useConfirm,
+  ErrorState,
 } from "../_shared/ui";
 import { GYMFOLIO_API, apiGet, apiJson, authHeaders, absoluteUrl, replaceParams } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
@@ -199,6 +200,7 @@ function PackageOrdersAdminPageInner() {
   const [filters, setFilters] = useState<Filters>(url);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [loadErr, setLoadErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const [selected, setSelected] = useState<PackageOrder | null>(null);
@@ -249,10 +251,11 @@ function PackageOrdersAdminPageInner() {
       setList(r.data || []);
       setTotal(r.pagination?.total ?? (r.data || []).length);
       setPages(pageCount(r.pagination));
+      setLoadErr(null);
     } catch (e) {
       setList([]);
       setTotal(0);
-      setError(e instanceof Error ? e.message : "Could not load orders");
+      setLoadErr(e instanceof Error ? e.message : "Could not load orders");
     } finally {
       setLoading(false);
     }
@@ -506,11 +509,13 @@ function PackageOrdersAdminPageInner() {
           <input type="checkbox" checked={filters.hasDues === "1"} onChange={(e) => filterBy({ hasDues: e.target.checked ? "1" : "" })} className="h-4 w-4 accent-[var(--accent)]" />
           Has dues
         </label>
-        {!loading && <span className="text-xs text-neutral-500">{total} order{total === 1 ? "" : "s"}</span>}
+        {!loading && !loadErr && <span className="text-xs text-neutral-500">{total} order{total === 1 ? "" : "s"}</span>}
       </div>
 
       {loading ? (
         <Spinner />
+      ) : loadErr ? (
+        <ErrorState message={loadErr} onRetry={load} />
       ) : !list.length ? (
         <EmptyState title="No package orders match" />
       ) : (

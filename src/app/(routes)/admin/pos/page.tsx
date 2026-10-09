@@ -7,7 +7,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { PageHeader, Card, PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, TextArea, SelectField, Toggle, Badge, Spinner, useConfirm } from "../_shared/ui";
+import { PageHeader, Card, PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, TextArea, SelectField, Toggle, Badge, Spinner, useConfirm, ErrorState } from "../_shared/ui";
 import { API_BASE, apiGet, apiJson, authHeaders } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
 import { useGymToday } from "@/components/ThemeProvider";
@@ -199,6 +199,10 @@ export default function PosPage() {
   const [setup, setSetup] = useState<ReceiptSettings | null>(null);
   const [savingSetup, setSavingSetup] = useState(false);
   const [setupError, setSetupError] = useState<string | null>(null);
+  // A shelf or a sales list that could not be read says so where it would
+  // have been, rather than reading as "no products" or "no sales".
+  const [loadErr, setLoadErr] = useState<string | null>(null);
+  const [salesErr, setSalesErr] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -207,8 +211,9 @@ export default function PosPage() {
       setProducts(p.data || []);
       setCurrency(p.currency || "");
       setTaxRate(Number(p.tax_rate) || 0);
+      setLoadErr(null);
     } catch (e) {
-      setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not load the shop" });
+      setLoadErr(e instanceof Error ? e.message : "Could not load the shop");
     } finally {
       setLoading(false);
     }
@@ -221,8 +226,9 @@ export default function PosPage() {
     try {
       setSales(await apiGet<SalesResponse>(`${POS_API}/sales?from=${from}&to=${to}`));
       setVisible(SALES_PAGE);
+      setSalesErr(null);
     } catch (e) {
-      setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not load the sales" });
+      setSalesErr(e instanceof Error ? e.message : "Could not load the sales");
     } finally {
       setSalesLoading(false);
     }
@@ -384,7 +390,9 @@ export default function PosPage() {
       ) : (
         <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
           <div>
-            {products.length === 0 ? (
+            {loadErr ? (
+              <ErrorState message={loadErr} onRetry={load} />
+            ) : products.length === 0 ? (
               <Card className="p-8 text-center text-sm text-neutral-500">
                 No products yet. <Link href="/admin/inventory" className="underline">Add some</Link> to start selling.
               </Card>
@@ -432,6 +440,8 @@ export default function PosPage() {
               </div>
               {salesLoading && !sales ? (
                 <Spinner />
+              ) : salesErr && !salesLoading ? (
+                <ErrorState message={salesErr} onRetry={loadSales} />
               ) : sales ? (
                 <div className={salesLoading ? "opacity-60" : ""}>
                   <p className="text-xs text-neutral-500">

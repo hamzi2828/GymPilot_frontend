@@ -14,6 +14,7 @@ import {
   Spinner,
   Table,
   useConfirm,
+  ErrorState,
 } from "../_shared/ui";
 import { GYMFOLIO_API, apiGet, apiJson } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
@@ -91,6 +92,7 @@ export default function BookingsAdminPage() {
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [loadErr, setLoadErr] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [pages, setPages] = useState(1);
@@ -115,6 +117,7 @@ export default function BookingsAdminPage() {
   const load = useCallback(async () => {
     setLoading(true);
     setErr(null);
+    setLoadErr(null);
     try {
       const params = new URLSearchParams();
       if (date) params.set("date", date);
@@ -131,7 +134,7 @@ export default function BookingsAdminPage() {
       setPages(pageCount(r.pagination));
       setTotal(r.pagination?.total ?? (r.data || []).length);
     } catch (e) {
-      setErr(e instanceof Error ? e.message : "Could not load bookings");
+      setLoadErr(e instanceof Error ? e.message : "Could not load bookings");
       setList([]);
     } finally {
       setLoading(false);
@@ -350,6 +353,8 @@ export default function BookingsAdminPage() {
 
       {loading ? (
         <Spinner />
+      ) : loadErr ? (
+        <ErrorState message={loadErr} onRetry={load} />
       ) : (
         <Table
           columns={["Member", "Class", "When", "Status", "Membership", "Actions"]}
