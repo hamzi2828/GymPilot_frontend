@@ -35,15 +35,26 @@ const nextConfig: NextConfig = {
   // no other site may put any of it in a frame: a click on what looks like
   // their own page would otherwise land on a button in here. `frame-ancestors`
   // is what modern browsers honour; X-Frame-Options covers the older ones.
+  //
+  // The one exception is /embed/*, the timetable a gym puts in an <iframe> on
+  // its own website: being framed is all it is for. It has no value of
+  // X-Frame-Options that means "anyone", so the two framing headers are left
+  // off those paths rather than overridden, and every other path keeps them.
   async headers() {
     return [
       {
         source: '/:path*',
         headers: [
-          { key: 'Content-Security-Policy', value: "frame-ancestors 'none'" },
-          { key: 'X-Frame-Options', value: 'DENY' },
           { key: 'X-Content-Type-Options', value: 'nosniff' },
           { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+        ],
+      },
+      {
+        // Everything except /embed and /embed/... ("/embedded" is not exempt).
+        source: '/((?!embed(?:/|$)).*)',
+        headers: [
+          { key: 'Content-Security-Policy', value: "frame-ancestors 'none'" },
+          { key: 'X-Frame-Options', value: 'DENY' },
         ],
       },
     ];
