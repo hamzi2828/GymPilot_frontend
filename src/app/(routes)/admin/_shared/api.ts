@@ -1,4 +1,4 @@
-import { getAuthToken, removeToken } from "@/helper/helper";
+import { getAuthToken, removeToken, signInUrl } from "@/helper/helper";
 
 export const API_BASE = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:4000";
 export const GYMFOLIO_API = `${API_BASE}/api/gymfolio`;
@@ -68,8 +68,9 @@ function endSession() {
   signingOut = true;
   removeToken();
   // A full navigation rather than a router push: this runs outside React, and
-  // nothing from the old session should survive into the sign-in page.
-  window.location.replace("/authentication");
+  // nothing from the old session should survive into the sign-in page. It
+  // carries the page they were on, so signing in again returns them to it.
+  window.location.replace(signInUrl());
 }
 
 // The backend's "Upgrade the plan to add more." becomes a pointer to where
