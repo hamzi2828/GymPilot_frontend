@@ -22,7 +22,7 @@ import {
   ErrorState,
   useLatestRequest,
 } from "../_shared/ui";
-import { GYMFOLIO_API, apiGet, apiJson, authHeaders, absoluteUrl, replaceParams } from "../_shared/api";
+import { GYMFOLIO_API, apiBlob, apiGet, apiJson, absoluteUrl, replaceParams } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
 import { MemberPicker, type MemberOption } from "../_ops/MemberPicker";
 import { Pager, pageCount } from "../_ops/lists";
@@ -432,12 +432,7 @@ function PackageOrdersAdminPageInner() {
   const invoiceUrl = (o: PackageOrder) => `${GYMFOLIO_API}/package-orders/${o._id}/invoice.pdf?download=1`;
   const openInvoice = async (o: PackageOrder) => {
     try {
-      const res = await fetch(invoiceUrl(o), { headers: authHeaders() });
-      if (!res.ok) {
-        const j = await res.json().catch(() => ({}));
-        throw new Error(j.message || "Could not load the invoice");
-      }
-      const blob = await res.blob();
+      const { blob } = await apiBlob(invoiceUrl(o));
       const url = URL.createObjectURL(blob);
       window.open(url, "_blank");
       setTimeout(() => URL.revokeObjectURL(url), 60000);

@@ -20,7 +20,7 @@ import {
   ErrorState,
   useLatestRequest,
 } from "../_shared/ui";
-import { ACCOUNTS_API, apiGet, apiJson, replaceParams } from "../_shared/api";
+import { ACCOUNTS_API, apiGet, apiJson, csvField, replaceParams } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
 import { useGymToday } from "@/components/ThemeProvider";
 import { TrendChart, CategoryBars, useMoneyFormatter, SERIES_IN, SERIES_OUT, TrendPoint } from "./_charts";
@@ -717,7 +717,8 @@ function AccountsAdminPageInner() {
   };
 
   const exportCsv = () => {
-    const escape = (value: unknown) => `"${String(value ?? "").replace(/"/g, '""')}"`;
+    // Quoted, and never a formula (see csvField).
+    const escape = csvField;
     let header: string[] = [];
     let lines: string[][] = [];
 

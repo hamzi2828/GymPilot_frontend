@@ -6,7 +6,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { PageHeader, Card, PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, TextArea, SelectField, Badge, Spinner, Table, ErrorState, useConfirm } from "../../_shared/ui";
-import { API_BASE, apiGet, apiJson, authHeaders } from "../../_shared/api";
+import { API_BASE, apiBlob, apiGet, apiJson } from "../../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
 import { useGymToday } from "@/components/ThemeProvider";
 
@@ -151,9 +151,8 @@ export default function PayslipsPage() {
 
   const openPdf = async (p: Payslip) => {
     try {
-      const res = await fetch(`${API_BASE}/staff/payslips/${p.id}/pdf`, { headers: authHeaders() });
-      if (!res.ok) throw new Error("Could not open the payslip");
-      const url = URL.createObjectURL(await res.blob());
+      const { blob } = await apiBlob(`${API_BASE}/staff/payslips/${p.id}/pdf`);
+      const url = URL.createObjectURL(blob);
       window.open(url, "_blank");
       setTimeout(() => URL.revokeObjectURL(url), 60000);
     } catch (e) {

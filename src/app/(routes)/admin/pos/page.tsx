@@ -8,7 +8,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { PageHeader, Card, PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, TextArea, SelectField, Toggle, Badge, Spinner, useConfirm, ErrorState, useLatestRequest } from "../_shared/ui";
-import { API_BASE, apiGet, apiJson, authHeaders } from "../_shared/api";
+import { API_BASE, apiGet, apiJson } from "../_shared/api";
+import { downloadExport } from "../reports/download";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
 import { useGymToday } from "@/components/ThemeProvider";
 import { MemberPicker, type MemberOption } from "../_ops/MemberPicker";
@@ -259,16 +260,7 @@ export default function PosPage() {
   const exportSales = async () => {
     setExporting(true);
     try {
-      const res = await fetch(`${POS_API}/sales/export?from=${from}&to=${to}`, { headers: authHeaders() });
-      if (!res.ok) throw new Error("Could not export the sales");
-      const blob = await res.blob();
-      const name = (res.headers.get("Content-Disposition") || "").match(/filename="([^"]+)"/)?.[1] || `sales_${from}_${to}.csv`;
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = name;
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(url), 30000);
+      await downloadExport(`${POS_API}/sales/export?from=${from}&to=${to}`, `sales_${from}_${to}.csv`);
     } catch (e) {
       setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not export the sales" });
     } finally {

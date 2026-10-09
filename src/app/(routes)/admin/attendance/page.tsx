@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FiDownload, FiRefreshCw, FiSearch, FiSettings, FiX } from "react-icons/fi";
 import { PageHeader, Card, Modal, SecondaryButton, Spinner, EmptyState, Select2, useLatestRequest } from "../_shared/ui";
-import { ATTENDANCE_API, apiGet } from "../_shared/api";
+import { ATTENDANCE_API, apiGet, csvField } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
 import {
   DeskSettingsModal,
@@ -782,7 +782,8 @@ export default function AttendanceAdminPage() {
   // under the same filters — not just the rows on screen. It walks the same
   // endpoint the table reads, so a spreadsheet cannot disagree with it.
   const exportCsv = async () => {
-    const escape = (value: unknown) => `"${String(value ?? "").replace(/"/g, '""')}"`;
+    // Quoted, and never a formula (see csvField).
+    const escape = csvField;
     const pageSize = 500; // the server's own ceiling per page
     let header: string[];
     let lines: string[][];

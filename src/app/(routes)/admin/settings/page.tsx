@@ -21,7 +21,7 @@ import {
   ErrorState,
 } from "../_shared/ui";
 import { countryOptions, currencyOptions, countryByCode } from "@/data/countries";
-import { API_BASE, GYMFOLIO_API, apiGet, apiJson, authHeaders, isMaskedSecret } from "../_shared/api";
+import { API_BASE, GYMFOLIO_API, apiForm, apiGet, apiJson, isMaskedSecret } from "../_shared/api";
 import { THEMES, DEFAULT_THEME_KEY } from "@/theme/themes";
 import { setActiveTheme } from "@/components/ThemeProvider";
 import MessagingSettings, { messagingToSave, type MessagingConfig } from "./MessagingSettings";
@@ -293,8 +293,8 @@ function SettingsAdminPageInner() {
   const [uploadingFor, setUploadingFor] = useState<string | null>(null);
   const [logoUploading, setLogoUploading] = useState<"logo" | "footerLogo" | null>(null);
 
-  // Logo uploads are multipart, so they bypass the JSON apiJson helper. The
-  // browser must set the boundary itself, hence no Content-Type here.
+  // Logo uploads are multipart, so they go through apiForm, which leaves the
+  // Content-Type for the browser to set with its boundary.
   const uploadLogo = async (which: "logo" | "footerLogo", file: File) => {
     setLogoUploading(which);
     setNotice(null);
@@ -302,13 +302,7 @@ function SettingsAdminPageInner() {
       const form = new FormData();
       form.append(which, file);
       const path = which === "logo" ? "logo" : "footer-logo";
-      const res = await fetch(`${SETTINGS_API}/${path}`, {
-        method: "POST",
-        headers: authHeaders(),
-        body: form,
-      });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json?.message || "Upload failed");
+      await apiForm(`${SETTINGS_API}/${path}`, "POST", form);
       await load();
       setNotice({ tone: "ok", text: "Logo updated. It is live on the site immediately." });
     } catch (e) {
@@ -502,20 +496,11 @@ function SettingsAdminPageInner() {
     }
   };
 
-  // Uses fetch directly: the shared apiJson helper sends JSON, and this is
-  // multipart. authHeaders() supplies the bearer token without a Content-Type,
-  // which the browser must set itself so the multipart boundary is correct.
+  // Multipart, so apiForm rather than apiJson.
   const postBarcode = async (bankId: string, file: File) => {
     const form = new FormData();
     form.append("qrCode", file);
-    const res = await fetch(`${BANKS_API}/${bankId}/qr-code`, {
-      method: "POST",
-      headers: authHeaders(),
-      body: form,
-    });
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(json?.message || "Upload failed");
-    return json;
+    return apiForm(`${BANKS_API}/${bankId}/qr-code`, "POST", form);
   };
 
   const uploadBarcode = async (bankId: string, file: File) => {
