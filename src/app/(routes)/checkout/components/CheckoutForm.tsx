@@ -29,9 +29,17 @@ interface CheckoutFormProps {
   paymentMethod?: PaymentMethodKey;
   /** A validated discount code, applied server-side to whichever way they pay. */
   couponCode?: string;
+  /**
+   * Why the last attempt to pay did not go ahead (null clears it). Shown by
+   * the parent beside the Pay button, which is where the member is looking --
+   * these used to be alert() boxes.
+   */
+  onError?: (message: string | null) => void;
 }
 
-const CheckoutForm: React.FC<CheckoutFormProps> = ({ packageData, onSubmitChange, paymentMethod = "stripe", couponCode }) => {
+const UNREACHABLE = "We can't reach the server right now. Check your internet connection and try again. You have not been charged.";
+
+const CheckoutForm: React.FC<CheckoutFormProps> = ({ packageData, onSubmitChange, paymentMethod = "stripe", couponCode, onError }) => {
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
   // Synchronous twin of isSubmitting: two quick clicks both see the state as
@@ -84,6 +92,7 @@ const CheckoutForm: React.FC<CheckoutFormProps> = ({ packageData, onSubmitChange
     submittingRef.current = true;
     setIsSubmitting(true);
     setErrors({});
+    onError?.(null);
     // Set once the browser is on its way to Stripe or the bank-details page.
     // The button then stays disabled: re-enabling it during the redirect let
     // a second click create a second order and payment session.
@@ -92,7 +101,7 @@ const CheckoutForm: React.FC<CheckoutFormProps> = ({ packageData, onSubmitChange
     try {
       // Check if package exists (only for package checkout)
       if (isPackageCheckout && !packageData) {
-        alert('Package not found. Please select a valid package.');
+        onError?.('We could not find that package. Go back to Packages and choose it again.');
         return;
       }
 
@@ -101,14 +110,15 @@ const CheckoutForm: React.FC<CheckoutFormProps> = ({ packageData, onSubmitChange
       if (!shippingValidation.valid) {
         const newErrors: Record<string, string> = {};
         shippingValidation.errors.forEach(error => {
-          if (error.includes('Email')) newErrors.email = error;
+          // Either wording: "Email is required" and "...a valid email address".
+          if (/email/i.test(error)) newErrors.email = error;
           if (error.includes('First name')) newErrors.firstName = error;
           if (error.includes('Last name')) newErrors.lastName = error;
           if (error.includes('Country')) newErrors.country = error;
           if (error.includes('Phone')) newErrors.phoneNumber = error;
         });
         setErrors(newErrors);
-        alert('Please fix the form errors');
+        onError?.('Some of your details are missing or not right. Check the boxes marked in red, then try again.');
         return;
       }
 
@@ -128,21 +138,28 @@ const CheckoutForm: React.FC<CheckoutFormProps> = ({ packageData, onSubmitChange
           return;
         } catch (error: unknown) {
           console.error('Checkout error:', error);
-          const errorMessage = error instanceof Error ? error.message : 'Failed to initialize payment. Please try again.';
-          alert(errorMessage);
+          // fetch() rejects with a TypeError ("Failed to fetch") when there
+          // was no answer at all; anything else carries the API's own words.
+          onError?.(
+            error instanceof TypeError
+              ? UNREACHABLE
+              : error instanceof Error && error.message
+              ? error.message
+              : 'We could not start your payment. Please try again. You have not been charged.'
+          );
         }
         return;
       }
     } catch (error) {
       console.error('Order creation error:', error);
-      alert('Failed to place order. Please try again.');
+      onError?.('We could not start your payment. Please try again. You have not been charged.');
     } finally {
       if (!leaving) {
         submittingRef.current = false;
         setIsSubmitting(false);
       }
     }
-  }, [isPackageCheckout, packageData, shippingData, paymentMethod, couponCode, router]);
+  }, [isPackageCheckout, packageData, shippingData, paymentMethod, couponCode, router, onError]);
 
   // Coming back from Stripe restores this page from the browser's cache with
   // the button still locked; unlock it so the member can try again.

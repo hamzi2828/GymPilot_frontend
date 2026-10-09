@@ -73,6 +73,16 @@ export interface BankOrder {
   createdAt: string;
 }
 
+/** What the success page is told about a paid order (nothing about the payer). */
+export interface VerifiedOrder {
+  orderNumber?: string;
+  packageId?: string;
+  packageName?: string;
+  amount?: number;
+  currency?: string;
+  status?: string;
+}
+
 class CheckoutService {
   private baseUrl: string;
 
@@ -190,12 +200,24 @@ class CheckoutService {
     return json.message || "Receipt sent";
   }
 
-  async verifyPayment(sessionId: string) {
-    const response = await fetch(`${this.baseUrl}/api/gymfolio/payment/verify/${sessionId}`, {
+  /**
+   * Asks whether a Stripe checkout has been paid.
+   *
+   * Resolves only when the API gave a proper answer: `paid` true or false.
+   * Throws when it did not -- offline, a server error, a rate limit -- which
+   * says nothing either way about the payment, so the caller must not read
+   * it as "not paid".
+   */
+  async verifyPayment(sessionId: string): Promise<{ paid: boolean; order: VerifiedOrder | null }> {
+    const response = await fetch(`${this.baseUrl}/api/gymfolio/payment/verify/${encodeURIComponent(sessionId)}`, {
       method: "GET",
       headers: this.getAuthHeaders(),
     });
-    return response.json();
+    const json = await response.json().catch(() => null);
+    if (!response.ok || !json || typeof json !== "object") {
+      throw new Error((json && json.message) || "Could not verify the payment");
+    }
+    return { paid: !!(json.success && json.paid), order: json.order || null };
   }
 
   async getStripePublicKey() {
