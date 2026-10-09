@@ -105,8 +105,17 @@ export const LeftSide: React.FC<LeftSideProps> = ({
         </div>
       )}
 
-      {/* Form */}
-      <div className="space-y-5">
+      {/* A real form, so Enter in any box submits it (and password managers
+          recognise it). noValidate: the messages under each box are ours, not
+          the browser's bubbles. */}
+      <form
+        className="space-y-5"
+        noValidate
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (!isLoading) handleSubmit();
+        }}
+      >
         <NameFields
           isSignUp={isSignUp}
           formData={formData}
@@ -140,7 +149,7 @@ export const LeftSide: React.FC<LeftSideProps> = ({
           <PasswordField
             label="Password"
             name="password"
-            placeholder={isSignUp ? 'Create password' : 'Enter password'}
+            placeholder={isSignUp ? 'At least 8 characters' : 'Enter password'}
             value={formData.password}
             showPassword={showPassword}
             setShowPassword={setShowPassword}
@@ -211,7 +220,6 @@ export const LeftSide: React.FC<LeftSideProps> = ({
           isSignUp={isSignUp}
           isForgot={isForgot}
           isReset={isReset}
-          handleSubmit={handleSubmit}
         />
 
         <FooterToggle
@@ -221,7 +229,7 @@ export const LeftSide: React.FC<LeftSideProps> = ({
           toggleAuthMode={toggleAuthMode}
           updateMode={updateMode}
         />
-      </div>
+      </form>
     </div>
   </div>
 )}

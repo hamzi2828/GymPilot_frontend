@@ -13,6 +13,17 @@ import type { Mode } from "./components/leftsSideComponents/types";
 // anyone who works here, the homepage for a member.
 const homeFor = (role: string | null | undefined) => (role && role !== "user" ? "/admin" : "/");
 
+// The one rule a chosen password must meet -- the API's own (passwordProblem
+// in its services/adminPasswords.js), checked here first so the person is told
+// beside the box instead of after a round trip.
+const MIN_PASSWORD_LENGTH = 8;
+const MAX_PASSWORD_LENGTH = 200;
+const passwordProblem = (password: string): string | null => {
+  if (password.length < MIN_PASSWORD_LENGTH) return `Use at least ${MIN_PASSWORD_LENGTH} characters`;
+  if (password.length > MAX_PASSWORD_LENGTH) return `That is too long. Use ${MAX_PASSWORD_LENGTH} characters or fewer`;
+  return null;
+};
+
 const AuthPage: React.FC = () => {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -94,6 +105,27 @@ const AuthPage: React.FC = () => {
       setNotice({ tone: "error", text: err instanceof Error ? err.message : "Could not verify the code" });
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // "Send a new code": there is no separate endpoint for it -- signing in
+  // again is what issues one, and the email and password are still in the
+  // form behind this step. True when a new code went out.
+  const resendCode = async (): Promise<boolean> => {
+    setNotice(null);
+    try {
+      const res = await login({ email: formData.email, password: formData.password, remember: formData.rememberMe });
+      if (res.requires2fa && res.challengeId) {
+        setTwoFactor({ challengeId: res.challengeId, message: res.message });
+        setNotice({ tone: "ok", text: "A new code is on its way. The earlier one no longer works." });
+        return true;
+      }
+      // Two-factor was switched off in the meantime: the password was enough.
+      if (res.token) finishSignIn(res);
+      return false;
+    } catch (err: unknown) {
+      setNotice({ tone: "error", text: err instanceof Error ? err.message : "Could not send a new code" });
+      return false;
     }
   };
   type Errors = Partial<Record<
@@ -183,10 +215,14 @@ const AuthPage: React.FC = () => {
     // set until the person has proved they can read that mailbox.
     if (!isForgot && !formData.password.trim()) newErrors.password = "Password is required";
 
+    // Choosing a password (a new account, or a reset): the API's rule, told
+    // here rather than after the request.
+    if ((isSignUp || isReset) && formData.password.trim()) {
+      const problem = passwordProblem(formData.password);
+      if (problem) newErrors.password = problem;
+    }
+
     if (isReset) {
-      if (formData.password.trim() && formData.password.trim().length < 8) {
-        newErrors.password = "Password must be at least 8 characters";
-      }
       if (!formData.confirmPassword.trim()) {
         newErrors.confirmPassword = "Please confirm your new password";
       } else if (formData.password !== formData.confirmPassword) {
@@ -331,6 +367,7 @@ const AuthPage: React.FC = () => {
             setTwoFactor(null);
             setNotice(null);
           }}
+          onResend={resendCode}
           isLoading={isLoading}
           notice={notice}
         />

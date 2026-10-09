@@ -5,7 +5,6 @@ interface CTAButtonProps {
   isSignUp: boolean;
   isForgot: boolean;
   isReset?: boolean;
-  handleSubmit: () => void;
 }
 
 export const CTAButton: React.FC<CTAButtonProps> = ({
@@ -13,12 +12,12 @@ export const CTAButton: React.FC<CTAButtonProps> = ({
   isSignUp,
   isForgot,
   isReset = false,
-  handleSubmit,
 }) => {
+  // The form's submit button: the form it sits in (LeftSide) does the
+  // submitting, so a click and the Enter key take the same path.
   return (
     <button
-      type="button"
-      onClick={handleSubmit}
+      type="submit"
       disabled={isLoading}
       className="auth-cta w-full py-4 px-6 rounded-2xl font-black text-lg transform hover:-translate-y-1 hover:scale-105 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
     >

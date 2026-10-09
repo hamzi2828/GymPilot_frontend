@@ -23,10 +23,10 @@ export const TermsCheckbox: React.FC<TermsCheckboxProps> = ({ isSignUp, acceptTe
         <label className="text-sm text-gray-600 font-medium leading-relaxed">
           I agree to the{' '}
           <Link
-            href="/privacy-policy"
+            href="/terms"
             className="auth-accent-text font-bold underline underline-offset-2"
           >
-            Terms of Service
+            Terms and Conditions
           </Link>{' '}
           and{' '}
           <Link
