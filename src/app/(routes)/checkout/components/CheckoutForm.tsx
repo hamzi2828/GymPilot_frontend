@@ -179,7 +179,7 @@ const CheckoutForm: React.FC<CheckoutFormProps> = ({ packageData, onSubmitChange
         <div className="space-y-2">
           <label className="checkout-label block font-medium">
             Email
-            {getCurrentUser() && (
+            {getCurrentUser()?.email && (
               <span className="text-sm text-green-600 font-normal ml-2">
                 <i className="fas fa-check-circle mr-1"></i>
                 Auto-filled from your account

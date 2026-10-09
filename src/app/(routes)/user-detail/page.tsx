@@ -193,9 +193,10 @@ const UserProfilePageContent: React.FC = () => {
     // Seed with token data first
     setUserProfile({
       id: u.id,
-      firstName: u.firstName,
-      lastName: u.lastName,
-      email: u.email,
+      firstName: u.firstName ?? "",
+      lastName: u.lastName ?? "",
+      // Blank for an account that signs in by username.
+      email: u.email ?? "",
       phone: "",
       dateOfBirth: "",
       gender: "other",

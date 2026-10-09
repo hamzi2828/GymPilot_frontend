@@ -6,12 +6,15 @@ export interface JwtBasePayload {
     exp?: number;
   }
   
-  // Payload we issued from the backend
+  // Payload we issued from the backend. Only `id` is always there: an account
+  // the front desk created to sign in by username has no email, and its token
+  // carries none.
   export interface UserPayload extends JwtBasePayload {
     id: string;
-    email: string;
-    firstName: string;
-    lastName: string;
+    email?: string;
+    firstName?: string;
+    lastName?: string;
+    role?: string;
   }
   
   const TOKEN_KEY = 'auth_token';
@@ -55,8 +58,9 @@ export interface JwtBasePayload {
     if (!payload) return null;
     // Check expiration if present
     if (payload.exp && Date.now() >= payload.exp * 1000) return null;
-    // Minimal shape validation
-    if (!payload.id || !payload.email) return null;
+    // The id is what identifies a session. An email is optional (see
+    // UserPayload), so requiring one here signed those accounts out.
+    if (!payload.id) return null;
     return payload;
   }
   
