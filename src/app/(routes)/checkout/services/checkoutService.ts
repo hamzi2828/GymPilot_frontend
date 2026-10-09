@@ -125,9 +125,11 @@ class CheckoutService {
   }
 
   /**
-   * Whether checkout will add the package's joining fee for the signed-in
-   * account: it is charged only with a member's first membership. null when
-   * the API does not know who is asking (signed out, or a stale session).
+   * Whether checkout will add the package's joining fee: it is left off only
+   * for a signed-in account that has paid here before. Anyone the API does
+   * not recognise (signed out, or a session that has lapsed) is a new member
+   * to it and pays the fee, so it answers true for them. null only when
+   * nobody is signed in on this device.
    */
   async getJoiningFeeDue(): Promise<boolean | null> {
     if (!getAuthToken()) return null;
@@ -203,17 +205,20 @@ class CheckoutService {
   /**
    * Asks whether a Stripe checkout has been paid.
    *
-   * Resolves only when the API gave a proper answer: `paid` true or false.
-   * Throws when it did not -- offline, a server error, a rate limit -- which
-   * says nothing either way about the payment, so the caller must not read
-   * it as "not paid".
+   * Resolves only when the API gave a proper answer: `paid` true or false,
+   * or `notFound` when it has no order for this payment at all (404
+   * ORDER_NOT_FOUND), which asking again will not change. Throws when it
+   * gave none -- offline, a server error, a rate limit -- which says nothing
+   * either way about the payment, so the caller must not read it as "not
+   * paid".
    */
-  async verifyPayment(sessionId: string): Promise<{ paid: boolean; order: VerifiedOrder | null }> {
+  async verifyPayment(sessionId: string): Promise<{ paid: boolean; order: VerifiedOrder | null; notFound?: boolean }> {
     const response = await fetch(`${this.baseUrl}/api/gymfolio/payment/verify/${encodeURIComponent(sessionId)}`, {
       method: "GET",
       headers: this.getAuthHeaders(),
     });
     const json = await response.json().catch(() => null);
+    if (response.status === 404 && json && json.code === "ORDER_NOT_FOUND") return { paid: false, order: null, notFound: true };
     if (!response.ok || !json || typeof json !== "object") {
       throw new Error((json && json.message) || "Could not verify the payment");
     }

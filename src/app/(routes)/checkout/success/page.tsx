@@ -22,6 +22,8 @@ type Status =
   | "unpaid"
   // No proper answer after every try: offline, or the server is having trouble.
   | "unknown"
+  // The API has no order for this payment. Checking again will not find one.
+  | "notFound"
   // Opened without a payment to look up.
   | "missing";
 
@@ -53,6 +55,10 @@ function SuccessContent() {
         const result = await checkoutService.verifyPayment(sessionId);
         if (run.current !== mine) return;
         answered = true;
+        if (result.notFound) {
+          setStatus("notFound");
+          return;
+        }
         if (result.paid) {
           setOrderDetails(result.order);
           setStatus("paid");
@@ -93,7 +99,11 @@ function SuccessContent() {
         ? "We could not confirm your payment yet"
         : status === "unpaid"
         ? "Your payment has not arrived yet"
+        : status === "notFound"
+        ? "We could not find this order"
         : "No payment to show";
+    // Nothing to check again: there is no payment to look up, or no order for it.
+    const settled = status === "missing" || status === "notFound";
     return (
       <main className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
         <div className="max-w-md w-full bg-white shadow-lg rounded-lg p-8">
@@ -117,7 +127,16 @@ function SuccessContent() {
                 This page opens after a card payment. If you have paid, your membership is under My account.
               </p>
             )}
-            {status !== "missing" && (
+            {status === "notFound" && (
+              <>
+                <p className="mt-2 text-gray-600">We have no order that matches this payment.</p>
+                <div className="mt-4 rounded-lg bg-amber-50 px-4 py-3 text-left text-sm text-amber-900">
+                  <p className="font-semibold">Please do not pay again.</p>
+                  <p className="mt-1">If you have paid, contact us with your receipt and we will sort it out.</p>
+                </div>
+              </>
+            )}
+            {!settled && (
               <div className="mt-4 rounded-lg bg-amber-50 px-4 py-3 text-left text-sm text-amber-900">
                 <p className="font-semibold">Please do not pay again.</p>
                 <p className="mt-1">
@@ -125,11 +144,18 @@ function SuccessContent() {
                 </p>
               </div>
             )}
+            {/* One main button: check again while that can help, contact us
+                when there is no order to find, My account otherwise. */}
             <div className="mt-6 space-y-3">
-              {status !== "missing" && (
+              {!settled && (
                 <button type="button" onClick={check} className="block w-full btn-accent rounded-lg px-4 py-3 text-center">
                   Check again
                 </button>
+              )}
+              {status === "notFound" && (
+                <Link href="/contact-us" className="block w-full btn-accent rounded-lg px-4 py-3 text-center">
+                  Contact us
+                </Link>
               )}
               <Link
                 href="/user-detail?tab=history"
@@ -137,12 +163,14 @@ function SuccessContent() {
               >
                 Go to My account
               </Link>
-              <Link
-                href="/contact-us"
-                className="block w-full bg-gray-200 text-gray-800 rounded-lg px-4 py-3 text-center hover:bg-gray-300 transition-colors"
-              >
-                Contact us
-              </Link>
+              {status !== "notFound" && (
+                <Link
+                  href="/contact-us"
+                  className="block w-full bg-gray-200 text-gray-800 rounded-lg px-4 py-3 text-center hover:bg-gray-300 transition-colors"
+                >
+                  Contact us
+                </Link>
+              )}
             </div>
           </div>
         </div>

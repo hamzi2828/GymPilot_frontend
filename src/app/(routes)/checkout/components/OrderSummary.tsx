@@ -2,9 +2,11 @@
 
 import React, { useState } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import { type Package } from "../../packages/services/packageService";
 import { checkoutService, type CouponPreview, type PaymentMethodKey, type PaymentMethods } from "../services/checkoutService";
 import { parseAmount } from "@/helper/money";
+import { signInUrl } from "@/helper/helper";
 
 interface OrderSummaryProps {
   packageData?: Package | null;
@@ -21,9 +23,10 @@ interface OrderSummaryProps {
   coupon: CouponPreview | null;
   onCouponChange: (coupon: CouponPreview | null) => void;
   /**
-   * Whether checkout adds the joining fee for this account (only a member's
-   * first membership carries it): true or false once the API has said, null
-   * when it cannot know yet -- signed out, or the session has lapsed.
+   * Whether checkout adds the joining fee: true or false once the API has
+   * said (it is left off only for a signed-in account that has paid here
+   * before), null when it could not be asked -- nobody is signed in, or the
+   * check failed.
    */
   joiningFeeDue?: boolean | null;
 }
@@ -85,10 +88,10 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
   // total shown is the total paid. The old strip-and-parseFloat turned
   // "Rs. 1,200" into 0.12.
   const listPrice = parseAmount(packageData.price) ?? 0;
-  // The API charges the joining fee only with a member's first membership.
-  // Known to be off (a returning member), it is left out of the total; not
-  // known (null), it stays in -- the most they will pay -- and is labelled
-  // as new members only.
+  // The API charges the joining fee unless a signed-in account has paid here
+  // before. Known to be off, it is left out of the total; not known (null),
+  // it stays in -- what someone not signed in pays -- with the way to have
+  // it taken off.
   const joiningFee = joiningFeeDue === false ? 0 : Number(packageData.joiningFee || 0);
   const discount = coupon ? coupon.discount : 0;
   const total = Math.max(0, listPrice + joiningFee - discount);
@@ -210,7 +213,15 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
                 <span className="checkout-subtotal-label text-gray-600">{joiningFeeDue ? "Joining fee (one-off)" : "Joining fee (new members only)"}</span>
                 <span className="font-medium">{money(joiningFee, currency)}</span>
               </div>
-              {!joiningFeeDue && <p className="mt-1 text-xs text-gray-500">Returning members aren&apos;t charged it; checkout takes it off if you&apos;ve been a member here before.</p>}
+              {!joiningFeeDue && (
+                <p className="mt-1 text-xs text-gray-500">
+                  Been a member here before?{" "}
+                  <Link href={signInUrl()} className="font-semibold underline">
+                    Sign in first
+                  </Link>
+                  , so the joining fee is not charged again.
+                </p>
+              )}
             </div>
           )}
           {discount > 0 && (
