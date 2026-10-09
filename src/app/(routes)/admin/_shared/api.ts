@@ -43,6 +43,15 @@ export function isSessionEndError(error: unknown): boolean {
   return error instanceof ApiError && error.status === 401 && !!error.code && SESSION_END_CODES.has(error.code);
 }
 
+/**
+ * True for the preview the API sends in place of a saved secret ("••••••••1234",
+ * settingsController maskSecret). Sent back unchanged it means "keep what is
+ * saved"; it is never the secret itself.
+ */
+export function isMaskedSecret(value: unknown): boolean {
+  return typeof value === "string" && value.includes("•");
+}
+
 export function authHeaders(extra: Record<string, string> = {}): Record<string, string> {
   const token = getAuthToken();
   const headers: Record<string, string> = { ...extra };

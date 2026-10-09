@@ -131,6 +131,9 @@ export function TextField({
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         required={required}
+        // The panel's password boxes hold API keys and mail passwords, never
+        // the admin's own sign-in: the browser must not fill that in here.
+        autoComplete={type === "password" ? "new-password" : undefined}
         className="mt-1 w-full h-9 px-3 text-sm bg-white border border-neutral-200 rounded-lg focus:outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[color-mix(in_srgb,var(--accent)_25%,transparent)] transition-colors"
       />
     </label>
