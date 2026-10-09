@@ -184,7 +184,7 @@ const Footer = () => {
               <span className="footer-copyright-symbol">©</span>
               <span className="footer-copyright-year">{new Date().getFullYear()}</span>
               <span className="footer-copyright-text">
-                {" "}{siteName} — {t("footer.rights")}
+                {" "}{siteName ? `${siteName} — ` : ""}{t("footer.rights")}
               </span>
             </p>
             <nav className="footer-legal-links">

@@ -13,7 +13,9 @@ type Unavailable = { code: string; message?: string; host?: string | null; renew
 
 const THEME_CACHE_KEY = "site_theme";
 const NAME_CACHE_KEY = "site_name";
-const DEFAULT_SITE_NAME = "Gymfolio";
+const LOGO_CACHE_KEY = "site_logo";
+// Until the gym's own name is known, no name is shown: never another brand's.
+const DEFAULT_SITE_NAME = "";
 
 type SiteSettings = {
   siteName: string;
@@ -48,12 +50,39 @@ type SiteSettings = {
   ianaTimezone: string;
 };
 
-const DEFAULT_LOGO = "/images/logo.png";
+// What stands where the logo goes until the gym's own is known: a transparent
+// pixel, so the header keeps its shape and shows no stand-in brand.
+const BLANK_LOGO = "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";
+
+/**
+ * The gym's name set as a wordmark, for a gym that has uploaded no logo. The
+ * header and footer are dark in every palette, so the lettering is white.
+ */
+function wordmark(name: string): string {
+  const text = name.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  // Wide enough for capitals in a bold face; spare width only adds margin.
+  const width = Math.max(56, name.length * 20 + 8);
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="56" viewBox="0 0 ${width} 56">` +
+    `<text x="50%" y="50%" dy=".35em" text-anchor="middle" fill="#ffffff" font-family="Montserrat, Arial, sans-serif" font-size="30" font-weight="700">${text}</text>` +
+    `</svg>`;
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}
+
+// What the API sends for a gym that has uploaded no logo: the path of a
+// bundled picture of the word "LOGO". It is not the gym's, so it counts as none.
+const PLACEHOLDER_LOGO = "/images/logo.png";
+
+/** The gym's logo; failing that its name as a wordmark; failing both, nothing. */
+function logoFor(logoUrl: string | null | undefined, siteName: string): string {
+  if (logoUrl && logoUrl !== PLACEHOLDER_LOGO) return logoUrl;
+  return siteName ? wordmark(siteName) : BLANK_LOGO;
+}
 
 const DEFAULTS: SiteSettings = {
   siteName: DEFAULT_SITE_NAME,
   theme: DEFAULT_THEME_KEY,
-  logoUrl: DEFAULT_LOGO,
+  logoUrl: BLANK_LOGO,
   logoWidth: 160,
   logoHeight: 56,
   footerLogoUrl: "",
@@ -113,9 +142,10 @@ function writeCache(key: string, value: string) {
  * Applies the admin-selected colour scheme and exposes the business name.
  *
  * Both live in the settings document so they apply to every visitor. Cached
- * values are used immediately on mount and then reconciled with the server,
- * otherwise the site would paint with defaults on every load while the settings
- * request is in flight.
+ * values (palette, name, logo) are used immediately on mount and then
+ * reconciled with the server, otherwise the site would paint without them on
+ * every load while the settings request is in flight. On a first visit, with
+ * nothing cached, the name and logo are simply absent until they arrive.
  */
 export default function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [settings, setSettings] = useState<SiteSettings>(DEFAULTS);
@@ -124,13 +154,17 @@ export default function ThemeProvider({ children }: { children: React.ReactNode 
   useEffect(() => {
     const cachedTheme = readCache(THEME_CACHE_KEY);
     const cachedName = readCache(NAME_CACHE_KEY);
+    // null: never fetched. "": fetched, and the gym has no logo of its own.
+    const cachedLogo = readCache(LOGO_CACHE_KEY);
 
     if (cachedTheme) applyTheme(getTheme(cachedTheme));
-    if (cachedTheme || cachedName) {
+    if (cachedTheme || cachedName || cachedLogo !== null) {
       setSettings((prev) => ({
         ...prev,
         siteName: cachedName || DEFAULT_SITE_NAME,
         theme: cachedTheme || DEFAULT_THEME_KEY,
+        // The wordmark only once it is known there is no logo to wait for.
+        logoUrl: cachedLogo === null ? BLANK_LOGO : logoFor(cachedLogo, cachedName || ""),
       }));
     }
 
@@ -167,6 +201,7 @@ export default function ThemeProvider({ children }: { children: React.ReactNode 
         // showed as a flash of the wrong palette on the next load.
         writeCache(THEME_CACHE_KEY, themeKey);
         writeCache(NAME_CACHE_KEY, siteName);
+        writeCache(LOGO_CACHE_KEY, json?.data?.logoUrl || "");
 
         if (themeKey !== cachedTheme) applyTheme(getTheme(themeKey));
 
@@ -174,10 +209,10 @@ export default function ThemeProvider({ children }: { children: React.ReactNode 
         setSettings({
           siteName,
           theme: themeKey,
-          logoUrl: d.logoUrl || DEFAULT_LOGO,
+          logoUrl: logoFor(d.logoUrl, siteName),
           logoWidth: Number(d.logoWidth) || DEFAULTS.logoWidth,
           logoHeight: Number(d.logoHeight) || DEFAULTS.logoHeight,
-          footerLogoUrl: d.footerLogoUrl || "",
+          footerLogoUrl: d.footerLogoUrl && d.footerLogoUrl !== PLACEHOLDER_LOGO ? d.footerLogoUrl : "",
           footerLogoWidth: Number(d.footerLogoWidth) || DEFAULTS.footerLogoWidth,
           footerLogoHeight: Number(d.footerLogoHeight) || DEFAULTS.footerLogoHeight,
           mobileNumber: d.mobileNumber || "",

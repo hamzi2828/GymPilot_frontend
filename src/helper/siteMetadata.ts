@@ -16,6 +16,10 @@ const FALLBACK = {
   siteUrl: process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000",
 };
 
+// What the API sends for a gym that has uploaded no logo: a bundled picture of
+// the word "LOGO". It is not the gym's, so search engines are told of no logo.
+const PLACEHOLDER_LOGO = "/images/logo.png";
+
 export type OpeningHour = { day: string; open: string; close: string; closed: boolean };
 
 type PublicSettings = {
@@ -60,6 +64,7 @@ export async function getSiteSettings(): Promise<Required<Pick<PublicSettings, "
     const data: PublicSettings = json?.data ?? {};
     return {
       ...data,
+      logoUrl: data.logoUrl && data.logoUrl !== PLACEHOLDER_LOGO ? data.logoUrl : undefined,
       siteName: data.siteName?.trim() || FALLBACK.siteName,
       siteUrl: data.siteUrl?.trim() || FALLBACK.siteUrl,
     };

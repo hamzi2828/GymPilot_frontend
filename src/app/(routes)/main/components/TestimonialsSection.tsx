@@ -96,7 +96,9 @@ const TestimonialsSection = ({
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-            {testimonials.map((t, idx) => (
+            {testimonials.map((t, idx) => {
+              const photo = resolveMediaUrl(t.imageUrl);
+              return (
               <Reveal key={t._id} delay={idx * 90}>
                 <figure className="home-testimonial-card h-full">
                   <div className="home-testimonial-quote-icon" aria-hidden="true">
@@ -105,9 +107,9 @@ const TestimonialsSection = ({
                   <Stars rating={t.rating} />
                   <blockquote className="home-testimonial-quote">{t.quote}</blockquote>
                   <figcaption className="home-testimonial-footer">
-                    {t.imageUrl ? (
+                    {photo ? (
                       <Image
-                        src={resolveMediaUrl(t.imageUrl)}
+                        src={photo}
                         alt={t.name}
                         width={48}
                         height={48}
@@ -124,7 +126,8 @@ const TestimonialsSection = ({
                   </figcaption>
                 </figure>
               </Reveal>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

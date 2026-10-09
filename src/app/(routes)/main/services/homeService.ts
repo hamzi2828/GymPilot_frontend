@@ -177,7 +177,8 @@ export function normalizeGalleryContent(raw: Record<string, unknown> | GalleryCo
         src: typeof img.src === "string" ? img.src : "",
         alt: typeof img.alt === "string" ? img.alt : "",
       }))
-      .filter((img) => img.src)
+      // Only photos that resolve to the gym's own media (see resolveMediaUrl).
+      .filter((img) => resolveMediaUrl(img.src))
       .slice(0, GALLERY_MAX_PHOTOS);
 
   let groups: GalleryGroup[] = (Array.isArray(content.groups) ? content.groups : [])
@@ -245,12 +246,18 @@ export const DEFAULT_SECTIONS: HomeSection[] = [
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Uploaded assets live on the backend host; bundled /images stay on Next. */
+/**
+ * Where a stored media path is served from. Only the gym's own media
+ * resolves: an upload on the API host, or a full URL. Any other path points
+ * into this app's bundled pictures, which is where the first seed put its
+ * stock photo; a gym never chose it, so it resolves to nothing and the caller
+ * leaves the image out.
+ */
 export function resolveMediaUrl(url?: string): string {
   if (!url) return "";
   if (/^https?:\/\//i.test(url)) return url;
   if (url.startsWith("/uploads")) return `${API_BASE_URL}${url}`;
-  return url;
+  return "";
 }
 
 function isEmptyValue(v: unknown): boolean {
