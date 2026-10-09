@@ -35,7 +35,7 @@ self.addEventListener('push', (event) => {
   const title = data.title || 'GymPilot';
   const options = {
     body: data.body || '',
-    icon: data.icon || '/images/logo.png',
+    icon: data.icon || '/icons/app-icon.svg',
     badge: '/icons/app-icon.svg',
     data: { url: data.url || '/' }
   };

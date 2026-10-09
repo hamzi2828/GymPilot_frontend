@@ -10,8 +10,8 @@ interface NewsletterProps {
 
 const Newsletter: React.FC<NewsletterProps> = ({
   source = 'blog',
-  title = "Never Miss a Workout",
-  description = "Get the latest fitness tips, workout routines, and nutrition advice delivered straight to your inbox every week.",
+  title = "Subscribe to our newsletter",
+  description = "News and updates from us, by email.",
   className = ""
 }) => {
   const [email, setEmail] = useState('');
@@ -73,10 +73,10 @@ const Newsletter: React.FC<NewsletterProps> = ({
             <i className="fas fa-check text-white text-2xl"></i>
           </div>
           <h3 className="font-montserrat font-bold text-2xl lg:text-3xl text-white mb-4">
-            Welcome to Our Community!
+            You&apos;re subscribed
           </h3>
           <p className="text-gray-300 mb-6">
-            Thank you for subscribing! You&apos;ll receive our latest fitness tips and workout routines in your inbox.
+            Thank you for subscribing.
           </p>
           <button
             onClick={() => setIsSubscribed(false)}

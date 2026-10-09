@@ -23,7 +23,9 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
       <PwaRegister />
       {!hideLayout && <AnnouncementsBar />}
       {!hideLayout && <Header />}
-      <main>{children}</main>
+      {/* Each page brings its own <main>; wrapping them in another one here
+          nested two main landmarks on almost every page. */}
+      {children}
       {!hideLayout && <Footer />}
       {!hideLayout && <WhatsAppButton />}
     </>

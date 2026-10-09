@@ -28,7 +28,9 @@ class NewsletterService {
       const data: NewsletterResponse = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.message || 'Failed to subscribe to newsletter');
+        // The status travels with the error: 409 means the address is already
+        // on the list, which a form words differently from a failure.
+        throw Object.assign(new Error(data.message || 'Failed to subscribe to newsletter'), { status: response.status });
       }
 
       return data;

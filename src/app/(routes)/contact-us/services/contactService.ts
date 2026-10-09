@@ -2,13 +2,28 @@ import axios from 'axios';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_BACKEND_URL;
 
+// What the enquiry is about, in a gym's terms. The form offers these; the API
+// still files a contact under its older list of categories, so each topic is
+// sent as the nearest one of those and is also written into the subject,
+// which is where the gym's staff read it. The label here is that subject
+// wording; the page shows the visitor a translated one.
+export type ContactTopic = 'membership' | 'classes' | 'personal-training' | 'billing' | 'other';
+
+const CONTACT_TOPICS: { value: ContactTopic; label: string; apiCategory: 'general' | 'support' }[] = [
+  { value: 'membership', label: 'Membership', apiCategory: 'general' },
+  { value: 'classes', label: 'Classes', apiCategory: 'general' },
+  { value: 'personal-training', label: 'Personal training', apiCategory: 'general' },
+  { value: 'billing', label: 'Billing', apiCategory: 'support' },
+  { value: 'other', label: 'Other', apiCategory: 'general' },
+];
+
 export interface ContactFormData {
   fullName: string;
   emailAddress: string;
   phoneNumber?: string;
   subject?: string;
   message: string;
-  category?: 'general' | 'support' | 'returns' | 'wholesale' | 'technical' | 'feedback';
+  category?: ContactTopic;
 }
 
 export interface ContactSubmissionResponse {
@@ -86,13 +101,16 @@ export const contactService = {
       }
 
       // Clean and prepare data
+      const topic = CONTACT_TOPICS.find((t) => t.value === formData.category) || CONTACT_TOPICS[CONTACT_TOPICS.length - 1];
+      const subject = formData.subject?.trim();
       const cleanData = {
         fullName: formData.fullName.trim(),
         emailAddress: formData.emailAddress.toLowerCase().trim(),
         phoneNumber: formData.phoneNumber?.trim(),
-        subject: formData.subject?.trim() || 'General Inquiry',
+        // The topic leads the subject, e.g. "Billing: card charged twice".
+        subject: (subject ? `${topic.label}: ${subject}` : topic.label).slice(0, 200),
         message: formData.message.trim(),
-        category: formData.category || 'general'
+        category: topic.apiCategory
       };
 
       const response = await axios.post(
@@ -136,16 +154,9 @@ export const contactService = {
     }
   },
 
-  // Get contact categories for dropdown
-  getContactCategories() {
-    return [
-      { value: 'general', label: 'General Inquiry' },
-      { value: 'support', label: 'Customer Support' },
-      { value: 'returns', label: 'Returns & Exchanges' },
-      { value: 'wholesale', label: 'Wholesale Inquiry' },
-      { value: 'technical', label: 'Technical Issue' },
-      { value: 'feedback', label: 'Feedback & Suggestions' }
-    ];
+  // What the form's topic buttons offer
+  getContactCategories(): ContactTopic[] {
+    return CONTACT_TOPICS.map((topic) => topic.value);
   },
 
   // Format phone number (basic formatting)
@@ -196,19 +207,5 @@ export const contactService = {
       remaining,
       isOverLimit: count > limit
     };
-  },
-
-  // Generate suggestion based on category
-  getMessageSuggestion(category: string): string {
-    const suggestions = {
-      general: "Hi, I'd like to know more about...",
-      support: "I'm having an issue with...",
-      returns: "I would like to return/exchange my order because...",
-      wholesale: "I'm interested in wholesale purchasing. Please provide information about...",
-      technical: "I'm experiencing a technical problem with...",
-      feedback: "I'd like to share my feedback about..."
-    };
-
-    return suggestions[category as keyof typeof suggestions] || suggestions.general;
   }
 };

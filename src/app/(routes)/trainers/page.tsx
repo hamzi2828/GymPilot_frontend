@@ -19,7 +19,7 @@ const Trainers = () => {
   return (
     <main>
 
-        <HeroAbout />
+        <HeroAbout title="Our trainers" />
         <TrainerDetail trainer={selectedTrainer} />
            <GymTrainersSection onTrainerClick={handleTrainerClick} />
             <ContactSection/>

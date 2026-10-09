@@ -29,21 +29,12 @@ const LatestArticles: React.FC = () => {
   return (
     <section className="px-4 sm:px-6 lg:px-20 py-12 sm:py-16 lg:py-20 gym-blog-custom-bg-dark text-white">
       <div className="mx-auto">
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between mb-16">
-          <div>
-            <h2 className="font-montserrat font-bold text-3xl sm:text-4xl uppercase tracking-wide mb-4">
-              Latest Articles
-            </h2>
-            <p className="text-xl text-gray-300 max-w-2xl">
-              Fresh content from our experts and community members
-            </p>
-          </div>
-          <a
-            href="#"
-            className="mt-6 lg:mt-0 gym-blog-custom-gradient-green text-black font-bold px-6 py-3 rounded-full hover:scale-105 transition-all duration-300  gap-2"
-          >
-            View All Articles <i className="fas fa-arrow-right"></i>
-          </a>
+        {/* No "View all articles" button: this page is the list, and the
+            button it had went nowhere. */}
+        <div className="mb-16">
+          <h2 className="font-montserrat font-bold text-3xl sm:text-4xl uppercase tracking-wide">
+            Latest Articles
+          </h2>
         </div>
 
         {/* Loading State */}
@@ -62,7 +53,7 @@ const LatestArticles: React.FC = () => {
                   <article className="gym-blog-custom-bg-darker rounded-xl overflow-hidden gym-blog-hover-lift transition-all duration-500 group">
                     <div className="relative h-40 overflow-hidden">
                       <Image
-                        src={blog.thumbnail || blog.image || "/images/gym-blog-1.svg"}
+                        src={blog.thumbnail || blog.image || "/images/class-placeholder.svg"}
                         alt={blog.title}
                         fill
                         className="object-cover group-hover:scale-110 transition-transform duration-500"
@@ -95,7 +86,7 @@ const LatestArticles: React.FC = () => {
               ))
             ) : (
               <div className="col-span-full text-center py-8">
-                <p className="text-gray-300">No latest articles available.</p>
+                <p className="text-gray-300">No articles yet.</p>
               </div>
             )}
           </div>

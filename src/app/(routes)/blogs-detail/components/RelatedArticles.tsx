@@ -67,13 +67,13 @@ const RelatedArticles: React.FC<RelatedArticlesProps> = ({
     title: article.title,
     slug: article.slug,
     excerpt: article.content?.replace(/<[^>]*>/g, '').substring(0, 150) + '...' || '',
-    thumbnail: article.thumbnail || article.image || '/images/gym-blog-1.svg',
+    thumbnail: article.thumbnail || article.image || '/images/class-placeholder.svg',
     category: article.categoryId?.name || categoryName || 'Article',
     readingTime: blogDetailService.estimateReadingTime(article.content),
     publishDate: blogDetailService.formatPublishDate(article.createdAt),
     author: {
       name: article.author?.name || 'Unknown',
-      avatar: article.author?.avatarUrl || article.author?.avatar || '/images/gym-1.svg'
+      avatar: article.author?.avatarUrl || article.author?.avatar || '/images/default-avatar.svg'
     },
     views: article.views || 0
   }));
@@ -112,7 +112,7 @@ const RelatedArticles: React.FC<RelatedArticlesProps> = ({
           <p className="text-xl text-gray-300 max-w-2xl mx-auto">
             {categoryName
               ? `Explore more articles in the ${categoryName} category`
-              : 'Continue your fitness journey with these hand-picked articles'
+              : 'More articles to read'
             }
           </p>
         </div>

@@ -41,7 +41,7 @@ function UnsubscribeContent() {
   };
 
   return (
-    <div className="mx-auto max-w-md px-6 py-20 text-center">
+    <main className="mx-auto max-w-md px-6 py-20 text-center">
       <h1 className="text-2xl font-bold text-black">Unsubscribe</h1>
       {!email || !token ? (
         <p className="mt-4 text-gray-700">
@@ -65,7 +65,7 @@ function UnsubscribeContent() {
           </button>
         </div>
       )}
-    </div>
+    </main>
   );
 }
 

@@ -2,8 +2,9 @@
 //
 // Everything below the hero banner is driven by the `/home-sections` API:
 // the admin panel controls each section's order, visibility and content.
-// The DEFAULTS here mirror the backend seed so the homepage still renders
-// (with the shipped copy) when the API is unreachable.
+// The DEFAULTS here are neutral labels only, so the homepage still renders
+// its live sections (classes, trainers, the enquiry form) when the API is
+// unreachable, without saying anything the gym has not said.
 
 import axios from "axios";
 
@@ -115,94 +116,47 @@ export interface Testimonial {
 }
 
 // ---------------------------------------------------------------------------
-// Defaults — keep in sync with DEFAULT_SECTIONS in
-// GymPilot_backend/src/models/homeSectionModel.js
+// Defaults
+//
+// A gym's site may only say what the gym has said. So these hold section
+// labels and nothing else: no description, no figures, no photos. Whatever
+// has no content of the gym's own is left out by the section that renders it.
 // ---------------------------------------------------------------------------
 
 export const DEFAULT_ABOUT: AboutContent = {
   badge: "About Us",
-  heading: "The best fitness gym in town",
-  description:
-    "A full strength and conditioning floor, a dedicated studio for group classes, and coaches who actually watch your form. Whether you are lifting for the first time or chasing a personal best, you get a plan built around your goal, not a generic programme handed to everyone who walks in.",
-  bullets: [
-    "Open 7 days, with 24/7 access for members",
-    "Certified coaches on the floor at all times",
-    "Programmes tracked and reviewed every month",
-  ],
-  ctaText: "Let's Start",
+  // Empty: the section falls back to "About <the gym's name>".
+  heading: "",
+  description: "",
+  bullets: [],
+  ctaText: "",
   ctaLink: "/packages",
-  image: "/images/gym-large.webp",
-  secondHeading: "Strength that shows",
-  secondDescription:
-    "Strength work is the fastest route to a body that performs as well as it looks. Our coaches build progressive lifting blocks around squat, hinge, push and pull, then track your numbers week to week so the progress is something you can see rather than something you hope for.",
-  progress: [
-    { label: "Strength & Conditioning", value: 85 },
-    { label: "Muscle Tone", value: 90 },
-  ],
+  image: "",
+  secondHeading: "",
+  secondDescription: "",
+  progress: [],
 };
 
 export const DEFAULT_STATS: StatsContent = {
-  items: [
-    { value: "1200", suffix: "+", label: "Active members" },
-    { value: "15", suffix: "+", label: "Certified coaches" },
-    { value: "40", suffix: "+", label: "Classes every week" },
-    { value: "10", suffix: "yrs", label: "Coaching experience" },
-  ],
+  items: [],
 };
 
 export const DEFAULT_CLASSES: SectionHeaderContent = {
   badge: "Classes",
-  heading: "What we do in our classes",
-  description:
-    "Classes run from sunrise to late evening and are capped so nobody trains unwatched. Strength, conditioning, mobility and recovery sessions, each with a scaled option so beginners and regulars can share the same floor.",
+  heading: "Our classes",
+  description: "",
 };
 
 export const DEFAULT_GALLERY: GalleryContent = {
   badge: "Gallery",
-  heading: "Believe in yourself be *fit* & *healthier*",
-  groups: [
-    {
-      title: "Strength",
-      images: [
-        {
-          src: "https://images.unsplash.com/photo-1574680096145-d05b474e2155?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&q=80",
-          alt: "Strength workout session",
-        },
-        {
-          src: "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&q=80",
-          alt: "Gym equipment and weights",
-        },
-        {
-          src: "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&q=80",
-          alt: "Personal training session",
-        },
-        {
-          src: "https://images.unsplash.com/photo-1581009146145-b5ef050c2e1e?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&q=80",
-          alt: "Barbell training",
-        },
-      ],
-    },
-    {
-      title: "Cardio",
-      images: [
-        {
-          src: "https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&q=80",
-          alt: "Cardio workout equipment",
-        },
-        {
-          src: "https://images.unsplash.com/photo-1583454110551-21f2fa2afe61?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&q=80",
-          alt: "Conditioning session",
-        },
-      ],
-    },
-  ],
+  heading: "Gallery",
+  groups: [],
 };
 
 export const DEFAULT_VIDEOS: VideosContent = {
   badge: "Videos",
-  heading: "See the floor in *action*",
-  description:
-    "Walk the gym before you ever set foot in it — classes mid-session, coaching on the floor and the community that keeps people coming back.",
+  heading: "Videos",
+  description: "",
   videos: [],
 };
 
@@ -223,7 +177,8 @@ export function normalizeGalleryContent(raw: Record<string, unknown> | GalleryCo
         src: typeof img.src === "string" ? img.src : "",
         alt: typeof img.alt === "string" ? img.alt : "",
       }))
-      .filter((img) => img.src)
+      // Only photos that resolve to the gym's own media (see resolveMediaUrl).
+      .filter((img) => resolveMediaUrl(img.src))
       .slice(0, GALLERY_MAX_PHOTOS);
 
   let groups: GalleryGroup[] = (Array.isArray(content.groups) ? content.groups : [])
@@ -236,7 +191,8 @@ export function normalizeGalleryContent(raw: Record<string, unknown> | GalleryCo
 
   if (groups.length === 0) {
     const legacy = cleanImages(content.images);
-    groups = legacy.length ? [{ title: "Gallery", images: legacy }] : DEFAULT_GALLERY.groups;
+    // No photos of the gym's own: the gallery renders nothing.
+    groups = legacy.length ? [{ title: "Gallery", images: legacy }] : [];
   }
 
   return { badge, heading, groups };
@@ -244,34 +200,35 @@ export function normalizeGalleryContent(raw: Record<string, unknown> | GalleryCo
 
 export const DEFAULT_TRAINERS: TrainersContent = {
   badge: "Our Trainers",
-  heading: "Coaches who train you like an athlete",
-  description:
-    "Every coach on the floor is certified, insured and has come up through the same programmes they now teach. Book an intro session and you will be paired with the one whose speciality matches what you are training for.",
+  heading: "Meet the team",
+  description: "",
   limit: 4,
 };
 
 export const DEFAULT_TESTIMONIALS_HEADER: SectionHeaderContent = {
   badge: "Testimonials",
   heading: "What our members say",
-  description:
-    "Real progress, told by the people who made it. Every review below comes from a member training on this floor right now.",
+  description: "",
 };
 
 export const DEFAULT_CONTACT: ContactContent = {
-  badge: "Contact Form",
-  heading: "Believe in yourself be *fit* & *healthier*",
-  description:
-    "Tell us what you are training for and we will point you at the right membership, class or coach. No hard sell, and no obligation to sign up on the spot.",
-  formTitle: "Registration Form",
+  badge: "Contact",
+  heading: "Get in touch",
+  description: "Leave your details and we will get back to you.",
+  formTitle: "Send us a message",
   buttonText: "Contact Us",
 };
 
 export const DEFAULT_BLOGS: BlogsContent = {
-  badge: "Fitness Tips",
-  heading: "Stay Fit Stay Strong",
+  badge: "Blog",
+  heading: "Latest articles",
 };
 
-/** Rendered when the API has no sections (offline / first run). */
+/**
+ * Rendered when the API has no sections (offline / first run). About, stats
+ * and gallery have nothing to show without the gym's own content, so in
+ * practice this is the classes, trainers, reviews, enquiry form and articles.
+ */
 export const DEFAULT_SECTIONS: HomeSection[] = [
   { key: "about", enabled: true, order: 1, content: DEFAULT_ABOUT as unknown as Record<string, unknown> },
   { key: "stats", enabled: true, order: 2, content: DEFAULT_STATS as unknown as Record<string, unknown> },
@@ -289,12 +246,18 @@ export const DEFAULT_SECTIONS: HomeSection[] = [
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Uploaded assets live on the backend host; bundled /images stay on Next. */
+/**
+ * Where a stored media path is served from. Only the gym's own media
+ * resolves: an upload on the API host, or a full URL. Any other path points
+ * into this app's bundled pictures, which is where the first seed put its
+ * stock photo; a gym never chose it, so it resolves to nothing and the caller
+ * leaves the image out.
+ */
 export function resolveMediaUrl(url?: string): string {
   if (!url) return "";
   if (/^https?:\/\//i.test(url)) return url;
   if (url.startsWith("/uploads")) return `${API_BASE_URL}${url}`;
-  return url;
+  return "";
 }
 
 function isEmptyValue(v: unknown): boolean {
@@ -306,7 +269,8 @@ function isEmptyValue(v: unknown): boolean {
 
 /**
  * Fills any missing/empty fields in the stored content from the defaults, so
- * a half-edited section never renders with blank headings or empty lists.
+ * a half-edited section never renders with a blank heading. Lists and body
+ * copy have no default: left empty, that part of the section is not shown.
  */
 export function mergeContent<T extends object>(defaults: T, incoming?: Record<string, unknown>): T {
   if (!incoming) return defaults;

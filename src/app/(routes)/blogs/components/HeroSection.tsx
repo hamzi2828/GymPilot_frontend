@@ -36,17 +36,16 @@ const HeroSection: React.FC = () => {
     );
   }
 
+  // No banner set up for the blog, or it could not be loaded: the page gets a
+  // plain heading. A visitor is never shown a note meant for the gym's admin.
   if (!heroData) {
     return (
-      <section className="relative min-h-screen flex items-center justify-center overflow-hidden text-white">
+      <section className="relative flex items-center justify-center overflow-hidden text-white py-20 sm:py-28">
         <div className="absolute inset-0 bg-gray-900"></div>
         <div className="relative z-10 text-center max-w-2xl mx-auto px-4">
-          <h1 className="font-montserrat font-black text-4xl sm:text-5xl lg:text-7xl uppercase tracking-wider mb-6">
-            NO HERO SET
+          <h1 className="font-montserrat font-black text-4xl sm:text-5xl lg:text-6xl uppercase tracking-wider">
+            Blog
           </h1>
-          <p className="text-xl sm:text-2xl lg:text-3xl font-light mb-8 text-gray-200">
-            Please configure a hero section in the admin panel
-          </p>
         </div>
       </section>
     );
@@ -55,13 +54,15 @@ const HeroSection: React.FC = () => {
   return (
     <section className="relative min-h-screen flex items-center justify-center overflow-hidden text-white">
       <div className="absolute inset-0">
-        <Image
-          src={heroData.backgroundImage}
-          alt="Fitness Hero"
-          fill
-          className="object-cover"
-          priority
-        />
+        {heroData.backgroundImage && (
+          <Image
+            src={heroData.backgroundImage}
+            alt=""
+            fill
+            className="object-cover"
+            priority
+          />
+        )}
         <div className="gym-blog-hero-overlay absolute inset-0"></div>
       </div>
 
@@ -73,18 +74,23 @@ const HeroSection: React.FC = () => {
           {heroData.subtitle}
         </p>
         <div className="flex flex-col sm:flex-row gap-4 justify-center">
-          <a
-            href={heroData.primaryButtonLink}
-            className="gym-blog-custom-gradient-green text-black font-bold px-8 py-4 rounded-full text-lg hover:scale-105 transition-all duration-300"
-          >
-            {heroData.primaryButtonText}
-          </a>
-          <a
-            href={heroData.secondaryButtonLink}
-            className="gym-blog-glass-effect text-white font-semibold px-8 py-4 rounded-full text-lg hover:scale-105 transition-all duration-300"
-          >
-            {heroData.secondaryButtonText}
-          </a>
+          {/* A button with no text or no link set is left out. */}
+          {heroData.primaryButtonText && heroData.primaryButtonLink && (
+            <a
+              href={heroData.primaryButtonLink}
+              className="gym-blog-custom-gradient-green text-black font-bold px-8 py-4 rounded-full text-lg hover:scale-105 transition-all duration-300"
+            >
+              {heroData.primaryButtonText}
+            </a>
+          )}
+          {heroData.secondaryButtonText && heroData.secondaryButtonLink && (
+            <a
+              href={heroData.secondaryButtonLink}
+              className="gym-blog-glass-effect text-white font-semibold px-8 py-4 rounded-full text-lg hover:scale-105 transition-all duration-300"
+            >
+              {heroData.secondaryButtonText}
+            </a>
+          )}
         </div>
       </div>
 

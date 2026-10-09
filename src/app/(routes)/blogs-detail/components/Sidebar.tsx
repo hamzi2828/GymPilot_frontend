@@ -71,7 +71,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     id: article._id,
     title: article.title,
     slug: article.slug,
-    thumbnail: article.thumbnail || article.image || '/images/gym-blog-1.svg',
+    thumbnail: article.thumbnail || article.image || '/images/class-placeholder.svg',
     readingTime: blogDetailService.estimateReadingTime(article.content),
     views: article.views || 0
   }));

@@ -20,7 +20,9 @@ export async function generateMetadata(): Promise<Metadata> {
   const settings = await getSiteSettings();
   const { siteName, siteUrl } = settings;
   const seo = settings.seo || {};
-  const description = seo.description || settings.siteDescription || "Train with expert coaches in a fully equipped gym. Browse classes, meet our trainers and pick the membership that fits you.";
+  // With no description of the gym's own, the fallback only lists what the
+  // site holds. It makes no claim about the gym.
+  const description = seo.description || settings.siteDescription || `${siteName}: classes, timetable, memberships and how to get in touch.`;
 
   return {
     // `template` lets every page set just its own name — "Classes" becomes
@@ -28,12 +30,13 @@ export async function generateMetadata(): Promise<Metadata> {
     // own title and description (Settings → General → Search & social)
     // take precedence when set.
     title: {
-      default: seo.title || `${siteName} — Gym, Classes & Personal Training`,
+      default: seo.title || siteName,
       template: `%s | ${siteName}`,
     },
     description,
     keywords: seo.keywords ? seo.keywords.split(",").map((k) => k.trim()).filter(Boolean) : undefined,
-    metadataBase: new URL(siteUrl),
+    // Empty only when there is neither a request nor a configured address.
+    metadataBase: siteUrl ? new URL(siteUrl) : undefined,
     applicationName: siteName,
     // Installable as an app on phones and desktops (see src/app/manifest.ts
     // and public/sw.js).

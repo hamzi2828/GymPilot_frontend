@@ -10,7 +10,7 @@ interface TrainerDetailProps {
 
 const TrainerDetail: React.FC<TrainerDetailProps> = ({ trainer }) => {
   const badgeText = "Meet Our Trainers";
-  const heading = "The Best Fitness Gym in Town";
+  const heading = "Meet the team";
 
   // If no trainer is selected, show a placeholder message
   if (!trainer) {
@@ -53,7 +53,7 @@ const TrainerDetail: React.FC<TrainerDetailProps> = ({ trainer }) => {
           <div className="trainer-detail-team-card bg-gray-50 rounded-lg border border-gray-200 flex flex-col w-full sm:w-[400px] lg:w-[600px] h-[400px] sm:h-[500px] lg:h-[600px] overflow-hidden flex-shrink-0">
             <div className="trainer-detail-card-bg flex-1 relative">
               <Image
-                src={trainer.image || '/images/trainer-1.svg'}
+                src={trainer.image || '/images/default-avatar.svg'}
                 alt={trainer.name}
                 fill
                 className="object-cover"
@@ -163,11 +163,13 @@ const TrainerDetail: React.FC<TrainerDetailProps> = ({ trainer }) => {
             )}
 
             {/* Contact Info */}
-            <div>
-              <h2 className="text-lg font-semibold mb-2">Contact Info</h2>
-              {trainer.email && <p className="text-gray-600">📧 {trainer.email}</p>}
-              {trainer.phone && <p className="text-gray-600">📞 {trainer.phone}</p>}
-            </div>
+            {(trainer.email || trainer.phone) && (
+              <div>
+                <h2 className="text-lg font-semibold mb-2">Contact Info</h2>
+                {trainer.email && <p className="text-gray-600">📧 {trainer.email}</p>}
+                {trainer.phone && <p className="text-gray-600">📞 {trainer.phone}</p>}
+              </div>
+            )}
           </div>
         </div>
       </div>

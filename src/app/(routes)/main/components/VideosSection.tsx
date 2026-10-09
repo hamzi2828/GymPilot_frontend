@@ -22,7 +22,7 @@ function toEmbedUrl(url: string): string | null {
  * Renders nothing while the admin hasn't added any clips.
  */
 const VideosSection = ({ content = DEFAULT_VIDEOS }: { content?: VideosContent }) => {
-  const videos = (content.videos ?? []).filter((v) => v && typeof v.url === "string" && v.url.trim());
+  const videos = (content.videos ?? []).filter((v) => v && typeof v.url === "string" && resolveMediaUrl(v.url.trim()));
   const [playing, setPlaying] = useState<number | null>(null);
 
   if (videos.length === 0) return null;

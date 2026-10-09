@@ -36,10 +36,7 @@ const FeaturedStories: React.FC = () => {
           <h2 className="font-montserrat font-bold text-3xl sm:text-4xl uppercase tracking-wide mb-4">
             Featured Stories
           </h2>
-          <div className="w-24 h-1 gym-blog-custom-bg-green mx-auto mb-6"></div>
-          <p className="text-xl text-gray-300 max-w-2xl mx-auto">
-            Inspiring transformation stories from our community members
-          </p>
+          <div className="w-24 h-1 gym-blog-custom-bg-green mx-auto"></div>
         </div>
 
         {/* Display loading state */}
@@ -53,7 +50,7 @@ const FeaturedStories: React.FC = () => {
         {!isLoading && featuredCategories.length === 0 && (
           <div className="text-center py-12">
             <p className="text-gray-300 mb-6">
-              No featured stories yet — we&apos;re working on them.
+              No featured stories yet.
             </p>
             <Link
               href="/classes"
@@ -72,7 +69,7 @@ const FeaturedStories: React.FC = () => {
                 <Image
                   src={featuredCategories[0].bannerUrl ||
                        featuredCategories[0].thumbnailUrl ||
-                       "/images/gym-large.webp"}
+                       "/images/class-placeholder.svg"}
                   alt={featuredCategories[0].name}
                   fill
                   className="object-cover group-hover:scale-105 transition-transform duration-700"
@@ -175,7 +172,7 @@ const FeaturedStories: React.FC = () => {
                           <Image
                             src={blog.thumbnail?.startsWith('/uploads/')
                               ? `${process.env.NEXT_PUBLIC_BACKEND_URL}${blog.thumbnail}`
-                              : blog.thumbnail || "/images/gym-blog-1.svg"}
+                              : blog.thumbnail || "/images/class-placeholder.svg"}
                             alt={blog.title}
                             fill
                             className="object-cover group-hover:scale-110 transition-transform duration-500"

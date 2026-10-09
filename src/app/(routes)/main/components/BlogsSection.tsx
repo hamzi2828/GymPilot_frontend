@@ -71,7 +71,7 @@ const BlogsSection = ({ content = DEFAULT_BLOGS }: { content?: BlogsContent }) =
                 >
                   <div className="home-post__media">
                     <Image
-                      src={blog.thumbnail || blog.image || "/images/gym-blog-1.svg"}
+                      src={blog.thumbnail || blog.image || "/images/class-placeholder.svg"}
                       alt={blog.title}
                       fill
                       sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"

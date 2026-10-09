@@ -3,9 +3,19 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import '@fortawesome/fontawesome-free/css/all.css';
-import { contactService, ContactFormData, ContactValidationErrors } from "./services/contactService";
+import { contactService, ContactFormData, ContactTopic, ContactValidationErrors } from "./services/contactService";
 import { useSiteSettings } from "@/components/ThemeProvider";
 import { useLanguage } from "@/i18n/LanguageProvider";
+import type { DictKey } from "@/i18n/dictionaries";
+
+// Each topic's button label, and the opening line offered for the message.
+const TOPIC_TEXT: Record<ContactTopic, { label: DictKey; ask: DictKey }> = {
+  membership: { label: "contact.topicMembership", ask: "contact.askMembership" },
+  classes: { label: "contact.topicClasses", ask: "contact.askClasses" },
+  "personal-training": { label: "contact.topicPt", ask: "contact.askPt" },
+  billing: { label: "contact.topicBilling", ask: "contact.askBilling" },
+  other: { label: "contact.topicOther", ask: "contact.askOther" },
+};
 
 const ContactUsPage = () => {
   // Phone and address come from admin settings, so they stay correct after a move.
@@ -18,7 +28,7 @@ const ContactUsPage = () => {
     phoneNumber: '',
     subject: '',
     message: '',
-    category: 'general'
+    category: 'other'
   });
 
   const [validationErrors, setValidationErrors] = useState<ContactValidationErrors>({});
@@ -33,7 +43,7 @@ const ContactUsPage = () => {
     phoneNumber: '',
     subject: '',
     message: '',
-    category: 'general'
+    category: 'other'
   };
 
   // Handle form input changes
@@ -104,15 +114,15 @@ const ContactUsPage = () => {
   };
 
   // Handle category change
-  const handleCategoryChange = (category: string) => {
+  const handleCategoryChange = (category: ContactTopic) => {
     setFormData(prev => ({
       ...prev,
-      category: category as ContactFormData['category']
+      category
     }));
 
     // Update message with suggestion if message is empty
     if (!formData.message.trim()) {
-      const suggestion = contactService.getMessageSuggestion(category);
+      const suggestion = t(TOPIC_TEXT[category].ask);
       setFormData(prev => ({
         ...prev,
         message: suggestion
@@ -207,12 +217,10 @@ const ContactUsPage = () => {
                         .
                       </p>
                       <p>
-                        <strong>Personal training:</strong> Tell us your goal and we&apos;ll
-                        match you with a{" "}
+                        <strong>{t("nav.trainers")}:</strong>{" "}
                         <Link href="/trainers" className="underline hover:no-underline">
-                          coach
+                          {t("contact.meetTeam")}
                         </Link>
-                        .
                       </p>
                       {mobileNumber && (
                         <p>
@@ -256,7 +264,6 @@ const ContactUsPage = () => {
                           </ul>
                         </div>
                       )}
-                      <p>We reply to every message within one working day.</p>
                     </div>
                   </header>
 
@@ -277,18 +284,19 @@ const ContactUsPage = () => {
                         Category
                       </label>
                       <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                        {contactService.getContactCategories().map((category) => (
+                        {contactService.getContactCategories().map((topic) => (
                           <button
-                            key={category.value}
+                            key={topic}
                             type="button"
-                            onClick={() => handleCategoryChange(category.value)}
+                            aria-pressed={formData.category === topic}
+                            onClick={() => handleCategoryChange(topic)}
                             className={`px-3 py-2 text-sm rounded-lg border transition-colors ${
-                              formData.category === category.value
+                              formData.category === topic
                                 ? 'bg-accent-soft border-accent text-neutral-900'
                                 : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
                             }`}
                           >
-                            {category.label}
+                            {t(TOPIC_TEXT[topic].label)}
                           </button>
                         ))}
                       </div>
@@ -356,7 +364,7 @@ const ContactUsPage = () => {
                           name="phoneNumber"
                           value={formData.phoneNumber}
                           onChange={handleInputChange}
-                          placeholder="+92 987382 8967"
+                          placeholder={t("contact.phonePlaceholder")}
                           className={`privacy-faq-form-input w-full px-4 py-3 rounded-lg text-gray-900 placeholder-gray-500 ${
                             validationErrors.phoneNumber ? 'border-red-300 bg-red-50' : ''
                           }`}

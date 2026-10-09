@@ -1,63 +1,34 @@
 "use client";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowRight, ChevronLeft, ChevronRight } from "lucide-react";
 import { heroService, type HeroSlide } from "../services/heroService";
+import { resolveMediaUrl } from "../services/homeService";
 import { useSiteSettings } from "@/components/ThemeProvider";
 
 /** How long a slide holds before advancing. Slower than a typical banner on
  *  purpose — the imagery is the product, and fast cuts read as cheap. */
 const AUTO_INTERVAL = 6500;
 
-// Shown when the API has no active slides yet, or the request fails, so the
-// banner never renders as an empty block.
-const FALLBACK_SLIDES: HeroSlide[] = [
-  {
-    _id: "fallback-1",
-    title: "Train Hard. Feel Unstoppable.",
-    description:
-      "State-of-the-art equipment, expert coaching and a community that shows up. Your first session is on us.",
-    imageUrl: "/images/hero.webp",
-    buttonText: "View Packages",
-    buttonLink: "/packages",
-    secondButtonText: "Browse Classes",
-    secondButtonLink: "/classes",
-    isActive: true,
-    order: 1,
-    ariaLabel: "Athlete training in the gym",
-    platform: "gymfolio",
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    _id: "fallback-2",
-    title: "Coaching Built Around You",
-    description:
-      "Work one-to-one with certified trainers who tailor every session to your goals, your pace and your schedule.",
-    imageUrl: "/images/gym-large.webp",
-    buttonText: "Meet the Trainers",
-    buttonLink: "/trainers",
-    secondButtonText: "Get in Touch",
-    secondButtonLink: "/contact-us",
-    isActive: true,
-    order: 2,
-    ariaLabel: "Personal trainer coaching a client",
-    platform: "gymfolio",
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-];
-
-// Slides stored by the CMS use backend-relative upload paths; bundled assets in
-// /public must be served by Next, not the API host.
-const resolveSlideImage = (imageUrl: string): string => {
-  if (!imageUrl) return "/images/hero.webp";
-  if (/^https?:\/\//i.test(imageUrl)) return imageUrl;
-  if (imageUrl.startsWith("/uploads")) {
-    return `${process.env.NEXT_PUBLIC_BACKEND_URL ?? ""}${imageUrl}`;
-  }
-  return imageUrl;
-};
+// Shown when the gym has no active slides yet, or the request fails, so the
+// banner never renders as an empty block: the gym's own name and the two
+// pages a visitor most often wants. No photograph and no offer, because the
+// gym has supplied neither.
+const fallbackSlide = (siteName: string): HeroSlide => ({
+  _id: "fallback",
+  title: siteName ? `Welcome to ${siteName}` : "Welcome",
+  description: "",
+  imageUrl: "",
+  buttonText: "View Packages",
+  buttonLink: "/packages",
+  secondButtonText: "Browse Classes",
+  secondButtonLink: "/classes",
+  isActive: true,
+  order: 1,
+  platform: "gymfolio",
+  createdAt: "",
+  updatedAt: "",
+});
 
 /**
  * `compact` shortens the banner for interior pages, where a full-screen hero
@@ -66,10 +37,14 @@ const resolveSlideImage = (imageUrl: string): string => {
 const HeroCarousel: React.FC<{ compact?: boolean }> = ({ compact = false }) => {
   const [active, setActive] = useState(0);
   const [paused, setPaused] = useState(false);
-  const [slides, setSlides] = useState<HeroSlide[]>([]);
+  const [fetched, setFetched] = useState<HeroSlide[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const { siteName } = useSiteSettings();
+  // The gym's slides, or the one neutral slide when it has none to show.
+  const slides = useMemo(
+    () => (fetched.length ? fetched : [fallbackSlide(siteName)]),
+    [fetched, siteName]
+  );
   const sectionRef = useRef<HTMLElement>(null);
 
   // Fetch hero slides from API
@@ -77,19 +52,14 @@ const HeroCarousel: React.FC<{ compact?: boolean }> = ({ compact = false }) => {
     const fetchSlides = async () => {
       try {
         setLoading(true);
-        setError(null);
         const data = await heroService.getActiveSlides();
-        // An empty result is a valid response, not an error — still fall back so
-        // the banner is never blank.
-        const sortedSlides = data.length
-          ? [...data].sort((a, b) => a.order - b.order)
-          : FALLBACK_SLIDES;
-        setSlides(sortedSlides);
+        setFetched([...data].sort((a, b) => a.order - b.order));
         setActive(0); // Reset to first slide when data changes
       } catch (err) {
+        // The neutral slide stands in; a visitor is not shown an error for a
+        // banner.
         console.error("Failed to fetch hero slides:", err);
-        setError("Failed to load carousel content");
-        setSlides(FALLBACK_SLIDES);
+        setFetched([]);
       } finally {
         setLoading(false);
       }
@@ -150,18 +120,7 @@ const HeroCarousel: React.FC<{ compact?: boolean }> = ({ compact = false }) => {
     );
   }
 
-  if (error && slides.length === 0) {
-    return (
-      <section className="hero hero--placeholder" aria-label="Banner unavailable">
-        <div className="hero__inner">
-          <p className="hero__lede">{error}</p>
-          <p className="hero__lede">Please refresh the page to try again.</p>
-        </div>
-      </section>
-    );
-  }
-
-  const slide = slides[active];
+  const slide = slides[Math.min(active, slides.length - 1)];
 
   return (
     <section
@@ -180,20 +139,26 @@ const HeroCarousel: React.FC<{ compact?: boolean }> = ({ compact = false }) => {
       {/* Stage: every slide stays mounted so the cross-fade has something to
           fade between, and only the active one is exposed to assistive tech. */}
       <div className="hero__stage" aria-live="polite">
-        {slides.map((s, idx) => (
-          <div
-            key={s._id}
-            className={`hero__slide${active === idx ? " is-active" : ""}`}
-            aria-hidden={active !== idx}
-          >
+        {slides.map((s, idx) => {
+          // The gym's own upload, or the plain dark plate: never a stock photo.
+          const image = resolveMediaUrl(s.imageUrl);
+          return (
             <div
-              className="hero__media"
-              style={{ backgroundImage: `url('${resolveSlideImage(s.imageUrl)}')` }}
-              role="img"
-              aria-label={s.ariaLabel || s.title}
-            />
-          </div>
-        ))}
+              key={s._id}
+              className={`hero__slide${active === idx ? " is-active" : ""}`}
+              aria-hidden={active !== idx}
+            >
+              {image && (
+                <div
+                  className="hero__media"
+                  style={{ backgroundImage: `url('${image}')` }}
+                  role="img"
+                  aria-label={s.ariaLabel || s.title}
+                />
+              )}
+            </div>
+          );
+        })}
         <div className="hero__scrim" aria-hidden="true" />
         <div className="hero__vignette" aria-hidden="true" />
       </div>
@@ -201,10 +166,12 @@ const HeroCarousel: React.FC<{ compact?: boolean }> = ({ compact = false }) => {
       <div className="hero__inner">
         {/* Remounting on slide change is what replays the staggered entrance. */}
         <div className="hero__content" key={slide._id}>
-          <span className="hero__eyebrow">
-            <span className="hero__eyebrow-dot" aria-hidden="true" />
-            {siteName}
-          </span>
+          {siteName && (
+            <span className="hero__eyebrow">
+              <span className="hero__eyebrow-dot" aria-hidden="true" />
+              {siteName}
+            </span>
+          )}
 
           <h1 className="hero__title">{slide.title}</h1>
 

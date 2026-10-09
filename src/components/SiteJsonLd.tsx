@@ -10,13 +10,18 @@ import { scriptJson } from "@/helper/scriptJson";
 export default function SiteJsonLd({ settings }: { settings: SiteSettingsForSeo }) {
   const hours = (settings.openingHours || []).filter((h) => h && !h.closed && h.open && h.close);
   const socials = [settings.facebookUrl, settings.instagramUrl, settings.youtubeUrl, settings.twitterUrl, settings.tiktokUrl].filter((u): u is string => !!u);
-  const image = settings.logoUrl && /^https?:\/\//.test(settings.logoUrl) ? settings.logoUrl : `${settings.siteUrl.replace(/\/$/, "")}${settings.logoUrl || "/images/logo.png"}`;
+  // The gym's own logo, or no image at all: never a stand-in.
+  const image = !settings.logoUrl
+    ? undefined
+    : /^https?:\/\//.test(settings.logoUrl)
+      ? settings.logoUrl
+      : `${settings.siteUrl.replace(/\/$/, "")}${settings.logoUrl}`;
   const data: Record<string, unknown> = {
     "@context": "https://schema.org",
     "@type": ["HealthClub", "LocalBusiness"],
     name: settings.siteName,
     url: settings.siteUrl,
-    image,
+    ...(image ? { image } : {}),
     ...(settings.seo?.description || settings.siteDescription ? { description: settings.seo?.description || settings.siteDescription } : {}),
     ...(settings.mobileNumber ? { telephone: settings.mobileNumber } : {}),
     ...(settings.contactEmail ? { email: settings.contactEmail } : {}),

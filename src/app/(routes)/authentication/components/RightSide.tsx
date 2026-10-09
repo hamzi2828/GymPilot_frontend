@@ -1,6 +1,14 @@
-import React from "react";
+"use client";
 
+import React from "react";
+import { useSiteSettings } from "@/components/ThemeProvider";
+
+// The panel beside the sign-in form. It carries the gym's own name and one
+// line that is true of any account; it used to print member counts and
+// services that no gym had supplied.
 export const RightSide: React.FC = () => {
+  const { siteName } = useSiteSettings();
+
   return (
     <div className="hidden lg:block lg:w-1/2 relative overflow-hidden">
     {/* Animated background gradient */}
@@ -36,40 +44,13 @@ export const RightSide: React.FC = () => {
         </div>
 
         <h2 className="text-5xl font-black mb-8 text-white font-sans leading-tight">
-          Transform Your
-          <span className="block auth-accent-bright">Body & Mind</span>
+          Welcome
+          {siteName && <span className="block auth-accent-bright">to {siteName}</span>}
         </h2>
 
-        <p className="text-xl text-gray-300 mb-12 font-medium leading-relaxed">
-          Join thousands of fitness enthusiasts on their journey to peak performance and mental wellness
+        <p className="text-xl text-gray-300 font-medium leading-relaxed">
+          Sign in to your account, or create one to get started.
         </p>
-
-        <div className="grid grid-cols-3 gap-8 text-center">
-          <div className="group">
-            <div className="text-4xl font-black auth-accent-bright mb-2 group-hover:scale-110 transition-transform duration-300">15K+</div>
-            <div className="text-sm font-bold text-gray-300 uppercase tracking-wider">Active Members</div>
-          </div>
-          <div className="group">
-            <div className="text-4xl font-black auth-accent-bright mb-2 group-hover:scale-110 transition-transform duration-300">1200+</div>
-            <div className="text-sm font-bold text-gray-300 uppercase tracking-wider">Workout Plans</div>
-          </div>
-          <div className="group">
-            <div className="text-4xl font-black auth-accent-bright mb-2 group-hover:scale-110 transition-transform duration-300">24/7</div>
-            <div className="text-sm font-bold text-gray-300 uppercase tracking-wider">Expert Support</div>
-          </div>
-        </div>
-
-        {/* Features */}
-        <div className="mt-12 space-y-4">
-          {["Personalized Training Programs", "Nutrition Guidance & Meal Plans", "Progress Tracking & Analytics"].map((f) => (
-            <div key={f} className="flex items-center justify-center space-x-3 text-gray-300">
-              <svg className="w-6 h-6 auth-accent-bright" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <span className="font-medium">{f}</span>
-            </div>
-          ))}
-        </div>
       </div>
     </div>
 

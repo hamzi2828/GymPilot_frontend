@@ -19,7 +19,7 @@ const Classes = () => {
   return (
     <main>
 
-        <HeroAbout />
+        <HeroAbout title="Classes" />
             <GymfolioAllClasses onClassClick={handleClassClick} />
             <ContactSection/>
 
