@@ -35,7 +35,8 @@ export async function generateMetadata(): Promise<Metadata> {
     },
     description,
     keywords: seo.keywords ? seo.keywords.split(",").map((k) => k.trim()).filter(Boolean) : undefined,
-    metadataBase: new URL(siteUrl),
+    // Empty only when there is neither a request nor a configured address.
+    metadataBase: siteUrl ? new URL(siteUrl) : undefined,
     applicationName: siteName,
     // Installable as an app on phones and desktops (see src/app/manifest.ts
     // and public/sw.js).

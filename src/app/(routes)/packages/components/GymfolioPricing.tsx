@@ -1,5 +1,5 @@
 "use client";
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { packageService, Package } from "../services/packageService";
 import { parseAmount } from "@/helper/money";
@@ -66,23 +66,23 @@ const GymfolioPricing: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const fetchPackages = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-        const data = await packageService.getActivePackages();
-        setPackages(data);
-      } catch (err) {
-        console.error('Error fetching packages:', err);
-        setError('Failed to load packages. Please try again later.');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchPackages();
+  const fetchPackages = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await packageService.getActivePackages();
+      setPackages(data);
+    } catch (err) {
+      console.error('Error fetching packages:', err);
+      setError('We could not load the packages just now.');
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    fetchPackages();
+  }, [fetchPackages]);
 
   return (
     <section
@@ -98,7 +98,7 @@ const GymfolioPricing: React.FC = () => {
           id="GymfolioPricing-title"
           className="text-2xl sm:text-3xl lg:text-4xl font-extrabold uppercase tracking-tight text-black/90"
         >
-          Simple, transparent pricing
+          Membership packages
         </h2>
       </header>
 
@@ -112,17 +112,40 @@ const GymfolioPricing: React.FC = () => {
         </div>
       )}
 
-      {/* Error State */}
+      {/* Error State: say so, and offer another go rather than a dead end. */}
       {error && !loading && (
         <div className="flex items-center justify-center py-20">
-          <div className="rounded-lg bg-red-50 p-6 max-w-md">
-            <p className="text-red-800 text-center">{error}</p>
+          <div className="rounded-lg bg-red-50 p-6 max-w-md text-center" role="alert">
+            <p className="text-red-800">{error}</p>
+            <button
+              type="button"
+              onClick={fetchPackages}
+              className="mt-4 inline-flex items-center justify-center rounded-full bg-neutral-900 px-6 py-2.5 text-sm font-semibold text-white hover:bg-neutral-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black"
+            >
+              Try again
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Empty State: the gym has no package on sale. Under a heading alone
+          the page read as broken. */}
+      {!loading && !error && packages.length === 0 && (
+        <div className="flex items-center justify-center py-16">
+          <div className="max-w-md text-center">
+            <p className="text-[#4d4d51]">No packages are listed here yet.</p>
+            <Link
+              href="/contact-us"
+              className="mt-4 inline-flex items-center justify-center rounded-full border border-neutral-300 px-6 py-2.5 text-sm font-semibold text-neutral-800 hover:border-neutral-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black"
+            >
+              Ask us about joining
+            </Link>
           </div>
         </div>
       )}
 
       {/* Packages Grid */}
-      {!loading && !error && (
+      {!loading && !error && packages.length > 0 && (
         <div
           className="GymfolioPricing-grid grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-8"
           role="list"

@@ -1,5 +1,6 @@
 "use client";
 import React, { useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { GymClass, gymClassService } from "../../main/services/gymClassService";
 import { useSiteSettings } from "@/components/ThemeProvider";
@@ -114,10 +115,13 @@ const GymClassDetailSection: React.FC<GymClassDetailSectionProps> = ({ gymClass 
             </div>
             ) : gymClass.thumbnail ? (
               <div className="video-bg rounded-lg h-80 md:h-96 lg:h-[584px] relative overflow-hidden">
-                <img
+                <Image
                   src={gymClass.thumbnail}
                   alt={`${gymClass.name} class`}
-                  className="absolute inset-0 w-full h-full object-cover"
+                  fill
+                  sizes="(min-width: 1024px) 66vw, 100vw"
+                  className="object-cover"
+                  unoptimized={/^https?:\/\//i.test(gymClass.thumbnail)}
                 />
               </div>
             ) : null}
@@ -276,11 +280,14 @@ const GymClassDetailSection: React.FC<GymClassDetailSectionProps> = ({ gymClass 
             {/* Additional Image -- from the class's own gallery, not a stock
                 photo that every gym's site would share. */}
             {gymClass.gallery?.[0] && (
-            <figure className="video-bg rounded-lg h-64 md:h-80 lg:h-[646px] flex items-center justify-center overflow-hidden hover:shadow-xl transition-all duration-300 transform hover:scale-[1.02]">
-              <img
+            <figure className="video-bg relative rounded-lg h-64 md:h-80 lg:h-[646px] flex items-center justify-center overflow-hidden hover:shadow-xl transition-all duration-300 transform hover:scale-[1.02]">
+              <Image
                 src={gymClass.gallery[0]}
                 alt={`${gymClass.name} class`}
-                className="w-full h-full object-cover hover:scale-110 transition-transform duration-500"
+                fill
+                sizes="(min-width: 1024px) 33vw, 100vw"
+                className="object-cover hover:scale-110 transition-transform duration-500"
+                unoptimized={/^https?:\/\//i.test(gymClass.gallery[0])}
               />
             </figure>
             )}
