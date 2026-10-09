@@ -64,6 +64,8 @@ export default function PayslipsPage() {
   const [loadErr, setLoadErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
+  // Why a save in the open dialog (pay, edit) failed, shown in that dialog.
+  const [dialogErr, setDialogErr] = useState<string | null>(null);
   const [editing, setEditing] = useState<Payslip | null>(null);
   const [draft, setDraft] = useState<{ earnings: Line[]; deductions: Line[]; notes: string }>({ earnings: [], deductions: [], notes: "" });
   const [paying, setPaying] = useState<Payslip | null>(null);
@@ -109,7 +111,10 @@ export default function PayslipsPage() {
       await load();
       return true;
     } catch (e) {
-      setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not update" });
+      const text = e instanceof Error ? e.message : "Could not update";
+      // Paying happens in a dialog; issuing and voiding happen on the row.
+      if (action === "pay") setDialogErr(text);
+      else setNotice({ tone: "error", text });
       return false;
     }
   };
@@ -119,12 +124,14 @@ export default function PayslipsPage() {
   const openPay = (p: Payslip) => {
     setPaying(p);
     setNotice(null);
+    setDialogErr(null);
     setPayDraft({ paymentMethod: "bank_transfer", paidOn: today(), reference: "" });
   };
 
   const confirmPay = async () => {
     if (!paying) return;
     setBusy(true);
+    setDialogErr(null);
     const done = await act(paying, "pay", {
       paymentMethod: payDraft.paymentMethod,
       paidOn: payDraft.paidOn || undefined,
@@ -148,18 +155,20 @@ export default function PayslipsPage() {
 
   const openEdit = (p: Payslip) => {
     setEditing(p);
+    setDialogErr(null);
     setDraft({ earnings: p.earnings.map((l) => ({ label: l.label, amount: l.amount })), deductions: p.deductions.map((l) => ({ label: l.label, amount: l.amount })), notes: p.notes });
   };
 
   const saveEdit = async () => {
     if (!editing) return;
     setBusy(true);
+    setDialogErr(null);
     try {
       await apiJson(`${API_BASE}/staff/payslips/${editing.id}`, "PUT", draft);
       setEditing(null);
       await load();
     } catch (e) {
-      setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not save" });
+      setDialogErr(e instanceof Error ? e.message : "Could not save");
     } finally {
       setBusy(false);
     }
@@ -243,7 +252,7 @@ export default function PayslipsPage() {
         />
       )}
 
-      <Modal open={!!paying} onClose={() => setPaying(null)} title={paying ? `Pay ${paying.number} · ${paying.staff_name}` : ""} size="sm">
+      <Modal open={!!paying} onClose={() => setPaying(null)} title={paying ? `Pay ${paying.number} · ${paying.staff_name}` : ""} size="sm" busy={busy} error={dialogErr}>
         {paying && (
           <div className="space-y-4">
             <p className="text-sm text-neutral-600">
@@ -252,7 +261,6 @@ export default function PayslipsPage() {
             <SelectField label="Paid by" value={payDraft.paymentMethod} allowClear={false} onChange={(v) => setPayDraft({ ...payDraft, paymentMethod: v })} options={PAYMENT_METHODS} />
             <TextField label="Paid on" type="date" value={payDraft.paidOn} onChange={(v) => setPayDraft({ ...payDraft, paidOn: v })} />
             <TextField label="Payment reference (optional)" value={payDraft.reference} onChange={(v) => setPayDraft({ ...payDraft, reference: v })} placeholder="Bank ref, cheque number…" />
-            {notice?.tone === "error" && <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{notice.text}</p>}
             <div className="flex justify-end gap-2">
               <SecondaryButton onClick={() => setPaying(null)} disabled={busy}>Cancel</SecondaryButton>
               <PrimaryButton onClick={confirmPay} disabled={busy}>{busy ? "Saving…" : "Mark paid"}</PrimaryButton>
@@ -261,7 +269,7 @@ export default function PayslipsPage() {
         )}
       </Modal>
 
-      <Modal open={!!editing} onClose={() => setEditing(null)} title={editing ? `${editing.number} · ${editing.staff_name}` : ""} size="lg">
+      <Modal open={!!editing} onClose={() => setEditing(null)} title={editing ? `${editing.number} · ${editing.staff_name}` : ""} size="lg" busy={busy} error={dialogErr}>
         {editing && (
           <div className="space-y-5">
             <p className="text-sm text-neutral-600">

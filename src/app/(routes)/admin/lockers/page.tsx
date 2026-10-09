@@ -36,6 +36,9 @@ export default function LockersPage() {
   const [member, setMember] = useState<MemberOption | null>(null);
   const [assign, setAssign] = useState({ until: "", fee: "" });
   const [saving, setSaving] = useState(false);
+  // Every save here starts from a dialog (add, or one locker), so a refusal
+  // is shown in whichever is open.
+  const [saveErr, setSaveErr] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -55,6 +58,7 @@ export default function LockersPage() {
 
   const open = (l: Locker) => {
     setSelected(l);
+    setSaveErr(null);
     setAssign({ until: "", fee: String(l.fee || "") });
     setMember(null);
   };
@@ -62,13 +66,14 @@ export default function LockersPage() {
   const run = async (fn: () => Promise<{ message?: string } | void>) => {
     setSaving(true);
     setNotice(null);
+    setSaveErr(null);
     try {
       const r = await fn();
       if (r && r.message) setNotice({ tone: "ok", text: r.message });
       setSelected(null);
       await load();
     } catch (e) {
-      setNotice({ tone: "error", text: e instanceof Error ? e.message : "Something went wrong" });
+      setSaveErr(e instanceof Error ? e.message : "Something went wrong");
     } finally {
       setSaving(false);
     }
@@ -91,7 +96,7 @@ export default function LockersPage() {
         title="Lockers"
         actions={
           editable ? (
-            <PrimaryButton onClick={() => setAddOpen(true)}>
+            <PrimaryButton onClick={() => { setSaveErr(null); setAddOpen(true); }}>
               <FiPlus className="mr-1.5 h-4 w-4" /> Add lockers
             </PrimaryButton>
           ) : undefined
@@ -128,7 +133,7 @@ export default function LockersPage() {
         ))
       )}
 
-      <Modal open={addOpen} onClose={() => setAddOpen(false)} title="Add lockers" size="sm">
+      <Modal open={addOpen} onClose={() => setAddOpen(false)} title="Add lockers" size="sm" busy={saving} error={saveErr}>
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <TextField label="From number" type="number" value={addDraft.from} onChange={(v) => setAddDraft({ ...addDraft, from: v })} />
@@ -143,7 +148,7 @@ export default function LockersPage() {
         </div>
       </Modal>
 
-      <Modal open={!!selected} onClose={() => setSelected(null)} title={selected ? `Locker ${selected.zone ? `${selected.zone}-` : ""}${selected.number}` : ""} size="sm">
+      <Modal open={!!selected} onClose={() => setSelected(null)} title={selected ? `Locker ${selected.zone ? `${selected.zone}-` : ""}${selected.number}` : ""} size="sm" busy={saving} error={saveErr}>
         {selected && (
           <div className="space-y-4 text-sm">
             {selected.status === "assigned" ? (

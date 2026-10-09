@@ -18,6 +18,7 @@ export default function LogPanel({ editable, channels }: { editable: boolean; ch
   const [chosen, setChosen] = useState<MemberOption | null>(null);
   const [draft, setDraft] = useState<{ channel: Channel; subject: string; body: string }>({ channel: "email", subject: "", body: "" });
   const [sending, setSending] = useState(false);
+  const [sendErr, setSendErr] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
 
   const load = useCallback(async () => {
@@ -42,11 +43,13 @@ export default function LogPanel({ editable, channels }: { editable: boolean; ch
   const openSend = () => {
     setOpen(true);
     setNotice(null);
+    setSendErr(null);
   };
 
   const send = async () => {
     setSending(true);
     setNotice(null);
+    setSendErr(null);
     try {
       const res = await apiJson<{ message: string }>(`${MESSAGING_API}/send`, "POST", { ...draft, userId: chosen?.id });
       setNotice({ tone: "ok", text: res.message });
@@ -55,7 +58,7 @@ export default function LogPanel({ editable, channels }: { editable: boolean; ch
       setDraft({ channel: "email", subject: "", body: "" });
       await load();
     } catch (e) {
-      setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not send" });
+      setSendErr(e instanceof Error ? e.message : "Could not send");
     } finally {
       setSending(false);
     }
@@ -101,7 +104,7 @@ export default function LogPanel({ editable, channels }: { editable: boolean; ch
         />
       )}
 
-      <Modal open={open} onClose={() => setOpen(false)} title="Send a message" size="lg">
+      <Modal open={open} onClose={() => setOpen(false)} title="Send a message" size="lg" busy={sending} error={sendErr}>
         <div className="space-y-4">
           <MemberPicker label="Find a member" value={chosen} onChange={setChosen} placeholder="Name, email or phone" listWhenEmpty />
           <SelectField

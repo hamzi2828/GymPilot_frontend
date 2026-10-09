@@ -60,6 +60,7 @@ function LeavePageInner() {
   const [notice, setNotice] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [saveErr, setSaveErr] = useState<string | null>(null);
   const [draft, setDraft] = useState({ staffId: "", type: "annual", from: today(), to: today(), reason: "", approve: true });
 
   const load = useCallback(async () => {
@@ -120,12 +121,13 @@ function LeavePageInner() {
   const save = async () => {
     setSaving(true);
     setNotice(null);
+    setSaveErr(null);
     try {
       await apiJson(`${API_BASE}/staff/leave`, "POST", draft);
       setOpen(false);
       await load();
     } catch (e) {
-      setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not record leave" });
+      setSaveErr(e instanceof Error ? e.message : "Could not record leave");
     } finally {
       setSaving(false);
     }
@@ -138,7 +140,7 @@ function LeavePageInner() {
         title="Leave"
         actions={
           editable ? (
-            <PrimaryButton onClick={() => { setDraft({ staffId: "", type: "annual", from: today(), to: today(), reason: "", approve: true }); setOpen(true); }}>
+            <PrimaryButton onClick={() => { setDraft({ staffId: "", type: "annual", from: today(), to: today(), reason: "", approve: true }); setSaveErr(null); setOpen(true); }}>
               <FiPlus className="mr-1.5 h-4 w-4" /> Record leave
             </PrimaryButton>
           ) : undefined
@@ -190,7 +192,7 @@ function LeavePageInner() {
         />
       )}
 
-      <Modal open={open} onClose={() => setOpen(false)} title="Record leave" size="md">
+      <Modal open={open} onClose={() => setOpen(false)} title="Record leave" size="md" busy={saving} error={saveErr}>
         <div className="space-y-4">
           <SelectField label="Staff member" value={draft.staffId} allowClear={false} onChange={(v) => setDraft({ ...draft, staffId: v })} options={staff.map((s) => ({ value: s.id, label: s.name }))} />
           <SelectField label="Type" value={draft.type} allowClear={false} onChange={(v) => setDraft({ ...draft, type: v })} options={TYPES} />

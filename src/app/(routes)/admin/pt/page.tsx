@@ -87,6 +87,8 @@ export default function PtAdminPage() {
   const [member, setMember] = useState<MemberOption | null>(null);
   const [slots, setSlots] = useState<Slot[]>([]);
   const [saving, setSaving] = useState(false);
+  // Why the booking was refused, shown in the form itself.
+  const [bookErr, setBookErr] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -127,19 +129,21 @@ export default function PtAdminPage() {
   const openBook = () => {
     setDraft({ trainerId: trainerId || "", date: today(), startTime: "", notes: "" });
     setMember(null);
+    setBookErr(null);
     setOpen(true);
   };
 
   const book = async () => {
     setSaving(true);
     setNotice(null);
+    setBookErr(null);
     try {
       const res = await apiJson<{ message: string }>(`${PT_API}/sessions/staff`, "POST", { ...draft, userId: member?.id });
       setNotice({ tone: "ok", text: res.message });
       setOpen(false);
       await load();
     } catch (e) {
-      setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not book" });
+      setBookErr(e instanceof Error ? e.message : "Could not book");
     } finally {
       setSaving(false);
     }
@@ -251,7 +255,7 @@ export default function PtAdminPage() {
         />
       )}
 
-      <Modal open={open} onClose={() => setOpen(false)} title="Book a session" size="lg">
+      <Modal open={open} onClose={() => setOpen(false)} title="Book a session" size="lg" busy={saving} error={bookErr}>
         <div className="space-y-4">
           <SelectField label="Trainer" value={draft.trainerId} allowClear={false} onChange={(v) => setDraft({ ...draft, trainerId: v, startTime: "" })} options={trainers.map((t) => ({ value: t.id, label: t.name }))} />
           <MemberPicker label="Find a member" type="member" value={member} onChange={setMember} listWhenEmpty />

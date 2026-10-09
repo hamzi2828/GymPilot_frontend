@@ -105,6 +105,7 @@ function LeadsAdminPageInner() {
   const [editing, setEditing] = useState<Lead | null>(null);
   const [draft, setDraft] = useState<Draft>(emptyDraft);
   const [saving, setSaving] = useState(false);
+  const [saveErr, setSaveErr] = useState<string | null>(null);
   const [note, setNote] = useState("");
   const [lostReason, setLostReason] = useState("");
   const [notice, setNotice] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
@@ -187,6 +188,7 @@ function LeadsAdminPageInner() {
     setDraft(emptyDraft);
     setNote("");
     setLostReason("");
+    setSaveErr(null);
     setOpen(true);
   };
   const openEdit = (l: Lead) => {
@@ -194,6 +196,7 @@ function LeadsAdminPageInner() {
     setDraft({ firstName: l.first_name, lastName: l.last_name, email: l.email, phone: l.phone, source: l.source, interest: l.interest, nextFollowUpAt: dateInput(l.next_follow_up_at), assignedTo: l.assigned_to || "", tags: l.tags.join(", ") });
     setNote("");
     setLostReason(l.lost_reason || "");
+    setSaveErr(null);
     setOpen(true);
   };
 
@@ -235,6 +238,7 @@ function LeadsAdminPageInner() {
 
   const save = async () => {
     setSaving(true);
+    setSaveErr(null);
     try {
       if (editing) {
         await apiJson(`${LEADS_API}/${editing.id}`, "PUT", payload());
@@ -245,7 +249,7 @@ function LeadsAdminPageInner() {
       setOpen(false);
       await load();
     } catch (e) {
-      setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not save" });
+      setSaveErr(e instanceof Error ? e.message : "Could not save");
     } finally {
       setSaving(false);
     }
@@ -415,7 +419,7 @@ function LeadsAdminPageInner() {
         </>
       )}
 
-      <Modal open={open} onClose={() => setOpen(false)} title={editing ? editing.name : "New lead"} size="lg">
+      <Modal open={open} onClose={() => setOpen(false)} title={editing ? editing.name : "New lead"} size="lg" busy={saving} error={saveErr}>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <TextField label="First name" required value={draft.firstName} onChange={(v) => setDraft({ ...draft, firstName: v })} />
           <TextField label="Last name" value={draft.lastName} onChange={(v) => setDraft({ ...draft, lastName: v })} />

@@ -15,6 +15,7 @@ export default function TemplatesPanel({ editable }: { editable: boolean }) {
   const [editing, setEditing] = useState<TemplateEvent | null>(null);
   const [draft, setDraft] = useState<Draft>({ subject: "", body: "", text: "", enabled: true });
   const [saving, setSaving] = useState(false);
+  const [saveErr, setSaveErr] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
 
   const load = useCallback(async () => {
@@ -42,18 +43,20 @@ export default function TemplatesPanel({ editable }: { editable: boolean }) {
       enabled: ev.custom ? ev.custom.enabled : true,
     });
     setNotice(null);
+    setSaveErr(null);
   };
 
   const save = async () => {
     if (!editing) return;
     setSaving(true);
+    setSaveErr(null);
     try {
       await apiJson(`${MESSAGING_API}/templates/${editing.key}`, "PUT", draft);
       setEditing(null);
       setNotice({ tone: "ok", text: "Wording saved." });
       await load();
     } catch (e) {
-      setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not save" });
+      setSaveErr(e instanceof Error ? e.message : "Could not save");
     } finally {
       setSaving(false);
     }
@@ -121,7 +124,7 @@ export default function TemplatesPanel({ editable }: { editable: boolean }) {
         </div>
       )}
 
-      <Modal open={!!editing} onClose={() => setEditing(null)} title={editing ? editing.label : ""} size="lg">
+      <Modal open={!!editing} onClose={() => setEditing(null)} title={editing ? editing.label : ""} size="lg" busy={saving} error={saveErr}>
         {editing && (
           <div className="space-y-4">
             <p className="text-xs text-neutral-500">
