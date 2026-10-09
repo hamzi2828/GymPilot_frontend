@@ -35,6 +35,9 @@ const Header = () => {
   // Logo and business name come from admin settings, not a hardcoded asset.
   const { logoUrl, logoWidth, logoHeight, siteName } = useSiteSettings();
   const { t } = useLanguage();
+  // Empty until the gym's settings have loaded. The logo's words must not
+  // read " logo" in the meantime, so they fall back to where the link goes.
+  const brandName = (siteName || "").trim();
 
   // Routes whose first element is a full-bleed photographic banner. On these
   // the bar carries no surface at all, so the artwork reaches the top edge of
@@ -264,11 +267,11 @@ const Header = () => {
           href={routes.home}
           className="site-brand"
           onClick={closeMobileMenu}
-          aria-label={`${siteName} — go to homepage`}
+          aria-label={brandName ? `${brandName} — go to homepage` : "Go to homepage"}
         >
           <Image
             src={logoUrl}
-            alt={`${siteName} logo`}
+            alt={brandName ? `${brandName} logo` : "Home"}
             width={logoWidth}
             height={logoHeight}
             // height:auto keeps the aspect ratio when CSS constrains the width,
@@ -356,6 +359,14 @@ const Header = () => {
         </nav>
 
         <div className="site-drawer__footer">
+          {/* The bar's own switcher is hidden below desktop width, and this
+              drawer is the whole menu on a phone: without it here a phone
+              visitor could not change language at all. 16px text, or iOS
+              zooms the page when the list is opened. */}
+          <label className="mb-1 flex flex-col gap-1.5 text-[11px] font-semibold uppercase tracking-[0.1em] text-white/60">
+            {t("nav.language")}
+            <LanguageSwitcher className="h-11 w-full !text-base font-medium normal-case tracking-normal text-white [&>option]:text-neutral-900" />
+          </label>
           {!mounted ? (
             <Link
               href={routes.auth}
