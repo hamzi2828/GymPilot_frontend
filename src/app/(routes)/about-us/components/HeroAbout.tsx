@@ -4,10 +4,7 @@ import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { useSiteSettings } from "@/components/ThemeProvider";
 import { heroService } from "../../main/services/heroService";
-
-// Uploaded slide images live on the API host.
-const resolveImage = (imageUrl: string): string =>
-  imageUrl.startsWith("/uploads") ? `${process.env.NEXT_PUBLIC_BACKEND_URL ?? ""}${imageUrl}` : imageUrl;
+import { resolveMediaUrl } from "../../main/services/homeService";
 
 /**
  * The banner of the About page, and of the classes and trainers pages. It
@@ -24,8 +21,11 @@ const HeroAbout: React.FC<{ title?: string }> = ({ title = "About us" }) => {
     heroService
       .getActiveSlides()
       .then((slides) => {
-        const first = [...slides].sort((a, b) => a.order - b.order).find((s) => s.imageUrl);
-        if (!cancelled && first) setBgImage(resolveImage(first.imageUrl));
+        const first = [...slides]
+          .sort((a, b) => a.order - b.order)
+          .map((s) => resolveMediaUrl(s.imageUrl))
+          .find(Boolean);
+        if (!cancelled && first) setBgImage(first);
       })
       .catch(() => {
         /* no photo: the plain plate is the banner */

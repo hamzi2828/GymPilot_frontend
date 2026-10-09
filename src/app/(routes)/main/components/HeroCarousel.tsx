@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link";
 import { ArrowRight, ChevronLeft, ChevronRight } from "lucide-react";
 import { heroService, type HeroSlide } from "../services/heroService";
+import { resolveMediaUrl } from "../services/homeService";
 import { useSiteSettings } from "@/components/ThemeProvider";
 
 /** How long a slide holds before advancing. Slower than a typical banner on
@@ -28,18 +29,6 @@ const fallbackSlide = (siteName: string): HeroSlide => ({
   createdAt: "",
   updatedAt: "",
 });
-
-// Slides stored by the CMS use backend-relative upload paths; bundled assets in
-// /public must be served by Next, not the API host. A slide with no image of
-// its own gets the plain dark plate, never a stock photograph.
-const resolveSlideImage = (imageUrl: string): string => {
-  if (!imageUrl) return "";
-  if (/^https?:\/\//i.test(imageUrl)) return imageUrl;
-  if (imageUrl.startsWith("/uploads")) {
-    return `${process.env.NEXT_PUBLIC_BACKEND_URL ?? ""}${imageUrl}`;
-  }
-  return imageUrl;
-};
 
 /**
  * `compact` shortens the banner for interior pages, where a full-screen hero
@@ -151,7 +140,8 @@ const HeroCarousel: React.FC<{ compact?: boolean }> = ({ compact = false }) => {
           fade between, and only the active one is exposed to assistive tech. */}
       <div className="hero__stage" aria-live="polite">
         {slides.map((s, idx) => {
-          const image = resolveSlideImage(s.imageUrl);
+          // The gym's own upload, or the plain dark plate: never a stock photo.
+          const image = resolveMediaUrl(s.imageUrl);
           return (
             <div
               key={s._id}
