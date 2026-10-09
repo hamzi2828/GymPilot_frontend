@@ -1,21 +1,32 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { ArrowRight, LogOut, Menu, ShieldCheck, UserRound, X } from "lucide-react";
-import { getCurrentUser, getRole, removeToken } from "@/helper/helper";
+import { getAuthHeader, getAuthToken, getCurrentUser, getRole, removeToken } from "@/helper/helper";
 import { useSiteSettings } from "@/components/ThemeProvider";
 import { LanguageSwitcher, useLanguage } from "@/i18n/LanguageProvider";
 
 /** Distance scrolled before the bar leaves its "over the hero" state. */
 const CONDENSE_AT = 28;
 
+const API_BASE = process.env.NEXT_PUBLIC_BACKEND_URL || "";
+
+// Anyone who is not a plain gym member works here. This is the quick answer
+// from what sign-in stored; the panel's own test is asked of the server below.
+const worksHere = (role: string | null) => !!role && role !== "user";
+
 const Header = () => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
+  // "Would the admin panel let this account in" -- every staff role, not only
+  // the one called admin. Checking role === "admin" left a receptionist or a
+  // trainer with no way back to the panel from the public site.
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
+  // The server's answer to that question, and the session it was given for.
+  const panelAnswer = useRef<{ token: string | null; admits: boolean } | null>(null);
   const [mounted, setMounted] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -37,6 +48,7 @@ const Header = () => {
   const handleLogout = () => {
     try {
       removeToken();
+      panelAnswer.current = null;
       setIsLoggedIn(false);
       setIsAdmin(false);
     } finally {
@@ -47,28 +59,56 @@ const Header = () => {
     }
   };
 
+  // Who is signed in, from what the browser holds. The server's answer about
+  // the panel wins while it is for this same session; until it arrives the
+  // stored role decides.
+  const readAuth = useCallback(() => {
+    const signedIn = !!getCurrentUser();
+    const known = panelAnswer.current && panelAnswer.current.token === getAuthToken() ? panelAnswer.current.admits : null;
+    setIsLoggedIn(signedIn);
+    setIsAdmin(signedIn && (known ?? worksHere(getRole())));
+  }, []);
+
   // Initialize auth state after mount to prevent hydration issues
   useEffect(() => {
     setMounted(true);
-    setIsLoggedIn(!!getCurrentUser());
-    setIsAdmin(getRole() === "admin");
-  }, []);
+    readAuth();
+  }, [readAuth]);
 
   // Keep auth state in sync across tabs and navigations
   useEffect(() => {
     if (!mounted) return;
 
-    const update = () => {
-      setIsLoggedIn(!!getCurrentUser());
-      setIsAdmin(getRole() === "admin");
-    };
-    window.addEventListener("focus", update);
-    window.addEventListener("storage", update);
+    window.addEventListener("focus", readAuth);
+    window.addEventListener("storage", readAuth);
     return () => {
-      window.removeEventListener("focus", update);
-      window.removeEventListener("storage", update);
+      window.removeEventListener("focus", readAuth);
+      window.removeEventListener("storage", readAuth);
     };
-  }, [mounted]);
+  }, [mounted, readAuth]);
+
+  // The panel admits whoever holds at least one of its tabs (admin/layout.tsx),
+  // and only the server knows that -- a role can exist and hold none. So for
+  // anyone who is not a plain member, ask what the panel itself asks. A plain
+  // fetch on purpose: a failure here must never sign a visitor out of the
+  // public site, it just leaves the stored role's answer standing.
+  useEffect(() => {
+    if (!mounted || !isLoggedIn || !worksHere(getRole())) return;
+    const token = getAuthToken();
+    if (panelAnswer.current?.token === token) return;
+    let cancelled = false;
+    fetch(`${API_BASE}/roles/me`, { headers: getAuthHeader() })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json) => {
+        if (cancelled || !json || !Array.isArray(json.tabs)) return;
+        panelAnswer.current = { token, admits: json.tabs.length > 0 };
+        readAuth();
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [mounted, isLoggedIn, readAuth]);
 
   // Condense the bar once the page moves, and drive the reading-progress rule.
   useEffect(() => {
@@ -129,7 +169,8 @@ const Header = () => {
     auth: "/authentication",
   };
 
-  // Admins land on the dashboard rather than the member profile page.
+  // Staff land on the dashboard rather than the member profile page. Their
+  // own account (profile, security, "My work") stays one tap away beside it.
   const accountHref = isAdmin ? routes.admin : routes.userDetails;
   const accountLabel = isAdmin ? t("nav.admin") : t("nav.account");
 
@@ -175,6 +216,11 @@ const Header = () => {
             )}
             <span>{accountLabel}</span>
           </Link>
+          {isAdmin && (
+            <Link href={routes.userDetails} className="nav-icon-btn" aria-label={t("nav.account")} title={t("nav.account")}>
+              <UserRound size={17} strokeWidth={2} aria-hidden="true" />
+            </Link>
+          )}
           <button
             type="button"
             className="nav-icon-btn"
@@ -329,6 +375,16 @@ const Header = () => {
                 <span>{accountLabel}</span>
                 <ArrowRight size={16} strokeWidth={2.4} aria-hidden="true" />
               </Link>
+              {isAdmin && (
+                <Link
+                  href={routes.userDetails}
+                  className="nav-btn nav-btn--ghost nav-btn--block"
+                  onClick={closeMobileMenu}
+                >
+                  <UserRound size={16} strokeWidth={2} aria-hidden="true" />
+                  <span>{t("nav.account")}</span>
+                </Link>
+              )}
               <button
                 type="button"
                 className="nav-btn nav-btn--ghost nav-btn--block"
