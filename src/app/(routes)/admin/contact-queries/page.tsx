@@ -15,6 +15,7 @@ import {
   Table,
   ErrorState,
   Pager,
+  useConfirm,
 } from "../_shared/ui";
 import { API_BASE, apiGet, apiJson, replaceParams } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
@@ -47,6 +48,7 @@ const statusColor: Record<string, "neutral" | "green" | "amber" | "rose" | "blue
 
 function ContactQueriesAdminPageInner() {
   const { can } = usePermissions();
+  const { ask, dialog: confirmDialog } = useConfirm();
   const editable = can("contact-queries", "manage");
   // The status filter lives in the address too (?status=new, from the bell),
   // which can also name a query to open (?id=). Read again whenever the
@@ -137,10 +139,15 @@ function ContactQueriesAdminPageInner() {
     }
   };
 
-  const remove = async (id: string) => {
-    if (!confirm("Delete this contact query?")) return;
+  const remove = async (c: Contact) => {
+    const answer = await ask({
+      title: c.fullName ? `Delete the message from ${c.fullName}?` : "Delete this message?",
+      body: "This cannot be undone.",
+      confirmLabel: "Delete message",
+    });
+    if (answer === null) return;
     try {
-      await apiJson(`${API_BASE}/api/contact/${id}`, "DELETE");
+      await apiJson(`${API_BASE}/api/contact/${c._id}`, "DELETE");
       await load();
     } catch (e) {
       alert(e instanceof Error ? e.message : "Delete failed");
@@ -149,6 +156,7 @@ function ContactQueriesAdminPageInner() {
 
   return (
     <div>
+      {confirmDialog}
       <PageHeader eyebrow="Customers" title="Contact Queries" />
 
       <div className="mb-4 w-48">
@@ -181,7 +189,7 @@ function ContactQueriesAdminPageInner() {
             c.createdAt ? new Date(c.createdAt).toLocaleDateString() : "—",
             <div key="a" className="flex gap-2">
               <SecondaryButton onClick={() => open(c)}>View</SecondaryButton>
-              {editable && <DangerButton onClick={() => remove(c._id)}>Delete</DangerButton>}
+              {editable && <DangerButton onClick={() => remove(c)}>Delete</DangerButton>}
             </div>,
           ])}
           empty={statusFilter ? "No contact queries with this status." : "No contact queries yet."}

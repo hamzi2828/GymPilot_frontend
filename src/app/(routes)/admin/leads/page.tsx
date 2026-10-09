@@ -7,7 +7,7 @@
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { FiPlus } from "react-icons/fi";
-import { PageHeader, Card, PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, TextArea, SelectField, Badge, Spinner, ErrorState, Pager } from "../_shared/ui";
+import { PageHeader, Card, PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, TextArea, SelectField, Badge, Spinner, ErrorState, Pager, useConfirm } from "../_shared/ui";
 import { API_BASE, apiGet, apiJson, replaceParams } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
 
@@ -75,6 +75,7 @@ function overdue(v?: string | null) {
 
 function LeadsAdminPageInner() {
   const { can } = usePermissions();
+  const { ask, dialog: confirmDialog } = useConfirm();
   const editable = can("leads", "manage");
   // The address carries the search, the stage and "due for follow-up"
   // (?due=1, where the bell's "Lead follow-ups due" links), and can name a
@@ -258,8 +259,13 @@ function LeadsAdminPageInner() {
   const setStatus = async (l: Lead, status: Status) => {
     let reason = "";
     if (status === "lost") {
-      // Cancel on the prompt leaves the lead where it was.
-      const answer = prompt("Why did they not join? (optional)");
+      // Backing out leaves the lead where it was.
+      const answer = await ask({
+        title: `Mark ${l.name} as lost?`,
+        confirmLabel: "Mark as lost",
+        danger: false,
+        reason: { label: "Why did they not join? (optional)" },
+      });
       if (answer === null) return;
       reason = answer;
     }
@@ -287,7 +293,12 @@ function LeadsAdminPageInner() {
   };
 
   const remove = async (l: Lead) => {
-    if (!confirm(`Delete ${l.name}?`)) return;
+    const answer = await ask({
+      title: `Delete ${l.name}?`,
+      body: "The lead and the notes on it are deleted. This cannot be undone.",
+      confirmLabel: "Delete lead",
+    });
+    if (answer === null) return;
     try {
       await apiJson(`${LEADS_API}/${l.id}`, "DELETE");
       await load();
@@ -309,6 +320,7 @@ function LeadsAdminPageInner() {
 
   return (
     <div>
+      {confirmDialog}
       <PageHeader
         eyebrow="Customers"
         title="Leads"

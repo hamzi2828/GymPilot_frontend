@@ -5,7 +5,7 @@
 // printed.
 
 import { useCallback, useEffect, useState } from "react";
-import { PageHeader, Card, PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, TextArea, SelectField, Badge, Spinner, Table, ErrorState } from "../../_shared/ui";
+import { PageHeader, Card, PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, TextArea, SelectField, Badge, Spinner, Table, ErrorState, useConfirm } from "../../_shared/ui";
 import { API_BASE, apiGet, apiJson, authHeaders } from "../../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
 import { useGymToday } from "@/components/ThemeProvider";
@@ -56,6 +56,7 @@ const PAYMENT_METHODS = [
 export default function PayslipsPage() {
   const today = useGymToday();
   const { can } = usePermissions();
+  const { ask, dialog: confirmDialog } = useConfirm();
   const editable = can("staff", "manage");
   const [from, setFrom] = useState(monthStart(today()));
   const [to, setTo] = useState(today());
@@ -104,7 +105,14 @@ export default function PayslipsPage() {
   };
 
   const act = async (p: Payslip, action: "issue" | "pay" | "void", body: Record<string, unknown> = {}) => {
-    if (action === "void" && !confirm(`Void ${p.number}?`)) return false;
+    if (action === "void") {
+      const answer = await ask({
+        title: `Void payslip ${p.number}?`,
+        body: `${p.staff_name}, ${p.period.label}. It can no longer be edited, issued or paid. This cannot be undone.`,
+        confirmLabel: "Void payslip",
+      });
+      if (answer === null) return false;
+    }
     try {
       const r = await apiJson<{ message: string }>(`${API_BASE}/staff/payslips/${p.id}/${action}`, "POST", body);
       setNotice({ tone: "ok", text: r.message });
@@ -194,6 +202,7 @@ export default function PayslipsPage() {
 
   return (
     <div>
+      {confirmDialog}
       <PageHeader eyebrow="Operations" title="Payslips" actions={editable ? <PrimaryButton onClick={generate} disabled={busy}>{busy ? "Working…" : "Draft payslips for period"}</PrimaryButton> : undefined} />
       {notice && <p className={`mb-4 rounded-lg px-3 py-2 text-sm ${notice.tone === "ok" ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}>{notice.text}</p>}
       <Card className="mb-6 p-4">

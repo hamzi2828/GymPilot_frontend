@@ -18,6 +18,7 @@ import {
   Spinner,
   Card,
   EmptyState,
+  useConfirm,
 } from "../_shared/ui";
 import { GYMFOLIO_API, apiGet, apiJson, authHeaders, absoluteUrl, replaceParams } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
@@ -181,6 +182,7 @@ function memberName(o: PackageOrder) {
 
 function PackageOrdersAdminPageInner() {
   const { can } = usePermissions();
+  const { ask, dialog: confirmDialog } = useConfirm();
   const manage = can("package-orders", "manage");
   // The filters live in the address as well, and it can name an order to
   // open (?id=, from the header search). Read again whenever the address
@@ -406,11 +408,16 @@ function PackageOrdersAdminPageInner() {
   // are only recorded -- the money moves by hand. Either way the membership
   // ends now, which is why this asks first.
   const viaStripe = (o: PackageOrder) => o.payment.method === "stripe" || !!o.payment.stripePaymentIntentId || !!o.payment.stripeSessionId;
-  const refund = (o: PackageOrder) => {
+  const refund = async (o: PackageOrder) => {
     const amount = draft.amount.trim();
     const shown = amount ? money(Number(amount), o.payment.currency) : `the full ${money(o.payment.amountPaid ?? o.payment.amount, o.payment.currency)}`;
     const how = viaStripe(o) ? "It is sent back to the member's card through Stripe." : "Give the money back by hand; this only records it.";
-    if (!confirm(`Refund ${shown} on ${o.orderNumber}? ${how} The membership is cancelled straight away. This cannot be undone.`)) return;
+    const answer = await ask({
+      title: `Refund ${shown} on ${o.orderNumber}?`,
+      body: `${how} The membership is cancelled straight away. This cannot be undone.`,
+      confirmLabel: "Refund",
+    });
+    if (answer === null) return;
     run("Refunded.", () => post(o, "refund", { amount: amount || undefined, reason: draft.reason }));
   };
 
@@ -451,6 +458,7 @@ function PackageOrdersAdminPageInner() {
 
   return (
     <div>
+      {confirmDialog}
       <PageHeader eyebrow="Sales" title="Package Orders" actions={manage ? <PrimaryButton onClick={openAssign}>Assign Package</PrimaryButton> : undefined} />
 
       {notice && (

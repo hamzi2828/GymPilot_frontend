@@ -13,6 +13,7 @@ import {
   Toggle,
   Spinner,
   Badge,
+  useConfirm,
 } from "../_shared/ui";
 import { API_BASE, apiGet, apiJson } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
@@ -53,6 +54,7 @@ const PUBLIC_PATH: Record<ContentPage["slug"], string> = {
 
 export default function ContentPagesAdmin() {
   const { can } = usePermissions();
+  const { ask, dialog: confirmDialog } = useConfirm();
   const editable = can("pages", "manage");
   const [pages, setPages] = useState<ContentPage[]>([]);
   const [active, setActive] = useState<ContentPage["slug"]>("faqs");
@@ -108,7 +110,12 @@ export default function ContentPagesAdmin() {
 
   const reset = async () => {
     if (!draft) return;
-    if (!confirm("Replace this page with the text it shipped with? Your edits will be lost.")) return;
+    const answer = await ask({
+      title: "Reset this page to its original text?",
+      body: "Everything you have written on it is replaced with the text it came with. This cannot be undone.",
+      confirmLabel: "Reset page",
+    });
+    if (answer === null) return;
     setSaving(true);
     try {
       await apiJson(`${API_BASE}/content/${draft.slug}/reset`, "POST");
@@ -143,6 +150,7 @@ export default function ContentPagesAdmin() {
 
   return (
     <div>
+      {confirmDialog}
       <PageHeader
         eyebrow="Content"
         title="Pages"

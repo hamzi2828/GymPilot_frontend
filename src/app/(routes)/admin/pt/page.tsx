@@ -6,7 +6,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { FiPlus } from "react-icons/fi";
-import { PageHeader, Card, PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, SelectField, Badge, Spinner, Table } from "../_shared/ui";
+import { PageHeader, Card, PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, SelectField, Badge, Spinner, Table, useConfirm } from "../_shared/ui";
 import { GYMFOLIO_API, apiGet, apiJson } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
 import { useGymToday } from "@/components/ThemeProvider";
@@ -72,6 +72,7 @@ const STATUS_TONE: Record<Session["status"], "green" | "neutral" | "rose" | "blu
 export default function PtAdminPage() {
   const today = useGymToday();
   const { can } = usePermissions();
+  const { ask, dialog: confirmDialog } = useConfirm();
   const editable = can("pt", "manage");
   const [from, setFrom] = useState(today());
   const [to, setTo] = useState(addDays(today(), 14));
@@ -159,7 +160,13 @@ export default function PtAdminPage() {
   };
 
   const cancel = async (s: Session) => {
-    const reason = prompt(`Cancel ${s.member_name}'s session with ${s.trainer_name}? Reason (optional):`);
+    const reason = await ask({
+      title: `Cancel ${s.member_name}'s session?`,
+      body: `With ${s.trainer_name} on ${s.date} at ${s.start_time}.`,
+      confirmLabel: "Cancel session",
+      cancelLabel: "Keep session",
+      reason: { label: "Reason (optional)" },
+    });
     if (reason === null) return;
     try {
       await apiJson(`${PT_API}/sessions/staff/${s.id}`, "DELETE", { reason });
@@ -171,6 +178,7 @@ export default function PtAdminPage() {
 
   return (
     <div>
+      {confirmDialog}
       <PageHeader
         eyebrow="Fitness"
         title="Personal Training"

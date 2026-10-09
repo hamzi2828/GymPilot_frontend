@@ -5,7 +5,7 @@
 // the automated nudges.
 
 import { useState } from "react";
-import { Card, PrimaryButton, SecondaryButton, TextField, SelectField, Toggle } from "../_shared/ui";
+import { Card, PrimaryButton, SecondaryButton, TextField, SelectField, Toggle, useConfirm } from "../_shared/ui";
 import { API_BASE, apiJson } from "../_shared/api";
 
 export interface MessagingConfig {
@@ -50,8 +50,18 @@ export default function MessagingSettings({
   const btn = m.whatsappButton || {};
   const auto = m.automations || {};
   const [busy, setBusy] = useState(false);
+  const { ask, dialog: confirmDialog } = useConfirm();
 
   const patch = (key: keyof MessagingConfig, sub: Record<string, unknown>) => onChange({ ...m, [key]: { ...((m[key] as Record<string, unknown>) || {}), ...sub } });
+
+  const rotateKeys = async () => {
+    const answer = await ask({
+      title: "Rotate the push notification keys?",
+      body: "Every member stops getting push notifications until they allow them again on their own phone.",
+      confirmLabel: "Rotate keys",
+    });
+    if (answer !== null) setupPush(true);
+  };
 
   const setupPush = async (rotate = false) => {
     setBusy(true);
@@ -109,6 +119,7 @@ export default function MessagingSettings({
 
   return (
     <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+      {confirmDialog}
       <Card className="p-6">
         <Heading title="SMS" hint="Booking confirmations, reminders and campaigns by text message." />
         <SelectField label="Provider" value={sms.provider || "none"} allowClear={false} onChange={(v) => patch("sms", { provider: v })} options={[{ value: "none", label: "Off" }, { value: "twilio", label: "Twilio" }, { value: "http", label: "Custom HTTP gateway" }]} />
@@ -138,7 +149,7 @@ export default function MessagingSettings({
           ) : (
             <>
               <Toggle label="Enabled" checked={!!push.enabled} onChange={(v) => patch("push", { enabled: v })} />
-              <SecondaryButton onClick={() => confirm("Rotating the keys signs every member out of push notifications; they must allow them again. Continue?") && setupPush(true)} disabled={busy}>
+              <SecondaryButton onClick={rotateKeys} disabled={busy}>
                 Rotate keys
               </SecondaryButton>
             </>

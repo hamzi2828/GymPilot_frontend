@@ -6,7 +6,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { FiPlus, FiSend } from "react-icons/fi";
-import { PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, TextArea, SelectField, Badge, Spinner, Table } from "../_shared/ui";
+import { PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, TextArea, SelectField, Badge, Spinner, Table, useConfirm } from "../_shared/ui";
 import { apiGet, apiJson } from "../_shared/api";
 import { MESSAGING_API, CHANNEL_LABEL, AUDIENCE_LABEL, when, type Campaign, type Channel, type AudienceType, type ChannelsInfo } from "./shared";
 
@@ -17,6 +17,7 @@ const STATUS_COLOR: Record<Campaign["status"], "neutral" | "amber" | "green" | "
 
 export default function CampaignsPanel({ editable, channels }: { editable: boolean; channels: ChannelsInfo | null }) {
   const [rows, setRows] = useState<Campaign[]>([]);
+  const { ask, dialog: confirmDialog } = useConfirm();
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Campaign | null>(null);
@@ -90,7 +91,8 @@ export default function CampaignsPanel({ editable, channels }: { editable: boole
   };
 
   const remove = async (c: Campaign) => {
-    if (!confirm(`Delete "${c.title}"?`)) return;
+    const answer = await ask({ title: `Delete "${c.title}"?`, body: "This cannot be undone.", confirmLabel: "Delete campaign" });
+    if (answer === null) return;
     try {
       await apiJson(`${MESSAGING_API}/campaigns/${c.id}`, "DELETE");
       await load();
@@ -100,7 +102,14 @@ export default function CampaignsPanel({ editable, channels }: { editable: boole
   };
 
   const send = async (c: Campaign) => {
-    if (c.status === "draft" && !confirm(`Send "${c.title}" by ${CHANNEL_LABEL[c.channel]} now? This cannot be undone.`)) return;
+    if (c.status === "draft") {
+      const answer = await ask({
+        title: `Send "${c.title}" now?`,
+        body: `It goes out by ${CHANNEL_LABEL[c.channel]} to everyone in its audience straight away. A message that has been sent cannot be taken back.`,
+        confirmLabel: "Send now",
+      });
+      if (answer === null) return;
+    }
     setSending(c.id);
     setProgress("Sending…");
     setError(null);
@@ -127,6 +136,7 @@ export default function CampaignsPanel({ editable, channels }: { editable: boole
 
   return (
     <div>
+      {confirmDialog}
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-neutral-600">Promotions, notices and newsletters to a chosen audience. Members who opted out of marketing are left out automatically.</p>
         {editable && (

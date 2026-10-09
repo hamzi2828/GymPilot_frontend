@@ -16,6 +16,7 @@ import {
   Spinner,
   EmptyState,
   Select2,
+  useConfirm,
 } from "../_shared/ui";
 import { ACCOUNTS_API, apiGet, apiJson, replaceParams } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
@@ -394,6 +395,7 @@ const emptyAsset = {
 
 function AccountsAdminPageInner() {
   const { can } = usePermissions();
+  const { ask, dialog: confirmDialog } = useConfirm();
   const editable = can("accounts", "manage");
 
   // The address can open a tab already filtered (?tab=assets&service=due,
@@ -589,7 +591,12 @@ function AccountsAdminPageInner() {
   };
 
   const deleteExpense = async (row: ExpenseRow) => {
-    if (!confirm(`Delete ${row.reference} — ${row.title}?`)) return;
+    const answer = await ask({
+      title: `Delete expense ${row.reference}?`,
+      body: `${row.title}. It is taken out of the books. This cannot be undone.`,
+      confirmLabel: "Delete expense",
+    });
+    if (answer === null) return;
     try {
       const res = await apiJson<{ message: string }>(`${ACCOUNTS_API}/expenses/${row.id}`, "DELETE");
       setNotice(res.message);
@@ -680,7 +687,12 @@ function AccountsAdminPageInner() {
   };
 
   const deleteAsset = async (row: AssetRow) => {
-    if (!confirm(`Remove ${row.tag} — ${row.name} from the register?`)) return;
+    const answer = await ask({
+      title: `Remove ${row.tag} from the register?`,
+      body: `${row.name}. This cannot be undone.`,
+      confirmLabel: "Remove asset",
+    });
+    if (answer === null) return;
     try {
       const res = await apiJson<{ message: string }>(`${ACCOUNTS_API}/assets/${row.id}`, "DELETE");
       setNotice(res.message);
@@ -745,6 +757,7 @@ function AccountsAdminPageInner() {
 
   return (
     <div>
+      {confirmDialog}
       <PageHeader
         eyebrow="Operations"
         title="Accounts"

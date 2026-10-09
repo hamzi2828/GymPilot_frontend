@@ -17,6 +17,7 @@ import {
   Badge,
   Spinner,
   Table,
+  useConfirm,
 } from "../_shared/ui";
 import { GYMFOLIO_API, apiGet, apiJson, apiForm, absoluteUrl, replaceParams } from "../_shared/api";
 import {
@@ -89,6 +90,7 @@ function payLabel(t: Trainer) {
 
 function TrainersAdminPageInner() {
   const { can } = usePermissions();
+  const { ask, dialog: confirmDialog } = useConfirm();
   const editable = can("trainers", "manage");
   // The address can name a trainer to open (?id=, from the header search),
   // read again whenever it changes.
@@ -243,10 +245,11 @@ function TrainersAdminPageInner() {
     }
   };
 
-  const remove = async (id: string) => {
-    if (!confirm("Delete this trainer?")) return;
+  const remove = async (t: Trainer) => {
+    const answer = await ask({ title: `Delete ${t.name}?`, body: "Their trainer profile is deleted. This cannot be undone.", confirmLabel: "Delete trainer" });
+    if (answer === null) return;
     try {
-      await apiJson(`${GYMFOLIO_API}/trainers/${id}`, "DELETE");
+      await apiJson(`${GYMFOLIO_API}/trainers/${t._id}`, "DELETE");
       await load();
     } catch (e) {
       alert(e instanceof Error ? e.message : "Delete failed");
@@ -264,6 +267,7 @@ function TrainersAdminPageInner() {
 
   return (
     <div>
+      {confirmDialog}
       <PageHeader
         eyebrow="Fitness"
         title="Trainers"
@@ -311,7 +315,7 @@ function TrainersAdminPageInner() {
                 <SecondaryButton onClick={() => openEdit(t)}>
                   <FiEdit2 className="w-3.5 h-3.5" />
                 </SecondaryButton>
-                <DangerButton onClick={() => remove(t._id)}>
+                <DangerButton onClick={() => remove(t)}>
                   <FiTrash2 className="w-3.5 h-3.5" />
                 </DangerButton>
               </div>

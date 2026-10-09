@@ -15,6 +15,7 @@ import {
   Badge,
   Spinner,
   Table,
+  useConfirm,
 } from "../_shared/ui";
 import { GYMFOLIO_API, apiGet, apiJson } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
@@ -78,6 +79,7 @@ function describe(c: Coupon) {
 
 export default function CouponsAdminPage() {
   const { can } = usePermissions();
+  const { ask, dialog: confirmDialog } = useConfirm();
   const editable = can("coupons", "manage");
 
   const [coupons, setCoupons] = useState<Coupon[]>([]);
@@ -164,7 +166,8 @@ export default function CouponsAdminPage() {
   };
 
   const remove = async (c: Coupon) => {
-    if (!confirm(`Delete coupon ${c.code}?`)) return;
+    const answer = await ask({ title: `Delete coupon ${c.code}?`, body: "Nobody can use the code after this. This cannot be undone.", confirmLabel: "Delete coupon" });
+    if (answer === null) return;
     try {
       await apiJson(`${GYMFOLIO_API}/coupons/${c._id}`, "DELETE");
       await load();
@@ -181,6 +184,7 @@ export default function CouponsAdminPage() {
 
   return (
     <div>
+      {confirmDialog}
       <PageHeader
         eyebrow="Sales"
         title="Coupons"

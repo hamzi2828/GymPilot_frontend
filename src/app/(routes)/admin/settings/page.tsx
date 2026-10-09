@@ -17,6 +17,7 @@ import {
   Spinner,
   Modal,
   Select2,
+  useConfirm,
 } from "../_shared/ui";
 import { countryOptions, currencyOptions, countryByCode } from "@/data/countries";
 import { API_BASE, GYMFOLIO_API, apiGet, apiJson, authHeaders } from "../_shared/api";
@@ -269,6 +270,7 @@ function SettingsAdminPageInner() {
 
   // Banks
   const [banks, setBanks] = useState<Bank[]>([]);
+  const { ask, dialog: confirmDialog } = useConfirm();
   const [banksLoading, setBanksLoading] = useState(false);
   const [bankModal, setBankModal] = useState(false);
   const [editingBank, setEditingBank] = useState<Bank | null>(null);
@@ -462,10 +464,15 @@ function SettingsAdminPageInner() {
     }
   };
 
-  const deleteBank = async (id: string) => {
-    if (!confirm("Delete this bank account?")) return;
+  const deleteBank = async (b: Bank) => {
+    const answer = await ask({
+      title: `Delete ${b.name}?`,
+      body: `Account ${b.accountNumber}. This cannot be undone.`,
+      confirmLabel: "Delete bank account",
+    });
+    if (answer === null) return;
     try {
-      await apiJson(`${BANKS_API}/${id}`, "DELETE");
+      await apiJson(`${BANKS_API}/${b._id}`, "DELETE");
       await loadBanks();
     } catch (e) {
       setNotice({ tone: "error", text: e instanceof Error ? e.message : "Delete failed" });
@@ -600,6 +607,7 @@ function SettingsAdminPageInner() {
         }
       />
 
+      {confirmDialog}
       {/* Tabs */}
       {tabStrip}
 
@@ -1131,7 +1139,7 @@ function SettingsAdminPageInner() {
                     </label>
 
                     {b.qrCodeUrl && <SecondaryButton onClick={() => removeBarcode(b._id)}>Remove Barcode</SecondaryButton>}
-                    <DangerButton onClick={() => deleteBank(b._id)}>Delete</DangerButton>
+                    <DangerButton onClick={() => deleteBank(b)}>Delete</DangerButton>
                   </div>
                 </div>
               ))}

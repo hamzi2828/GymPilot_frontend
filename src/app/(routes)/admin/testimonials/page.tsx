@@ -19,6 +19,7 @@ import {
   Toggle,
   Badge,
   Spinner,
+  useConfirm,
 } from "../_shared/ui";
 import { API_BASE, apiGet, apiJson, apiForm, absoluteUrl } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
@@ -66,6 +67,7 @@ function RatingPicker({ value, onChange }: { value: number; onChange: (v: number
 
 export default function TestimonialsAdminPage() {
   const { can } = usePermissions();
+  const { ask, dialog: confirmDialog } = useConfirm();
   const editable = can("testimonials", "manage");
   const [list, setList] = useState<Testimonial[]>([]);
   const [loading, setLoading] = useState(true);
@@ -137,10 +139,15 @@ export default function TestimonialsAdminPage() {
     }
   };
 
-  const remove = async (id: string) => {
-    if (!confirm("Delete this testimonial?")) return;
+  const remove = async (t: Testimonial) => {
+    const answer = await ask({
+      title: t.name ? `Delete ${t.name}'s testimonial?` : "Delete this testimonial?",
+      body: "It comes off the website. This cannot be undone.",
+      confirmLabel: "Delete testimonial",
+    });
+    if (answer === null) return;
     try {
-      await apiJson(`${TESTIMONIALS_API}/${id}`, "DELETE");
+      await apiJson(`${TESTIMONIALS_API}/${t._id}`, "DELETE");
       await load();
     } catch (e) {
       alert(e instanceof Error ? e.message : "Delete failed");
@@ -192,6 +199,7 @@ export default function TestimonialsAdminPage() {
 
   return (
     <div>
+      {confirmDialog}
       <PageHeader
         eyebrow="Content"
         title="Testimonials"
@@ -299,7 +307,7 @@ export default function TestimonialsAdminPage() {
                       <SecondaryButton onClick={() => openEdit(t)}>
                         <FiEdit2 className="h-3.5 w-3.5" />
                       </SecondaryButton>
-                      <DangerButton onClick={() => remove(t._id)}>
+                      <DangerButton onClick={() => remove(t)}>
                         <FiTrash2 className="h-3.5 w-3.5" />
                       </DangerButton>
                     </div>

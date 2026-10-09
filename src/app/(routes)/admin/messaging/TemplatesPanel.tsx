@@ -3,7 +3,7 @@
 // Wording: the gym's own text for each message the system sends.
 
 import { useCallback, useEffect, useState } from "react";
-import { PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, TextArea, Toggle, Badge, Spinner, Card } from "../_shared/ui";
+import { PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, TextArea, Toggle, Badge, Spinner, Card, useConfirm } from "../_shared/ui";
 import { apiGet, apiJson } from "../_shared/api";
 import { MESSAGING_API, type TemplateEvent } from "./shared";
 
@@ -11,6 +11,7 @@ type Draft = { subject: string; body: string; text: string; enabled: boolean };
 
 export default function TemplatesPanel({ editable }: { editable: boolean }) {
   const [events, setEvents] = useState<TemplateEvent[]>([]);
+  const { ask, dialog: confirmDialog } = useConfirm();
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<TemplateEvent | null>(null);
   const [draft, setDraft] = useState<Draft>({ subject: "", body: "", text: "", enabled: true });
@@ -63,7 +64,12 @@ export default function TemplatesPanel({ editable }: { editable: boolean }) {
   };
 
   const reset = async (ev: TemplateEvent) => {
-    if (!confirm(`Go back to the built-in wording for "${ev.label}"?`)) return;
+    const answer = await ask({
+      title: `Go back to the built-in wording for "${ev.label}"?`,
+      body: "Your own wording for this message is deleted.",
+      confirmLabel: "Use built-in wording",
+    });
+    if (answer === null) return;
     try {
       await apiJson(`${MESSAGING_API}/templates/${ev.key}`, "DELETE");
       setEditing(null);
@@ -86,6 +92,7 @@ export default function TemplatesPanel({ editable }: { editable: boolean }) {
 
   return (
     <div>
+      {confirmDialog}
       <p className="mb-4 text-sm text-neutral-600">
         Every message the system sends, with the placeholders you can use. Customise the email and the short text (SMS, WhatsApp, push); reset to go back to the built-in wording.
       </p>

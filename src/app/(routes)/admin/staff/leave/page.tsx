@@ -6,7 +6,7 @@
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { FiPlus } from "react-icons/fi";
-import { PageHeader, PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, TextArea, SelectField, Toggle, Badge, Spinner, Table, ErrorState } from "../../_shared/ui";
+import { PageHeader, PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, TextArea, SelectField, Toggle, Badge, Spinner, Table, ErrorState, useConfirm } from "../../_shared/ui";
 import { API_BASE, apiGet, apiJson, replaceParams } from "../../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
 import { useGymToday } from "@/components/ThemeProvider";
@@ -47,6 +47,7 @@ const TONE: Record<Leave["status"], "amber" | "green" | "rose" | "neutral"> = { 
 function LeavePageInner() {
   const today = useGymToday();
   const { can } = usePermissions();
+  const { ask, dialog: confirmDialog } = useConfirm();
   const editable = can("staff", "manage");
   const [rows, setRows] = useState<Leave[]>([]);
   const [staff, setStaff] = useState<StaffOption[]>([]);
@@ -93,8 +94,13 @@ function LeavePageInner() {
   const decide = async (l: Leave, next: "approved" | "rejected" | "pending") => {
     let note = "";
     if (next === "rejected") {
-      // Cancel on the prompt means "not now", not "reject without a reason".
-      const reason = prompt("Reason (optional):");
+      // Backing out means "not now", not "reject without a reason".
+      const reason = await ask({
+        title: `Reject ${l.staff_name}'s leave?`,
+        body: `${l.from}${l.to !== l.from ? ` to ${l.to}` : ""} (${l.days} day${l.days === 1 ? "" : "s"}).`,
+        confirmLabel: "Reject leave",
+        reason: { label: "Reason (optional)" },
+      });
       if (reason === null) return;
       note = reason;
     }
@@ -135,6 +141,7 @@ function LeavePageInner() {
 
   return (
     <div>
+      {confirmDialog}
       <PageHeader
         eyebrow="Operations"
         title="Leave"

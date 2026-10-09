@@ -15,6 +15,7 @@ import {
   Badge,
   Spinner,
   Table,
+  useConfirm,
 } from "../_shared/ui";
 import { API_BASE, apiGet, apiJson } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
@@ -62,6 +63,7 @@ const categoryIdOf = (b: Blog) => (b.categoryId && typeof b.categoryId === "obje
 
 export default function BlogsAdminPage() {
   const { can } = usePermissions();
+  const { ask, dialog: confirmDialog } = useConfirm();
   const editable = can("blogs", "manage");
   const [list, setList] = useState<Blog[]>([]);
   const [loading, setLoading] = useState(true);
@@ -175,10 +177,11 @@ export default function BlogsAdminPage() {
     }
   };
 
-  const remove = async (id: string) => {
-    if (!confirm("Delete this blog?")) return;
+  const remove = async (b: Blog) => {
+    const answer = await ask({ title: `Delete "${b.title}"?`, body: "The post is taken off the website and deleted. This cannot be undone.", confirmLabel: "Delete post" });
+    if (answer === null) return;
     try {
-      await apiJson(`${BLOGS_API}/${id}`, "DELETE");
+      await apiJson(`${BLOGS_API}/${b._id}`, "DELETE");
       await load();
     } catch (e) {
       alert(e instanceof Error ? e.message : "Delete failed");
@@ -230,7 +233,8 @@ export default function BlogsAdminPage() {
   };
 
   const deleteCategory = async (c: Category) => {
-    if (!confirm(`Delete the category "${c.name}"?`)) return;
+    const answer = await ask({ title: `Delete the category "${c.name}"?`, body: "This cannot be undone.", confirmLabel: "Delete category" });
+    if (answer === null) return;
     await categoryCall(() => apiJson(`${CATEGORIES_API}/${c._id}`, "DELETE"));
   };
 
@@ -239,6 +243,7 @@ export default function BlogsAdminPage() {
 
   return (
     <div>
+      {confirmDialog}
       <PageHeader
         eyebrow="Content"
         title="Blogs"
@@ -285,7 +290,7 @@ export default function BlogsAdminPage() {
                 <SecondaryButton onClick={() => openEdit(b)}>
                   <FiEdit2 className="w-3.5 h-3.5" />
                 </SecondaryButton>
-                <DangerButton onClick={() => remove(b._id)}>
+                <DangerButton onClick={() => remove(b)}>
                   <FiTrash2 className="w-3.5 h-3.5" />
                 </DangerButton>
               </div>

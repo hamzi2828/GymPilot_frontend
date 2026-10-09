@@ -13,6 +13,7 @@ import {
   Badge,
   Spinner,
   Table,
+  useConfirm,
 } from "../_shared/ui";
 import { GYMFOLIO_API, apiGet, apiJson } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
@@ -80,6 +81,7 @@ const STATUS_LABEL: Record<Booking["status"], string> = {
 
 export default function BookingsAdminPage() {
   const { can } = usePermissions();
+  const { ask, dialog: confirmDialog } = useConfirm();
   // Today in the gym's terms. The API files sessions against a local date key,
   // so the filter has to start from the same idea of "today" the server has.
   const todayKey = useGymToday();
@@ -227,6 +229,17 @@ export default function BookingsAdminPage() {
   };
 
   const cancel = async (booking: Booking) => {
+    const answer = await ask({
+      title: `Cancel ${booking.member_name}'s booking?`,
+      body: `${booking.class_name}, ${booking.date} at ${booking.start_time}. ${
+        booking.status === "waitlisted"
+          ? "They are taken off the waiting list."
+          : "Their place is given up, and whoever is first on the waiting list is moved into it."
+      }`,
+      confirmLabel: "Cancel booking",
+      cancelLabel: "Keep booking",
+    });
+    if (answer === null) return;
     setBusyId(booking.id);
     try {
       // The staff variant, which is what allows cancelling somebody else's
@@ -252,6 +265,7 @@ export default function BookingsAdminPage() {
 
   return (
     <div>
+      {confirmDialog}
       <PageHeader
         eyebrow="Fitness"
         title="Bookings"

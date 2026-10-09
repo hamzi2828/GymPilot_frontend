@@ -15,6 +15,7 @@ import {
   Badge,
   Spinner,
   Table,
+  useConfirm,
 } from "../_shared/ui";
 import { API_BASE, GYMFOLIO_API, ApiError, apiGet, apiJson } from "../_shared/api";
 import { currencyOptions } from "@/data/countries";
@@ -75,6 +76,7 @@ function describeBilling(p: Package) {
 
 export default function PackagesAdminPage() {
   const { can } = usePermissions();
+  const { ask, dialog: confirmDialog } = useConfirm();
   const editable = can("packages", "manage");
   const [list, setList] = useState<Package[]>([]);
   const [loading, setLoading] = useState(true);
@@ -167,7 +169,12 @@ export default function PackagesAdminPage() {
   };
 
   const remove = async (p: Package) => {
-    if (!confirm("Delete this package?")) return;
+    const answer = await ask({
+      title: `Delete ${p.name}?`,
+      body: "It can no longer be sold. This cannot be undone. A package members still hold is not deleted — you are offered Deactivate instead.",
+      confirmLabel: "Delete package",
+    });
+    if (answer === null) return;
     setRefusal(null);
     try {
       await apiJson(`${GYMFOLIO_API}/packages/${p._id}`, "DELETE");
@@ -194,6 +201,7 @@ export default function PackagesAdminPage() {
 
   return (
     <div>
+      {confirmDialog}
       <PageHeader
         eyebrow="Fitness"
         title="Packages"

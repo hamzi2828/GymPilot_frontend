@@ -826,6 +826,113 @@ function ModalDialog({ onClose, title, children, size = "md", busy = false, dism
   );
 }
 
+// ---------------------------------------------------------------------------
+// useConfirm
+//
+// The question asked before anything that cannot be taken back -- a delete, a
+// refund, signing someone out -- in place of the browser's confirm()/prompt().
+//
+//   const { ask, dialog: confirmDialog } = useConfirm();
+//
+//   const answer = await ask({
+//     title: "Delete Sara Khan?",
+//     body: "Their bookings and payment history go with them. This cannot be undone.",
+//     confirmLabel: "Delete member",
+//   });
+//   if (answer === null) return;          // they backed out
+//
+//   ...and {confirmDialog} once, anywhere in the page's markup. It is drawn
+//   at the end of the document, so it sits above a dialog it was opened from.
+//
+// `ask` resolves to null when they back out, otherwise to the reason typed
+// (an empty string when no reason was asked for, or none was given).
+// ---------------------------------------------------------------------------
+
+export interface ConfirmOptions {
+  /** The question, naming the thing: "Delete Sara Khan?" */
+  title: string;
+  /** What will happen, in plain words. */
+  body?: React.ReactNode;
+  /** The button that does it, saying what it does: "Delete member". */
+  confirmLabel: string;
+  /** The button that backs out. "Cancel", unless the action is itself a cancellation. */
+  cancelLabel?: string;
+  /** False for a step that is safe to repeat; the button is then not red. */
+  danger?: boolean;
+  /** Asks for a reason as well, handed back as the answer. */
+  reason?: { label: string; placeholder?: string; required?: boolean };
+}
+
+type PendingConfirm = { options: ConfirmOptions; resolve: (answer: string | null) => void };
+
+export function useConfirm(): { ask: (options: ConfirmOptions) => Promise<string | null>; dialog: React.ReactNode } {
+  const [pending, setPending] = useState<PendingConfirm | null>(null);
+  const pendingRef = useRef<PendingConfirm | null>(null);
+
+  const settle = useCallback((answer: string | null) => {
+    pendingRef.current?.resolve(answer);
+    pendingRef.current = null;
+    setPending(null);
+  }, []);
+
+  const ask = useCallback((options: ConfirmOptions) => {
+    // One question at a time: a second one withdraws the first.
+    pendingRef.current?.resolve(null);
+    return new Promise<string | null>((resolve) => {
+      pendingRef.current = { options, resolve };
+      setPending(pendingRef.current);
+    });
+  }, []);
+
+  // Leaving the page with a question still open answers it "no".
+  useEffect(() => () => pendingRef.current?.resolve(null), []);
+
+  return {
+    ask,
+    dialog: pending ? createPortal(<ConfirmDialog options={pending.options} onAnswer={settle} />, document.body) : null,
+  };
+}
+
+function ConfirmDialog({ options, onAnswer }: { options: ConfirmOptions; onAnswer: (answer: string | null) => void }) {
+  const { title, body, confirmLabel, cancelLabel = "Cancel", danger = true, reason } = options;
+  const [text, setText] = useState("");
+  const missing = !!reason?.required && !text.trim();
+
+  return (
+    <Modal open onClose={() => onAnswer(null)} title={title} size="sm">
+      <div className="space-y-4">
+        {body && <div className="text-sm leading-relaxed text-neutral-600">{body}</div>}
+        {reason && (
+          <TextField
+            label={reason.label}
+            value={text}
+            onChange={setText}
+            placeholder={reason.placeholder}
+            required={reason.required}
+          />
+        )}
+        <div className="flex flex-wrap justify-end gap-2 pt-1">
+          <SecondaryButton onClick={() => onAnswer(null)}>{cancelLabel}</SecondaryButton>
+          {danger ? (
+            <button
+              type="button"
+              onClick={() => onAnswer(text.trim())}
+              disabled={missing}
+              className="inline-flex items-center h-9 px-4 text-sm font-semibold rounded-lg bg-rose-600 text-white hover:bg-rose-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-300 focus-visible:ring-offset-2"
+            >
+              {confirmLabel}
+            </button>
+          ) : (
+            <PrimaryButton onClick={() => onAnswer(text.trim())} disabled={missing}>
+              {confirmLabel}
+            </PrimaryButton>
+          )}
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 export function Table({
   columns,
   rows,

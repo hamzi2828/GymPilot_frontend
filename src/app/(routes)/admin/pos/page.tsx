@@ -7,7 +7,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { PageHeader, Card, PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, TextArea, SelectField, Toggle, Badge, Spinner } from "../_shared/ui";
+import { PageHeader, Card, PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, TextArea, SelectField, Toggle, Badge, Spinner, useConfirm } from "../_shared/ui";
 import { API_BASE, apiGet, apiJson, authHeaders } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
 import { useGymToday } from "@/components/ThemeProvider";
@@ -171,6 +171,7 @@ function sampleReceipt(profile: ReceiptProfile, settings: ReceiptSettings, curre
 
 export default function PosPage() {
   const { can } = usePermissions();
+  const { ask, dialog: confirmDialog } = useConfirm();
   const editable = can("pos", "manage");
   const [products, setProducts] = useState<Product[]>([]);
   const [currency, setCurrency] = useState("");
@@ -338,7 +339,12 @@ export default function PosPage() {
   };
 
   const refund = async (s: Sale) => {
-    const reason = prompt(`Refund ${s.receipt_number} (${fmt(s.total, s.currency)})? Reason:`);
+    const reason = await ask({
+      title: `Refund ${s.receipt_number}?`,
+      body: `${fmt(s.total, s.currency)}. The sale is marked as refunded and its items go back into stock. Give the customer their money back at the desk — this does not send it. This cannot be undone.`,
+      confirmLabel: "Refund sale",
+      reason: { label: "Reason (optional)", placeholder: "Wrong item, faulty, changed their mind…" },
+    });
     if (reason === null) return;
     try {
       await apiJson(`${POS_API}/sales/${s.id}/refund`, "POST", { reason });
@@ -350,6 +356,7 @@ export default function PosPage() {
 
   return (
     <div>
+      {confirmDialog}
       <PageHeader
         eyebrow="Sales"
         title="Shop / POS"
