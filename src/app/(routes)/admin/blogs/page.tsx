@@ -287,10 +287,10 @@ export default function BlogsAdminPage() {
             b.featured ? <Badge color="amber">Featured</Badge> : "—",
             editable ? (
               <div key="a" className="flex gap-2">
-                <SecondaryButton onClick={() => openEdit(b)}>
+                <SecondaryButton onClick={() => openEdit(b)} label={`Edit ${b.title}`}>
                   <FiEdit2 className="w-3.5 h-3.5" />
                 </SecondaryButton>
-                <DangerButton onClick={() => remove(b)}>
+                <DangerButton onClick={() => remove(b)} label={`Delete ${b.title}`}>
                   <FiTrash2 className="w-3.5 h-3.5" />
                 </DangerButton>
               </div>
@@ -367,10 +367,10 @@ export default function BlogsAdminPage() {
                     <span className="flex-1 text-sm text-neutral-900">
                       {c.name} <span className="text-xs text-neutral-400">/{c.slug}</span>
                     </span>
-                    <SecondaryButton onClick={() => setRenaming({ id: c._id, name: c.name })} disabled={categoryBusy}>
+                    <SecondaryButton onClick={() => setRenaming({ id: c._id, name: c.name })} disabled={categoryBusy} label={`Rename the category ${c.name}`}>
                       <FiEdit2 className="w-3.5 h-3.5" />
                     </SecondaryButton>
-                    <DangerButton onClick={() => deleteCategory(c)} disabled={categoryBusy}>
+                    <DangerButton onClick={() => deleteCategory(c)} disabled={categoryBusy} label={`Delete the category ${c.name}`}>
                       <FiTrash2 className="w-3.5 h-3.5" />
                     </DangerButton>
                   </>

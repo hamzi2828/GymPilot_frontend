@@ -556,10 +556,10 @@ export default function PosPage() {
                         {taxRate > 0 && !x.product.taxable ? " · no tax" : ""}
                       </p>
                       <div className="flex items-center gap-1">
-                        <button type="button" onClick={() => setQty(x.product.id, x.quantity - 1)} className="h-7 w-7 rounded-md border border-neutral-200">−</button>
+                        <button type="button" onClick={() => setQty(x.product.id, x.quantity - 1)} aria-label={`One fewer ${x.product.name}`} title="One fewer" className="h-7 w-7 rounded-md border border-neutral-200">−</button>
                         <span className="w-6 text-center">{x.quantity}</span>
-                        <button type="button" onClick={() => setQty(x.product.id, x.quantity + 1)} className="h-7 w-7 rounded-md border border-neutral-200">+</button>
-                        <button type="button" onClick={() => remove(x.product.id)} className="ml-1 text-neutral-400 hover:text-rose-600">×</button>
+                        <button type="button" onClick={() => setQty(x.product.id, x.quantity + 1)} aria-label={`One more ${x.product.name}`} title="One more" className="h-7 w-7 rounded-md border border-neutral-200">+</button>
+                        <button type="button" onClick={() => remove(x.product.id)} aria-label={`Remove ${x.product.name} from the basket`} title="Remove from the basket" className="ml-1 text-neutral-400 hover:text-rose-600">×</button>
                       </div>
                     </div>
                   </div>

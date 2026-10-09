@@ -291,6 +291,7 @@ export default function ContentPagesAdmin() {
                     {editable && (
                       <div className="pt-5">
                         <DangerButton
+                          label="Remove this section"
                           onClick={() =>
                             patch({ sections: (draft.sections || []).filter((_, i) => i !== si) })
                           }
@@ -315,6 +316,7 @@ export default function ContentPagesAdmin() {
                           {editable && (
                             <div className="pt-5">
                               <DangerButton
+                                label="Remove this item"
                                 onClick={() =>
                                   patchSection(si, {
                                     items: section.items.filter((_, j) => j !== ii),

@@ -281,10 +281,10 @@ export default function PackagesAdminPage() {
             </button>,
             editable ? (
               <div key="a" className="flex gap-2">
-                <SecondaryButton onClick={() => openEdit(p)}>
+                <SecondaryButton onClick={() => openEdit(p)} label={`Edit ${p.name}`}>
                   <FiEdit2 className="w-3.5 h-3.5" />
                 </SecondaryButton>
-                <DangerButton onClick={() => remove(p)}>
+                <DangerButton onClick={() => remove(p)} label={`Delete ${p.name}`}>
                   <FiTrash2 className="w-3.5 h-3.5" />
                 </DangerButton>
               </div>

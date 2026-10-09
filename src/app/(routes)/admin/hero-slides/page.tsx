@@ -271,7 +271,7 @@ export default function HeroSlidesAdminPage() {
                   {editable && (
                     <div className="flex shrink-0 gap-2">
                       <SecondaryButton onClick={() => openEdit(s)}><FiEdit2 className="h-3.5 w-3.5" /></SecondaryButton>
-                      <DangerButton onClick={() => remove(s)}><FiTrash2 className="h-3.5 w-3.5" /></DangerButton>
+                      <DangerButton onClick={() => remove(s)} label={`Delete ${s.title || "this slide"}`}><FiTrash2 className="h-3.5 w-3.5" /></DangerButton>
                     </div>
                   )}
                 </li>

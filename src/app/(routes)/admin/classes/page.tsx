@@ -301,10 +301,10 @@ function ClassesAdminPageInner() {
             </button>,
             editable ? (
               <div key="a" className="flex gap-2">
-                <SecondaryButton onClick={() => openEdit(c)}>
+                <SecondaryButton onClick={() => openEdit(c)} label={`Edit ${c.name}`}>
                   <FiEdit2 className="w-3.5 h-3.5" />
                 </SecondaryButton>
-                <DangerButton onClick={() => remove(c)}>
+                <DangerButton onClick={() => remove(c)} label={`Delete ${c.name}`}>
                   <FiTrash2 className="w-3.5 h-3.5" />
                 </DangerButton>
               </div>

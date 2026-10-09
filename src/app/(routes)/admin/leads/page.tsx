@@ -417,7 +417,7 @@ function LeadsAdminPageInner() {
                             </select>
                             <SecondaryButton onClick={() => openEdit(l)}>Open</SecondaryButton>
                             {!l.converted_user_id && l.status !== "lost" && <SecondaryButton onClick={() => convert(l)}>Make member</SecondaryButton>}
-                            <DangerButton onClick={() => remove(l)}>×</DangerButton>
+                            <DangerButton onClick={() => remove(l)} label={`Delete ${l.name}`}>×</DangerButton>
                           </div>
                         )}
                       </Card>

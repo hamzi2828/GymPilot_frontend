@@ -312,10 +312,10 @@ function TrainersAdminPageInner() {
             </button>,
             editable ? (
               <div key="a" className="flex gap-2">
-                <SecondaryButton onClick={() => openEdit(t)}>
+                <SecondaryButton onClick={() => openEdit(t)} label={`Edit ${t.name}`}>
                   <FiEdit2 className="w-3.5 h-3.5" />
                 </SecondaryButton>
-                <DangerButton onClick={() => remove(t)}>
+                <DangerButton onClick={() => remove(t)} label={`Delete ${t.name}`}>
                   <FiTrash2 className="w-3.5 h-3.5" />
                 </DangerButton>
               </div>

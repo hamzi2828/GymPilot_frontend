@@ -68,17 +68,22 @@ export function SecondaryButton({
   onClick,
   type = "button",
   disabled,
+  label,
 }: {
   children: React.ReactNode;
   onClick?: () => void;
   type?: "button" | "submit";
   disabled?: boolean;
+  /** For a button that is only an icon: what it does, read out and shown on hover. */
+  label?: string;
 }) {
   return (
     <button
       type={type}
       onClick={onClick}
       disabled={disabled}
+      aria-label={label}
+      title={label}
       className="inline-flex items-center h-9 px-3 text-sm font-medium text-neutral-700 bg-white border border-neutral-200 rounded-lg hover:bg-neutral-50 hover:border-neutral-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-neutral-300"
     >
       {children}
@@ -90,16 +95,21 @@ export function DangerButton({
   children,
   onClick,
   disabled,
+  label,
 }: {
   children: React.ReactNode;
   onClick?: () => void;
   disabled?: boolean;
+  /** For a button that is only an icon: what it does, read out and shown on hover. */
+  label?: string;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={disabled}
+      aria-label={label}
+      title={label}
       className="inline-flex items-center h-9 px-3 text-sm font-medium text-rose-600 bg-white border border-rose-200 rounded-lg hover:bg-rose-50 hover:border-rose-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-200"
     >
       {children}

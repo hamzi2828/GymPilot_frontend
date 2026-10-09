@@ -188,7 +188,7 @@ export default function PayslipsPage() {
         <div key={i} className="mt-2 grid grid-cols-[1fr_120px_auto] gap-2">
           <TextField label="" value={l.label} onChange={(v) => setDraft({ ...draft, [key]: draft[key].map((x, j) => (j === i ? { ...x, label: v } : x)) })} placeholder="Bonus, advance, tax…" />
           <TextField label="" type="number" value={String(l.amount)} onChange={(v) => setDraft({ ...draft, [key]: draft[key].map((x, j) => (j === i ? { ...x, amount: Number(v) || 0 } : x)) })} />
-          <DangerButton onClick={() => setDraft({ ...draft, [key]: draft[key].filter((_, j) => j !== i) })}>×</DangerButton>
+          <DangerButton onClick={() => setDraft({ ...draft, [key]: draft[key].filter((_, j) => j !== i) })} label="Remove this line">×</DangerButton>
         </div>
       ))}
       <div className="mt-2">

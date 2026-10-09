@@ -304,10 +304,10 @@ export default function TestimonialsAdminPage() {
 
                   {editable && (
                     <div className="flex shrink-0 gap-2">
-                      <SecondaryButton onClick={() => openEdit(t)}>
+                      <SecondaryButton onClick={() => openEdit(t)} label={`Edit ${t.name || "this testimonial"}`}>
                         <FiEdit2 className="h-3.5 w-3.5" />
                       </SecondaryButton>
-                      <DangerButton onClick={() => remove(t)}>
+                      <DangerButton onClick={() => remove(t)} label={`Delete ${t.name || "this testimonial"}`}>
                         <FiTrash2 className="h-3.5 w-3.5" />
                       </DangerButton>
                     </div>
