@@ -984,28 +984,28 @@ function AccountsAdminPageInner() {
       {/* The strip scrolls sideways on a phone rather than pushing the page wide. */}
       <div className="mb-4 border-b border-neutral-200">
         <div className="-mb-px flex items-center gap-1 overflow-x-auto">
-        {([
-          { id: "overview", label: "Overview" },
-          { id: "sales", label: "Sales" },
-          { id: "expenses", label: "Expenses" },
-          { id: "assets", label: "Assets" },
-        ] as { id: Tab; label: string }[]).map((entry) => (
-          <button
-            key={entry.id}
-            type="button"
-            onClick={() => {
-              setTab(entry.id);
-              replaceParams({ tab: entry.id === "overview" ? null : entry.id });
-            }}
-            className={`shrink-0 whitespace-nowrap border-b-2 px-4 py-2.5 text-sm font-medium transition-colors ${
-              tab === entry.id
-                ? "border-[var(--accent)] text-neutral-900"
-                : "border-transparent text-neutral-500 hover:text-neutral-800"
-            }`}
-          >
-            {entry.label}
-          </button>
-        ))}
+          {([
+            { id: "overview", label: "Overview" },
+            { id: "sales", label: "Sales" },
+            { id: "expenses", label: "Expenses" },
+            { id: "assets", label: "Assets" },
+          ] as { id: Tab; label: string }[]).map((entry) => (
+            <button
+              key={entry.id}
+              type="button"
+              onClick={() => {
+                setTab(entry.id);
+                replaceParams({ tab: entry.id === "overview" ? null : entry.id });
+              }}
+              className={`shrink-0 whitespace-nowrap border-b-2 px-4 py-2.5 text-sm font-medium transition-colors ${
+                tab === entry.id
+                  ? "border-[var(--accent)] text-neutral-900"
+                  : "border-transparent text-neutral-500 hover:text-neutral-800"
+              }`}
+            >
+              {entry.label}
+            </button>
+          ))}
         </div>
       </div>
 
