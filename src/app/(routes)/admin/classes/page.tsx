@@ -70,6 +70,8 @@ function ClassesAdminPageInner() {
   const [list, setList] = useState<GymClass[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // What the server said a change did (bookings cancelled, members told).
+  const [notice, setNotice] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [pages, setPages] = useState(1);
   const [total, setTotal] = useState(0);
@@ -193,7 +195,10 @@ function ClassesAdminPageInner() {
       );
       if (thumb) fd.append("thumbnail", thumb);
       if (editing) {
-        await apiForm(`${GYMFOLIO_API}/gym-classes/${editing._id}`, "PUT", fd);
+        // An edit that takes the class off the timetable cancels its upcoming
+        // bookings; the server's message says how many.
+        const res = await apiForm<{ message?: string; cancelled_bookings?: number }>(`${GYMFOLIO_API}/gym-classes/${editing._id}`, "PUT", fd);
+        setNotice(res.cancelled_bookings ? res.message || null : null);
       } else {
         await apiForm(`${GYMFOLIO_API}/gym-classes`, "POST", fd);
       }
@@ -207,10 +212,15 @@ function ClassesAdminPageInner() {
   };
 
   const remove = async (c: GymClass) => {
-    const answer = await ask({ title: `Delete ${c.name}?`, body: "The class comes off the timetable and the website. This cannot be undone.", confirmLabel: "Delete class" });
+    const answer = await ask({
+      title: `Delete ${c.name}?`,
+      body: "The class comes off the timetable and the website. Upcoming bookings for it are cancelled, any credits are returned, and the members are told. This cannot be undone.",
+      confirmLabel: "Delete class",
+    });
     if (answer === null) return;
     try {
-      await apiJson(`${GYMFOLIO_API}/gym-classes/${c._id}`, "DELETE");
+      const res = await apiJson<{ message?: string }>(`${GYMFOLIO_API}/gym-classes/${c._id}`, "DELETE");
+      setNotice(res.message || `${c.name} was deleted.`);
       await load();
     } catch (e) {
       alert(e instanceof Error ? e.message : "Delete failed");
@@ -218,8 +228,18 @@ function ClassesAdminPageInner() {
   };
 
   const toggleActive = async (c: GymClass) => {
+    // Switching a class back on needs no question; switching it off does.
+    if (c.isActive) {
+      const answer = await ask({
+        title: `Deactivate ${c.name}?`,
+        body: "The class comes off the timetable until you activate it again. Upcoming bookings for it are cancelled, any credits are returned, and the members are told.",
+        confirmLabel: "Deactivate class",
+      });
+      if (answer === null) return;
+    }
     try {
-      await apiJson(`${GYMFOLIO_API}/gym-classes/${c._id}/toggle-active`, "PATCH");
+      const res = await apiJson<{ message?: string }>(`${GYMFOLIO_API}/gym-classes/${c._id}/toggle-active`, "PATCH");
+      setNotice(res.message || null);
       await load();
     } catch (e) {
       alert(e instanceof Error ? e.message : "Toggle failed");
@@ -240,6 +260,15 @@ function ClassesAdminPageInner() {
           ) : undefined
         }
       />
+
+      {notice && (
+        <div role="status" className="mb-4 flex items-start justify-between gap-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+          <span>{notice}</span>
+          <button type="button" onClick={() => setNotice(null)} className="shrink-0 text-xs font-semibold uppercase tracking-wide opacity-70 hover:opacity-100">
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {error && <LoadError message={error} onRetry={load} />}
 
