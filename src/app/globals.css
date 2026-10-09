@@ -1292,6 +1292,27 @@ body {
   box-shadow: 4px 4px 16px 0px color-mix(in srgb, var(--accent) 32%, transparent);
 }
 
+.footer-subscribe-button:disabled {
+  opacity: 0.6;
+  cursor: default;
+  transform: none;
+}
+
+/* The line under the email field that says whether the sign-up worked. */
+.footer-newsletter-status {
+  margin: 8px 0 0;
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.footer-newsletter-status.is-ok {
+  color: var(--accent);
+}
+
+.footer-newsletter-status.is-error {
+  color: #fca5a5;
+}
+
 .footer-subscribe-text {
   color: var(--black);
   font-family: "Roboto", sans-serif;

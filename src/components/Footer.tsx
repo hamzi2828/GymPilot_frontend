@@ -1,8 +1,9 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import { useSiteSettings } from "@/components/ThemeProvider";
 import { useLanguage } from "@/i18n/LanguageProvider";
+import { newsletterService } from "@/app/(routes)/blogs-detail/services/newsletterService";
 import Image from "next/image";
 import Link from "next/link";
 
@@ -22,6 +23,30 @@ const Footer = () => {
   const { t } = useLanguage();
   const brandLogo = footerLogoUrl || logoUrl;
 
+  // The sign-up joins the gym's newsletter list, the one its campaigns are
+  // sent to. The form used to do nothing at all when submitted.
+  const [email, setEmail] = useState("");
+  const [sending, setSending] = useState(false);
+  const [notice, setNotice] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
+
+  const subscribe = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const value = email.trim();
+    if (!value || sending) return;
+    setSending(true);
+    setNotice(null);
+    try {
+      await newsletterService.subscribe(value, "footer");
+      setNotice({ tone: "ok", text: t("footer.newsDone") });
+      setEmail("");
+    } catch (err) {
+      const already = (err as { status?: number } | null)?.status === 409;
+      setNotice({ tone: already ? "ok" : "error", text: t(already ? "footer.newsAlready" : "footer.newsError") });
+    } finally {
+      setSending(false);
+    }
+  };
+
   // Only profiles the admin has actually filled in get a link — an unset
   // network is omitted rather than pointing at the platform's homepage.
   const socials = [
@@ -38,24 +63,36 @@ const Footer = () => {
       {/* Newsletter: heading on the left, sign-up on the right. */}
       <section className="footer-newsletter-section">
         <div className="footer-newsletter-text">
-          <h2 className="footer-main-heading">JOIN THE FITNESS COMMUNITY</h2>
-          <p className="footer-newsletter-subtext">
-            Training tips, timetable changes and member offers. No spam, unsubscribe any time.
-          </p>
+          <h2 className="footer-main-heading">{t("footer.newsTitle")}</h2>
+          <p className="footer-newsletter-subtext">{t("footer.newsText")}</p>
         </div>
 
-        <form className="footer-email-form" onSubmit={(e) => e.preventDefault()}>
+        <form className="footer-email-form" onSubmit={subscribe}>
           <div className="footer-input-wrapper">
             <input
               type="email"
               className="footer-email-input"
-              placeholder="Enter your email"
-              aria-label="Email address"
+              placeholder={t("footer.newsPlaceholder")}
+              aria-label={t("footer.newsEmail")}
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              disabled={sending}
               required
             />
+            {notice && (
+              <p
+                role="status"
+                aria-live="polite"
+                className={`footer-newsletter-status ${notice.tone === "ok" ? "is-ok" : "is-error"}`}
+              >
+                {notice.text}
+              </p>
+            )}
           </div>
-          <button type="submit" className="footer-subscribe-button" aria-label="Subscribe to newsletter">
-            <span className="footer-subscribe-text">Subscribe</span>
+          <button type="submit" className="footer-subscribe-button" disabled={sending}>
+            <span className="footer-subscribe-text">
+              {sending ? t("footer.newsSending") : t("footer.newsSubscribe")}
+            </span>
           </button>
         </form>
       </section>
@@ -132,7 +169,7 @@ const Footer = () => {
                   ))
                 ) : (
                   <Link href="/contact-us" className="footer-nav-link">
-                    Get in touch
+                    {t("footer.getInTouch")}
                   </Link>
                 )}
               </nav>
