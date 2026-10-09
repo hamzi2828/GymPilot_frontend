@@ -90,9 +90,6 @@ const ContactSection = ({ content = DEFAULT_CONTACT }: { content?: ContactConten
 
   return (
     <section className="section gymfolio8-contact-bg relative overflow-hidden">
-      {/* Background Image */}
-      <div className="gymfolio8-bg-image absolute right-0 inset-y-0 w-1/2 hidden xl:block" aria-hidden="true"></div>
-
       <div className=" mx-auto relative">
         <div className="grid lg:grid-cols-2 gap-8 lg:gap-32 items-center">
           {/* Left Side - Content */}

@@ -63,7 +63,7 @@ const ClassDetailContent = () => {
 
   return (
     <main className="pt-20">
-        <HeroAbout />
+        <HeroAbout title={selectedClass.name} />
       <GymClassDetailSection gymClass={selectedClass} />
 <GymTrainersSection />
         <ContactSection />

@@ -53,15 +53,9 @@ const GymTrainersSection = () => {
             </div>
 
             <h2 className="gymfolio7-font-montserrat font-bold text-2xl md:text-3xl lg:text-4xl leading-tight tracking-tight uppercase opacity-92 text-black mb-0">
-              The best fitness gym in town
+              Meet the team
             </h2>
           </header>
-
-          <div className="lg:w-[747px] lg:flex-shrink-0">
-            <p className="gymfolio7-dark-gray-text gymfolio7-font-inter gymfolio3-description-text text-base leading-6">
-              Every coach on the floor is certified, insured and has come up through the same programmes they now teach. Book an intro session and you will be paired with the one whose speciality matches what you are training for.
-            </p>
-          </div>
         </div>
 
         {/* Trainers Cards Grid */}
@@ -72,7 +66,7 @@ const GymTrainersSection = () => {
                 <div className="relative overflow-hidden">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
-                    src={trainer.image || "/images/trainer-1.svg"}
+                    src={trainer.image || "/images/default-avatar.svg"}
                     alt={`${trainer.name} - ${trainer.role}`}
                     className="w-full h-64 object-cover transition-transform duration-500 group-hover:scale-105"
                   />

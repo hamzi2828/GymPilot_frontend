@@ -22,9 +22,9 @@ interface HeroSectionProps {
 
 const HeroSection: React.FC<HeroSectionProps> = ({
   title,
-  // A post without a cover photo gets the site's stock hero rather than a
-  // missing file.
-  backgroundImage = "/images/hero.webp",
+  // A post without a cover photo gets the plain dark banner, not a stock
+  // photograph the gym never chose.
+  backgroundImage,
   author,
   readingTime,
   publishDate,
@@ -34,13 +34,15 @@ const HeroSection: React.FC<HeroSectionProps> = ({
   return (
     <section className="relative min-h-screen flex items-center justify-center overflow-hidden">
       <div className="absolute inset-0">
-        <Image
-          src={backgroundImage}
-          alt={title}
-          fill
-          className="object-cover"
-          priority
-        />
+        {backgroundImage && (
+          <Image
+            src={backgroundImage}
+            alt={title}
+            fill
+            className="object-cover"
+            priority
+          />
+        )}
         <div className="absolute inset-0 bg-black bg-opacity-60"></div>
       </div>
 

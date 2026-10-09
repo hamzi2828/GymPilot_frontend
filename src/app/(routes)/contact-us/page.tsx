@@ -207,10 +207,9 @@ const ContactUsPage = () => {
                         .
                       </p>
                       <p>
-                        <strong>Personal training:</strong> Tell us your goal and we&apos;ll
-                        match you with a{" "}
+                        <strong>Trainers:</strong> Meet the team on the{" "}
                         <Link href="/trainers" className="underline hover:no-underline">
-                          coach
+                          trainers page
                         </Link>
                         .
                       </p>
@@ -256,7 +255,6 @@ const ContactUsPage = () => {
                           </ul>
                         </div>
                       )}
-                      <p>We reply to every message within one working day.</p>
                     </div>
                   </header>
 

@@ -31,7 +31,7 @@ const AboutAuthor: React.FC<AboutAuthorProps> = ({ author }) => {
         <div className="flex-shrink-0">
           <div className="relative w-20 h-20 sm:w-24 sm:h-24 lg:w-28 lg:h-28">
             <Image
-              src={author.avatarUrl || author.avatar || '/images/gym-1.svg'}
+              src={author.avatarUrl || author.avatar || '/images/default-avatar.svg'}
               alt={author.name}
               fill
               className="object-cover rounded-full border-3 border-brand-500"

@@ -41,6 +41,10 @@ const GymTrainersSection = ({ content = DEFAULT_TRAINERS }: { content?: Trainers
     fetchTrainers();
   }, [fetchTrainers]);
 
+  // No trainers on file yet: the section is left out, as the reviews and
+  // articles are.
+  if (!loading && !error && trainers.length === 0) return null;
+
   return (
     <section className="section surface-paper">
       <Reveal>
@@ -57,7 +61,7 @@ const GymTrainersSection = ({ content = DEFAULT_TRAINERS }: { content?: Trainers
           </header>
 
           <div className="lg:max-w-xl lg:flex-shrink-0">
-            <p className="home-section-description">{content.description}</p>
+            {content.description && <p className="home-section-description">{content.description}</p>}
             <Link href="/trainers" className="btn btn--outline mt-6">
               <span>Meet every coach</span>
               <i className="fas fa-arrow-right text-xs" aria-hidden="true"></i>
@@ -95,7 +99,7 @@ const GymTrainersSection = ({ content = DEFAULT_TRAINERS }: { content?: Trainers
             <Reveal key={trainer._id} delay={idx * 90} className="h-full">
               <article className="home-coach">
                 <Image
-                  src={trainer.image || "/images/trainer-1.svg"}
+                  src={trainer.image || "/images/default-avatar.svg"}
                   alt={`${trainer.name} — ${trainer.role}`}
                   width={400}
                   height={533}
@@ -130,13 +134,6 @@ const GymTrainersSection = ({ content = DEFAULT_TRAINERS }: { content?: Trainers
               </article>
             </Reveal>
           ))}
-        </div>
-      )}
-
-      {/* Empty State */}
-      {!loading && !error && trainers.length === 0 && (
-        <div className="text-center py-20">
-          <p className="home-section-description">No trainers available at the moment.</p>
         </div>
       )}
     </section>

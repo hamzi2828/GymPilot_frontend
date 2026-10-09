@@ -36,11 +36,10 @@ const Newsletter: React.FC = () => {
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
         <div className="gym-blog-glass-effect rounded-2xl p-8 lg:p-12">
           <h2 className="font-montserrat font-bold text-3xl lg:text-4xl mb-4">
-            Join Our Fitness Community
+            Subscribe to our newsletter
           </h2>
           <p className="text-xl text-gray-300 mb-8 max-w-2xl mx-auto">
-            Get weekly workout tips, nutrition guides, and exclusive member
-            stories delivered to your inbox
+            News and updates from us, by email.
           </p>
           <form onSubmit={handleSubscribe} className="flex flex-col sm:flex-row gap-4 max-w-md mx-auto">
             <input

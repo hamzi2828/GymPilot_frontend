@@ -71,7 +71,7 @@ const BlogDetailContent = () => {
       {/* Hero Section */}
       <HeroSection
         title={blogData.title}
-        backgroundImage={blogData.image || "/images/hero.webp"}
+        backgroundImage={blogData.image || undefined}
         category={blogData.categoryId || { name: "Article" }}
         // No author on file shows no byline, rather than "By Unknown". The
         // resolved avatarUrl, not the raw /uploads path, which lives on the API.

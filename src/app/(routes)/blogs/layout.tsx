@@ -3,8 +3,8 @@ import { pageMetadata } from "@/helper/siteMetadata";
 
 export async function generateMetadata(): Promise<Metadata> {
   return pageMetadata({
-    title: "Fitness Blog",
-    description: "Training guides, nutrition advice and member stories from our coaching team.",
+    title: "Blog",
+    description: "Our latest articles and news.",
     path: "/blogs",
   });
 }

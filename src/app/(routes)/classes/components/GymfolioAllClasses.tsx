@@ -68,12 +68,9 @@ const GymfolioAllClasses: React.FC<GymfolioAllClassesProps> = ({ onClassClick })
             id="GymfolioAllClasses-title"
             className="text-2xl sm:text-3xl lg:text-4xl font-extrabold uppercase tracking-tight text-black/90"
           >
-            What we do in our classes
+            Our classes
           </h2>
         </div>
-        <p className="GymfolioAllClasses-description text-base leading-6 text-[#4d4d51] max-w-[747px]">
-          Classes run from sunrise to late evening and are capped so nobody trains unwatched. Strength, conditioning, mobility and recovery sessions, each with a scaled option so beginners and regulars can share the same floor.
-        </p>
       </header>
 
       {/* Loading State */}

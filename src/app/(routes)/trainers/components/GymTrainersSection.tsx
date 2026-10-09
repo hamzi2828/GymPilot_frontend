@@ -60,15 +60,9 @@ const GymTrainersSection: React.FC<GymTrainersSectionProps> = ({ onTrainerClick 
             </div>
 
             <h2 className="gymfolio7-font-montserrat font-bold text-2xl md:text-3xl lg:text-4xl leading-tight tracking-tight uppercase opacity-92 text-black mb-0">
-              The best fitness gym in town
+              Meet the team
             </h2>
           </header>
-
-          <div className="lg:w-[747px] lg:flex-shrink-0">
-            <p className="gymfolio7-dark-gray-text gymfolio7-font-inter gymfolio3-description-text text-base leading-6">
-              Every coach on the floor is certified, insured and has come up through the same programmes they now teach. Book an intro session and you will be paired with the one whose speciality matches what you are training for.
-            </p>
-          </div>
         </div>
 
         {/* Loading State */}
@@ -104,7 +98,7 @@ const GymTrainersSection: React.FC<GymTrainersSectionProps> = ({ onTrainerClick 
                 <article className="gymfolio7-trainer-card rounded-lg overflow-hidden transition-transform duration-300 group-hover:-translate-y-1 group-hover:shadow-lg">
                   <div className="relative overflow-hidden h-64">
                     <Image
-                      src={trainer.image || '/images/trainer-1.svg'}
+                      src={trainer.image || '/images/default-avatar.svg'}
                       alt={`${trainer.name} - ${trainer.role}`}
                       width={400}
                       height={256}

@@ -118,6 +118,10 @@ const GymFolioClasses = ({ content = DEFAULT_CLASSES }: { content?: SectionHeade
     touchLastX.current = null;
   };
 
+  // No classes on the gym's books yet: the section is left out rather than
+  // shown as a heading over an empty band.
+  if (!loading && !error && classesData.length === 0) return null;
+
   return (
     <section className="section surface-dark home-dark-section relative overflow-hidden">
       <span className="section-seam section-seam--top" aria-hidden="true" />
@@ -144,15 +148,6 @@ const GymFolioClasses = ({ content = DEFAULT_CLASSES }: { content?: SectionHeade
         {error && !loading && (
           <div className="bg-red-900/20 border border-red-500/50 text-red-300 px-4 py-3 rounded-xl text-center">
             {error}
-          </div>
-        )}
-
-        {/* Empty State */}
-        {!loading && !error && classesData.length === 0 && (
-          <div className="text-center py-20">
-            <p className="home-section-description home-section-description-dark">
-              No classes available at the moment.
-            </p>
           </div>
         )}
 

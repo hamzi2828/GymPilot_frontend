@@ -31,12 +31,9 @@ const LatestArticles: React.FC = () => {
       <div className="mx-auto">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between mb-16">
           <div>
-            <h2 className="font-montserrat font-bold text-3xl sm:text-4xl uppercase tracking-wide mb-4">
+            <h2 className="font-montserrat font-bold text-3xl sm:text-4xl uppercase tracking-wide">
               Latest Articles
             </h2>
-            <p className="text-xl text-gray-300 max-w-2xl">
-              Fresh content from our experts and community members
-            </p>
           </div>
           <a
             href="#"
@@ -62,7 +59,7 @@ const LatestArticles: React.FC = () => {
                   <article className="gym-blog-custom-bg-darker rounded-xl overflow-hidden gym-blog-hover-lift transition-all duration-500 group">
                     <div className="relative h-40 overflow-hidden">
                       <Image
-                        src={blog.thumbnail || blog.image || "/images/gym-blog-1.svg"}
+                        src={blog.thumbnail || blog.image || "/images/class-placeholder.svg"}
                         alt={blog.title}
                         fill
                         className="object-cover group-hover:scale-110 transition-transform duration-500"

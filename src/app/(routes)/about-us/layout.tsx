@@ -4,7 +4,7 @@ import { pageMetadata } from "@/helper/siteMetadata";
 export async function generateMetadata(): Promise<Metadata> {
   return pageMetadata({
     title: "About Us",
-    description: "Meet the team, the facility and the training philosophy behind the gym.",
+    description: "Who we are, what we offer and how to get in touch.",
     path: "/about-us",
   });
 }
