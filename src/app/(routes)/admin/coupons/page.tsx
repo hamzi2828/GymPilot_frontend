@@ -20,6 +20,8 @@ import {
 } from "../_shared/ui";
 import { GYMFOLIO_API, apiGet, apiJson } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
+import { useSiteSettings } from "@/components/ThemeProvider";
+import { gymDateKey } from "@/helper/date";
 
 interface Coupon {
   _id: string;
@@ -70,8 +72,23 @@ const emptyDraft: Draft = {
   isActive: true,
 };
 
-function dateInput(value: string | null) {
-  return value ? String(value).slice(0, 10) : "";
+// The server keeps "valid from 1 Oct" as the first moment of that day at the
+// gym, and "until" as its last (couponController readBoundary), so the day is
+// read back on the gym's calendar. The first ten characters of the ISO string
+// are the UTC date, which away from Greenwich is the day before or after --
+// and each save of an untouched form used to move the dates by that day.
+function gymDay(value: string | null, timeZone: string) {
+  if (!value) return "";
+  const at = new Date(value);
+  return Number.isNaN(at.getTime()) ? "" : gymDateKey(timeZone, at);
+}
+
+// The same day, written the way this browser writes dates.
+function shownDay(value: string | null, timeZone: string) {
+  const key = gymDay(value, timeZone);
+  if (!key) return "";
+  const [y, m, d] = key.split("-").map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString();
 }
 
 function describe(c: Coupon) {
@@ -81,6 +98,7 @@ function describe(c: Coupon) {
 export default function CouponsAdminPage() {
   const { can } = usePermissions();
   const { ask, dialog: confirmDialog } = useConfirm();
+  const { ianaTimezone } = useSiteSettings();
   const editable = can("coupons", "manage");
 
   const [coupons, setCoupons] = useState<Coupon[]>([]);
@@ -130,8 +148,8 @@ export default function CouponsAdminPage() {
       value: String(c.value),
       currency: c.currency || "",
       packageIds: (c.packageIds || []).map((p) => (typeof p === "string" ? p : p._id)),
-      validFrom: dateInput(c.validFrom),
-      validUntil: dateInput(c.validUntil),
+      validFrom: gymDay(c.validFrom, ianaTimezone),
+      validUntil: gymDay(c.validUntil, ianaTimezone),
       maxRedemptions: String(c.maxRedemptions || 0),
       appliesToRenewals: !!c.appliesToRenewals,
       isActive: c.isActive,
@@ -228,7 +246,7 @@ export default function CouponsAdminPage() {
                   : "All packages"}
               </span>,
               <span key="v" className="text-xs text-neutral-600">
-                {c.validFrom ? new Date(c.validFrom).toLocaleDateString() : "—"} → {c.validUntil ? new Date(c.validUntil).toLocaleDateString() : "no end"}
+                {shownDay(c.validFrom, ianaTimezone) || "—"} → {shownDay(c.validUntil, ianaTimezone) || "no end"}
               </span>,
               <span key="u" className="text-xs text-neutral-600">
                 {c.redemptions}
