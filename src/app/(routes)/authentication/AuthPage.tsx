@@ -6,19 +6,12 @@ import { LeftSide } from "./components/LeftSide";
 import { RightSide } from "./components/RightSide";
 import TwoFactorStep from "./components/TwoFactorStep";
 import { signUp, login, requestPasswordReset, resetPassword, verifyTwoFactor } from "./service/authService";
-import { setToken, setRole } from "@/helper/helper";
+import { setToken, setRole, getRole, decodeJwt, hasSessionCookie, restoreSessionCookie, safeRedirect } from "@/helper/helper";
 import type { Mode } from "./components/leftsSideComponents/types";
 
-/**
- * Only same-origin paths are honoured. Anything else — a protocol-relative
- * `//evil.com`, an absolute URL, a non-path value — is discarded so the
- * `?redirect=` param can't be used to bounce users off the site.
- */
-const safeRedirect = (value: string | null): string | null => {
-  if (!value) return null;
-  if (!value.startsWith("/") || value.startsWith("//")) return null;
-  return value;
-};
+// Where someone lands when nothing asked for a particular page: the panel for
+// anyone who works here, the homepage for a member.
+const homeFor = (role: string | null | undefined) => (role && role !== "user" ? "/admin" : "/");
 
 const AuthPage: React.FC = () => {
   const router = useRouter();
@@ -26,7 +19,8 @@ const AuthPage: React.FC = () => {
 
   // Where to land after a successful sign-in. Checkout sends buyers here when
   // they aren't logged in, so dropping this param strands them on the homepage
-  // mid-purchase.
+  // mid-purchase. Only a path on this site is honoured (see safeRedirect), so
+  // the param cannot be used to bounce anyone off it.
   const redirectTo = safeRedirect(searchParams.get("redirect"));
 
   const [isSignUp, setIsSignUp] = useState(false);
@@ -65,12 +59,29 @@ const AuthPage: React.FC = () => {
   // What happens once a token is in hand, whichever step produced it.
   const finishSignIn = (res: { token: string; data?: { role?: string } }) => {
     setToken(res.token);
+    // The token carries the role too, should the account view ever come
+    // without one.
+    const role = res?.data?.role || decodeJwt<{ role?: string }>(res.token)?.role;
     try {
-      if (res?.data?.role) setRole(res.data.role);
+      if (role) setRole(role);
     } catch {}
-    const worksHere = !!res?.data?.role && res.data.role !== "user";
-    router.replace(worksHere ? "/admin" : redirectTo || "/");
+    // Back to the page that sent them here -- staff as well as members: a
+    // session that ended on Attendance resumes on Attendance. Otherwise staff
+    // land on the panel and members on the homepage.
+    router.replace(redirectTo || homeFor(role));
   };
+
+  // Someone still signed in can be sent here by the route guard, which only
+  // sees a cookie they may have lost (an older sign-in, or cleared cookies).
+  // Put it back and send them on, rather than asking for a password they do
+  // not need to type. Only when the cookie is really there afterwards --
+  // otherwise the guard would send them straight back here.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("token") || params.get("mode")) return;
+    if (hasSessionCookie() || !restoreSessionCookie()) return;
+    router.replace(safeRedirect(params.get("redirect")) || homeFor(getRole()));
+  }, [router]);
 
   const verifyCode = async (code: string) => {
     if (!twoFactor) return;

@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import AdminHeader from "@/components/admin/AdminHeader";
 import AdminSidebar from "@/components/admin/AdminSidebar";
 import { PermissionsProvider, usePermissions } from "@/components/admin/PermissionsProvider";
-import { isAuthenticated, removeToken } from "@/helper/helper";
+import { isAuthenticated, removeToken, signInUrl } from "@/helper/helper";
 import { getSubscription, type BillingSubscription } from "./settings/billingApi";
 
 // Which tab each admin route belongs to. Longest prefix wins, so
@@ -140,7 +140,7 @@ function AdminShell({ children }: { children: React.ReactNode }) {
               type="button"
               onClick={() => {
                 removeToken();
-                router.replace("/authentication");
+                router.replace(signInUrl());
               }}
               className="inline-flex h-9 items-center rounded-lg border border-neutral-200 px-4 text-sm font-medium text-neutral-700"
             >
@@ -225,7 +225,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   useEffect(() => {
     if (!isAuthenticated()) {
-      router.replace("/authentication");
+      // The sign-in page brings them back to the page they were on.
+      router.replace(signInUrl());
       return;
     }
     setAuthed(true);
