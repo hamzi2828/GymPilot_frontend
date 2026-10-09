@@ -60,6 +60,17 @@ async function readOrThrow<T>(res: Response, fallback: string): Promise<T> {
   return body as T;
 }
 
+/** The gym's booking policy, as the timetable reports it. */
+export interface BookingRules {
+  horizon_days: number;
+  cutoff_minutes: number;
+  // Cancelling later than this many hours before the start is a late
+  // cancellation: the place is freed but a session credit stays used.
+  cancel_hours: number;
+  require_active_membership: boolean;
+  use_credits: boolean;
+}
+
 /**
  * The whole timetable. Signed in, each session also reports whether this
  * member already holds a place — which is why the token is sent even though
@@ -72,7 +83,7 @@ export async function getTimetable(params: { from?: string; to?: string; classId
   if (params.classId) qs.set("classId", params.classId);
 
   const res = await fetch(`${GYMFOLIO_API}/timetable?${qs}`, { headers: authHeaders() });
-  const body = await readOrThrow<{ data: ClassSession[]; range: { from: string; to: string } }>(
+  const body = await readOrThrow<{ data: ClassSession[]; range: { from: string; to: string }; rules?: BookingRules }>(
     res,
     "Could not load the timetable"
   );

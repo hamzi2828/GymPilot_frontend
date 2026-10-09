@@ -1,12 +1,13 @@
 "use client";
 
-import React, { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   getTimetable,
   bookSession,
   cancelBooking,
+  type BookingRules,
   type ClassSession,
 } from "../classes/services/bookingService";
 import { isAuthenticated } from "@/helper/helper";
@@ -74,6 +75,10 @@ function TimetableContent() {
   const [sessions, setSessions] = useState<ClassSession[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
+  // The gym's booking policy, for saying when a cancellation is a late one.
+  const [rules, setRules] = useState<BookingRules | null>(null);
+  // The session whose Cancel was tapped and is waiting for a yes or no.
+  const [confirming, setConfirming] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
   // Framed on another website (/embed/timetable): links to the member area
   // open in the whole window rather than inside the frame.
@@ -86,16 +91,25 @@ function TimetableContent() {
 
   const to = useMemo(() => addDays(from, DAYS_SHOWN - 1), [from]);
 
+  // Only the latest request may fill the page. Paging through the weeks
+  // quickly, a slow answer for an earlier week used to land after the newer
+  // one and put the wrong week's classes under this week's dates.
+  const latestRequest = useRef(0);
+
   const load = useCallback(async () => {
+    const request = ++latestRequest.current;
     setLoading(true);
     try {
       const res = await getTimetable({ from, to, classId: classId || undefined });
+      if (request !== latestRequest.current) return;
       setSessions(res.data || []);
+      setRules(res.rules || null);
     } catch (e) {
+      if (request !== latestRequest.current) return;
       setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not load the timetable" });
       setSessions([]);
     } finally {
-      setLoading(false);
+      if (request === latestRequest.current) setLoading(false);
     }
   }, [from, to, classId]);
 
@@ -145,8 +159,19 @@ function TimetableContent() {
     }
   };
 
+  // Whether cancelling now is inside the gym's cancel-by window, where the
+  // place is freed but a session credit is not handed back. Only a held place
+  // can have used one; leaving a waiting list costs nothing.
+  const isLateCancel = (s: ClassSession) => {
+    if (!rules || !rules.use_credits || rules.cancel_hours <= 0) return false;
+    if (s.my_booking?.status !== "booked") return false;
+    const startsAt = new Date(s.starts_at).getTime();
+    return Number.isFinite(startsAt) && startsAt - rules.cancel_hours * 3600 * 1000 < Date.now();
+  };
+
   const onCancel = async (s: ClassSession) => {
     if (!s.my_booking) return;
+    setConfirming(null);
     setBusy(sessionKey(s));
     setNotice(null);
     try {
@@ -301,7 +326,33 @@ function TimetableContent() {
                         </p>
 
                         <div className="mt-4">
-                          {mine ? (
+                          {mine && confirming === key ? (
+                            // Asked on the page rather than with a browser
+                            // dialog: inside the embed (a frame on another
+                            // website) browsers suppress those.
+                            <div role="group" aria-label={t("tt.cancelAsk")}>
+                              <p className="text-sm font-semibold text-neutral-900">{t("tt.cancelAsk")}</p>
+                              {isLateCancel(s) && (
+                                <p className="mt-1 text-[13px] text-amber-800">{t("tt.cancelLate")}</p>
+                              )}
+                              <div className="mt-3 flex flex-wrap gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => onCancel(s)}
+                                  className="rounded-lg bg-neutral-900 px-4 py-2 text-sm font-bold text-white hover:bg-neutral-800"
+                                >
+                                  {t("tt.cancelYes")}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setConfirming(null)}
+                                  className="rounded-lg border border-neutral-300 px-4 py-2 text-sm font-semibold text-neutral-700 hover:border-neutral-400"
+                                >
+                                  {t("tt.cancelNo")}
+                                </button>
+                              </div>
+                            </div>
+                          ) : mine ? (
                             <div className="flex items-center justify-between gap-2">
                               <span className="text-sm font-bold text-emerald-700">
                                 {mine.status === "waitlisted"
@@ -311,7 +362,7 @@ function TimetableContent() {
                               {!s.is_closed && (
                                 <button
                                   type="button"
-                                  onClick={() => onCancel(s)}
+                                  onClick={() => setConfirming(key)}
                                   disabled={busy === key}
                                   className="text-sm font-semibold text-neutral-600 underline underline-offset-4 disabled:opacity-40"
                                 >
