@@ -78,6 +78,8 @@ export interface UserProfile {
   loyaltyPoints: number;
   /** The phone-app sign-in name the API issues every account. */
   username?: string;
+  /** False until the member opens the link emailed to a new or changed address. */
+  emailVerified?: boolean;
 }
 export interface UpdateUserPayload {
   firstName: string;
@@ -111,6 +113,17 @@ export async function setTwoFactor(enabled: boolean, currentPassword?: string): 
     { method: "PUT", headers: jsonHeaders(), body: JSON.stringify(currentPassword ? { enabled, currentPassword } : { enabled }) },
     "Could not update two-factor sign-in"
   );
+  return res.json();
+}
+
+/**
+ * Emails the signed-in member a fresh link to confirm their address.
+ * `alreadyVerified` when there was nothing left to confirm. Refused (with
+ * the API's sentence) for an account with no email, when the email could
+ * not be sent, and when too many were asked for in an hour.
+ */
+export async function sendEmailConfirmation(): Promise<{ message?: string; alreadyVerified?: boolean }> {
+  const res = await send("/user/verify-email/send", { method: "POST", headers: jsonHeaders() }, "We could not send the email just now. Please try again later.");
   return res.json();
 }
 

@@ -161,6 +161,14 @@ const AuthPage: React.FC = () => {
     }
   }, [searchParams]);
 
+  // Where the button on the "confirm your email" page sends people
+  // (?emailVerified=1): say it worked, above the sign-in form.
+  useEffect(() => {
+    if (searchParams.get("emailVerified") === "1") {
+      setNotice({ tone: "ok", text: "Your email address is confirmed. Sign in to carry on." });
+    }
+  }, [searchParams]);
+
   const updateMode = (mode: Mode) => {
     setIsSignUp(mode === "signup");
     setIsForgot(mode === "forgot");
@@ -263,9 +271,17 @@ const AuthPage: React.FC = () => {
           email: formData.email,
           password: formData.password,
         };
-        await signUp(payload);
+        const created = await signUp(payload);
         updateMode("signin");
-        setNotice({ tone: "ok", text: "Account created. You can sign in now." });
+        // A new address starts unconfirmed and is emailed a link. The account
+        // works straight away, so the link is mentioned after the sign-in.
+        setNotice({
+          tone: "ok",
+          text:
+            created.data?.emailVerified === false
+              ? `Account created. You can sign in now. We have also emailed ${payload.email.trim()} a link to confirm the address is yours.`
+              : "Account created. You can sign in now.",
+        });
         return;
       }
 

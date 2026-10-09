@@ -53,6 +53,8 @@ interface User {
   lastName?: string;
   /** Absent for a member who has no email address (they sign in with their username). */
   email?: string | null;
+  /** False until a self-service sign-up or email change is confirmed from the emailed link. */
+  emailVerified?: boolean;
   // A role slug; roles are documents now, so any string a gym has created.
   role?: string;
   createdAt?: string;
@@ -477,6 +479,26 @@ function UsersAdminPageInner() {
     }
   };
 
+  // The desk vouching for an address in place of the emailed link: the member
+  // is standing there. The backend refuses it for one's own account and for
+  // an account above the caller's reach (403), and for one with no email (409).
+  const confirmEmail = async (u: User) => {
+    const answer = await ask({
+      title: `Mark ${displayName(u)}'s email as confirmed?`,
+      body: `You are vouching that ${u.email} belongs to ${displayName(u)}, in place of the link we emailed them.`,
+      confirmLabel: "Mark email confirmed",
+      danger: false,
+    });
+    if (answer === null) return;
+    try {
+      const r = await apiJson<{ message: string }>(`${API_BASE}/admin/users/${u._id}/verify-email`, "POST");
+      setNotice({ tone: "ok", text: r.message || "Email address marked as confirmed." });
+      await load();
+    } catch (e) {
+      setNotice({ tone: "warn", text: e instanceof Error ? e.message : "Could not confirm the email address" });
+    }
+  };
+
   const signOut = async (u: User) => {
     const answer = await ask({
       title: `Sign ${displayName(u)} out of every device?`,
@@ -721,7 +743,15 @@ function UsersAdminPageInner() {
             ) : (
               <span key="c" className="text-xs text-neutral-400">—</span>
             ),
-            u.email || <span key="e" className="text-xs text-neutral-400">no email</span>,
+            u.email ? (
+              <div key="e">
+                {u.email}
+                {/* Staff can vouch for it under More. */}
+                {u.emailVerified === false && <p className="text-[11px] text-amber-700">not confirmed</p>}
+              </div>
+            ) : (
+              <span key="e" className="text-xs text-neutral-400">no email</span>
+            ),
             u.phone ? <span key="p" className="whitespace-nowrap">{u.phone}</span> : <span key="p" className="text-xs text-neutral-400">—</span>,
             <UsernameCell
               key="u"
@@ -756,6 +786,7 @@ function UsersAdminPageInner() {
                       label: "Set password",
                       onClick: () => setPasswordFor({ endpoint: `${API_BASE}/admin/users/${u._id}/password`, who: displayName(u), username: u.username }),
                     },
+                    ...(u.email && u.emailVerified === false ? [{ label: "Mark email confirmed", onClick: () => confirmEmail(u) }] : []),
                     { label: "Record fingerprint consent", onClick: () => recordConsent(u) },
                     { label: "Sign out of every device", onClick: () => signOut(u) },
                     u.isActive === false

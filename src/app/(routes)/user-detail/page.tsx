@@ -15,6 +15,7 @@ import { ProfileExtrasSection } from "./components/ProfileExtrasSection";
 import { PtSection } from "./components/PtSection";
 import { WorkSection, type Work } from "./components/WorkSection";
 import { ShopSection } from "./components/ShopSection";
+import { EmailConfirmNotice } from "./components/EmailConfirmNotice";
 import { getAuthHeader } from "@/helper/helper";
 import {
   getUserDetailForProfile,
@@ -336,6 +337,17 @@ const UserProfilePageContent: React.FC = () => {
 
       <section className="px-4 sm:px-6 lg:px-8 xl:px-20 py-8 sm:py-12">
         <Header userProfile={userProfile} />
+        {/* Only for an address the API says is unconfirmed: an account with
+            no email, or one from before confirmation existed, sees nothing. */}
+        {!isEditing && userProfile.email && userProfile.emailVerified === false && (
+          <EmailConfirmNotice
+            onConfirmed={(message) => {
+              showToast(message, "success");
+              refreshUserData();
+            }}
+            onSessionEnded={endSession}
+          />
+        )}
         <Tabs activeTab={activeTab} onChange={handleTabChange} hide={work ? [] : ["work"]} />
 
         {activeTab === "profile" && (
