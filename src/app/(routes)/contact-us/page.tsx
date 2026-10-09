@@ -217,11 +217,10 @@ const ContactUsPage = () => {
                         .
                       </p>
                       <p>
-                        <strong>Trainers:</strong> Meet the team on the{" "}
+                        <strong>{t("nav.trainers")}:</strong>{" "}
                         <Link href="/trainers" className="underline hover:no-underline">
-                          trainers page
+                          {t("contact.meetTeam")}
                         </Link>
-                        .
                       </p>
                       {mobileNumber && (
                         <p>

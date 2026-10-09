@@ -92,6 +92,7 @@ const en = {
   "contact.askBilling": "Hi, I have a question about a payment...",
   "contact.askOther": "Hi, I'd like to ask about...",
   "contact.phonePlaceholder": "Your phone number",
+  "contact.meetTeam": "Meet the team",
 } as const;
 
 export type DictKey = keyof typeof en;
@@ -176,6 +177,7 @@ const ar: Dict = {
   "contact.askBilling": "مرحبًا، لدي سؤال عن عملية دفع...",
   "contact.askOther": "مرحبًا، أود الاستفسار عن...",
   "contact.phonePlaceholder": "رقم هاتفك",
+  "contact.meetTeam": "تعرّف على الفريق",
 };
 
 const ur: Dict = {
@@ -257,6 +259,7 @@ const ur: Dict = {
   "contact.askBilling": "السلام علیکم، مجھے ایک ادائیگی کے بارے میں سوال پوچھنا ہے...",
   "contact.askOther": "السلام علیکم، مجھے یہ پوچھنا ہے...",
   "contact.phonePlaceholder": "آپ کا فون نمبر",
+  "contact.meetTeam": "ٹیم سے ملیں",
 };
 
 const es: Dict = {
@@ -338,6 +341,7 @@ const es: Dict = {
   "contact.askBilling": "Hola, tengo una pregunta sobre un pago...",
   "contact.askOther": "Hola, quiero preguntar por...",
   "contact.phonePlaceholder": "Tu número de teléfono",
+  "contact.meetTeam": "Conoce al equipo",
 };
 
 const fr: Dict = {
@@ -419,6 +423,7 @@ const fr: Dict = {
   "contact.askBilling": "Bonjour, j'ai une question au sujet d'un paiement...",
   "contact.askOther": "Bonjour, j'aimerais poser une question sur...",
   "contact.phonePlaceholder": "Votre numéro de téléphone",
+  "contact.meetTeam": "Rencontrez l'équipe",
 };
 
 export const DICTIONARIES: Record<Lang, Dict> = { en, ar, ur, es, fr };
