@@ -22,7 +22,7 @@ import {
   ErrorState,
   useLatestRequest,
 } from "../_shared/ui";
-import { GYMFOLIO_API, apiBlob, apiGet, apiJson, absoluteUrl, replaceParams } from "../_shared/api";
+import { ApiError, GYMFOLIO_API, apiBlob, apiGet, apiJson, absoluteUrl, replaceParams } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
 import { MemberPicker, type MemberOption } from "../_ops/MemberPicker";
 import { Pager, pageCount } from "../_ops/lists";
@@ -319,7 +319,9 @@ function PackageOrdersAdminPageInner() {
     setError(null);
     setNotice(null);
     try {
-      const res = (await fn()) as { message?: string } | undefined;
+      const res = (await fn()) as { message?: string } | null | undefined;
+      // null: they backed out of a question asked on the way. Nothing was done.
+      if (res === null) return;
       setNotice((res && res.message) || label);
       setAction("");
       setSelected(null);
@@ -428,6 +430,54 @@ function PackageOrdersAdminPageInner() {
     if (answer === null) return;
     run("Refunded.", () => post(o, "refund", { amount: amount || undefined, reason: draft.reason }));
   };
+
+  // Unused days worth more than the new package costs cannot all come off its
+  // price, and the member would lose the rest. The API refuses that (409
+  // CREDIT_EXCEEDS_PRICE, with the figures) until the desk has agreed to it:
+  // this asks, and sends the change again with `forfeitCredit`. Backing out
+  // opens the refund form with the credit filled in, the other way through.
+  const changePackage = (o: PackageOrder) =>
+    run("Package changed.", async () => {
+      const body = { packageId: draft.packageId, paymentMethod: draft.paymentMethod };
+      try {
+        return await post(o, "change-package", body);
+      } catch (e) {
+        if (!(e instanceof ApiError) || e.code !== "CREDIT_EXCEEDS_PRICE" || !e.details) throw e;
+        const sum = (n: unknown) => money(Number(n) || 0, String(e.details?.currency || o.payment.currency));
+        const credit = sum(e.details.credit);
+        const lost = sum(e.details.creditUnused);
+        const chosen = packages.find((p) => p._id === draft.packageId)?.name || "the new package";
+        const answer = await ask({
+          title: `Give up ${lost} of this member's credit?`,
+          body: (
+            <>
+              <ul className="space-y-1">
+                <li>
+                  Unused days already paid for: <strong className="text-neutral-900">{credit}</strong>
+                </li>
+                <li>
+                  {chosen} costs: <strong className="text-neutral-900">{sum(e.details.price)}</strong>
+                </li>
+                <li>
+                  Would be given up: <strong className="text-neutral-900">{lost}</strong>
+                </li>
+              </ul>
+              <p className="mt-3">
+                To give the money back instead, go back, refund the {credit} and then assign {chosen}. If you continue, {chosen} is covered by the credit and the other {lost} is not paid back.
+              </p>
+            </>
+          ),
+          confirmLabel: `Change and give up ${lost}`,
+          cancelLabel: "Go back and refund first",
+        });
+        if (answer === null) {
+          setDraft((d) => ({ ...d, amount: String(e.details?.credit ?? ""), reason: `Unused days, before changing to ${chosen}` }));
+          setAction("refund");
+          return null;
+        }
+        return post(o, "change-package", { ...body, forfeitCredit: true });
+      }
+    });
 
   const invoiceUrl = (o: PackageOrder) => `${GYMFOLIO_API}/package-orders/${o._id}/invoice.pdf?download=1`;
   const openInvoice = async (o: PackageOrder) => {
@@ -704,7 +754,7 @@ function PackageOrdersAdminPageInner() {
       </Modal>
 
       {/* ---- Manage ---- */}
-      <Modal open={!!selected} onClose={() => { setSelected(null); setAction(""); }} title={`Order ${selected?.orderNumber || ""}`} size="lg">
+      <Modal open={!!selected} onClose={() => { setSelected(null); setAction(""); }} title={`Order ${selected?.orderNumber || ""}`} size="lg" busy={busy} error={error}>
         {selected && (
           <div className="space-y-5">
             <div className="grid gap-4 sm:grid-cols-2 text-sm">
@@ -1093,7 +1143,7 @@ function PackageOrdersAdminPageInner() {
                   options={DESK_METHOD_OPTIONS}
                 />
                 <div className="flex items-end justify-end">
-                  <PrimaryButton disabled={busy || !draft.packageId} onClick={() => run("Package changed.", () => post(selected, "change-package", { packageId: draft.packageId, paymentMethod: draft.paymentMethod }))}>
+                  <PrimaryButton disabled={busy || !draft.packageId} onClick={() => changePackage(selected)}>
                     Change package
                   </PrimaryButton>
                 </div>
@@ -1120,8 +1170,6 @@ function PackageOrdersAdminPageInner() {
                 </div>
               </details>
             )}
-
-            {error && <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
           </div>
         )}
       </Modal>

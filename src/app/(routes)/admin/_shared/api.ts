@@ -24,12 +24,15 @@ const SESSION_END_CODES = new Set(["TOKEN_MISSING", "TOKEN_INVALID", "TOKEN_WRON
 export class ApiError extends Error {
   status: number;
   code?: string;
+  /** The figures behind a refusal, when the backend sent any (CREDIT_EXCEEDS_PRICE). */
+  details?: Record<string, unknown>;
 
-  constructor(message: string, status: number, code?: string) {
+  constructor(message: string, status: number, code?: string, details?: Record<string, unknown>) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.code = code;
+    this.details = details;
   }
 }
 
@@ -85,9 +88,10 @@ function failureMessage(status: number, serverMessage: string, code?: string): s
   // of HTML rather than JSON; the API's own upload limits answer 413 too.
   if (status === 413) return "That file is too large to upload.";
   if (code === PLAN_LIMIT_REACHED) return planLimitMessage(serverMessage);
-  // Gateway failures come from the proxy in front of the API, never from the
-  // API itself, so whatever they carry is not a message meant for people.
-  if (status === 502 || status === 503 || status === 504) return "The server didn't respond — please try again.";
+  // A gateway failure without a `code` comes from the proxy in front of the
+  // API, so whatever it carries is not a message meant for people. With one
+  // it is the API's own answer (Stripe would not take a change, say).
+  if ((status === 502 || status === 503 || status === 504) && !(code && serverMessage)) return "The server didn't respond — please try again.";
   if (serverMessage) return serverMessage;
   if (status >= 500) return "The server didn't respond — please try again.";
   return "Request failed";
@@ -115,11 +119,12 @@ async function readJson(res: Response): Promise<{ text: string; json: unknown }>
 // A refused call as an error fit to show, with the sign-out when it was
 // refused because the session is over.
 function refusal(res: Response, json: unknown): ApiError {
-  const body = json && typeof json === "object" ? (json as { message?: unknown; code?: unknown }) : {};
+  const body = json && typeof json === "object" ? (json as { message?: unknown; code?: unknown; details?: unknown }) : {};
   const serverMessage = typeof body.message === "string" ? body.message.trim() : "";
   const code = typeof body.code === "string" ? body.code : undefined;
+  const details = body.details && typeof body.details === "object" ? (body.details as Record<string, unknown>) : undefined;
 
-  const error = new ApiError(failureMessage(res.status, serverMessage, code), res.status, code);
+  const error = new ApiError(failureMessage(res.status, serverMessage, code), res.status, code, details);
   if (isSessionEndError(error)) {
     error.message = "Your session has ended. Please sign in again.";
     endSession();
