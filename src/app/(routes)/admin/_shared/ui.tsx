@@ -708,6 +708,9 @@ function ModalDialog({ onClose, title, children, size = "md", busy = false, dism
   const markTouched = useCallback(() => {
     touched.current = true;
   }, []);
+  // What had focus when the dialog was asked for, noted before anything in it
+  // (an autoFocus field) can take focus for itself.
+  const [opener] = useState(() => (typeof document !== "undefined" && document.activeElement instanceof HTMLElement ? document.activeElement : null));
 
   // The document listener below is bound once; it reads these through a ref.
   const live = useRef({ onClose, busy, dismissible });
@@ -719,7 +722,6 @@ function ModalDialog({ onClose, title, children, size = "md", busy = false, dism
     const token = {};
     openDialogs.push(token);
 
-    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const dialog = dialogRef.current;
     // A field that asked for focus itself (autoFocus) keeps it. Otherwise the
     // dialog takes it rather than its first field, which on a phone would
@@ -772,7 +774,7 @@ function ModalDialog({ onClose, title, children, size = "md", busy = false, dism
       if (index >= 0) openDialogs.splice(index, 1);
       if (opener && opener.isConnected) opener.focus();
     };
-  }, []);
+  }, [opener]);
 
   const sizeCls = {
     sm: "max-w-md",
