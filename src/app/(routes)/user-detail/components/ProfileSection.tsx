@@ -1,7 +1,7 @@
 "use client";
 
 import React, { Dispatch, SetStateAction, useEffect, useMemo, useState } from "react";
-import { getUserDetailForProfile } from "../service/userDetailService";
+import { getUserDetailForProfile, SessionEndedError } from "../service/userDetailService";
 import { toDateInputValue } from "@/helper/date";
 
 export interface UserProfileShape {
@@ -15,6 +15,13 @@ export interface UserProfileShape {
   username?: string;
 }
 
+/**
+ * How a save went. A refusal comes back with the sentence to show beside the
+ * form (a toast is gone in two seconds), and `needsPassword` when the API
+ * wants the current password for it.
+ */
+export type SaveResult = { ok: true } | { ok: false; message: string; needsPassword?: boolean };
+
 export interface ProfileSectionProps<T extends UserProfileShape> {
   userProfile: T | null;
   isEditing: boolean;
@@ -22,12 +29,19 @@ export interface ProfileSectionProps<T extends UserProfileShape> {
   setUserProfile: Dispatch<SetStateAction<T | null>>;
   showToast: (msg: string, type?: "success" | "error" | "info") => void;
 
-  // Parent-controlled save
+  // Parent-controlled save. The email travels in `change`, and only when it
+  // was actually changed -- together with the current password the API asks
+  // for. Everything else saves without one, so an account with no email can
+  // still change its name and phone.
   onSave: (
-    payload: Pick<T, "firstName" | "lastName" | "email" | "phone" | "dateOfBirth" | "gender">
-  ) => Promise<boolean>;
+    payload: Pick<T, "firstName" | "lastName" | "phone" | "dateOfBirth" | "gender">,
+    change?: { email: string; currentPassword: string }
+  ) => Promise<SaveResult>;
   isSaving: boolean;
 }
+
+// Two addresses that differ only in case or stray spaces are the same address.
+const sameEmail = (a?: string | null, b?: string | null) => (a ?? "").trim().toLowerCase() === (b ?? "").trim().toLowerCase();
 
 const Field = ({
   label,
@@ -69,6 +83,35 @@ export function ProfileSection<T extends UserProfileShape>({
   isSaving,
 }: ProfileSectionProps<T>) {
   const [loading, setLoading] = useState(true);
+  // The profile as it was when Edit was pressed: what Cancel puts back, and
+  // what the email box is compared with to know whether it was changed.
+  const [beforeEdit, setBeforeEdit] = useState<T | null>(null);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [formError, setFormError] = useState<string | null>(null);
+  // Set when the API asked for the password although the email looked
+  // unchanged from here.
+  const [passwordAsked, setPasswordAsked] = useState(false);
+
+  const startEditing = () => {
+    setBeforeEdit(userProfile);
+    setCurrentPassword("");
+    setFormError(null);
+    setPasswordAsked(false);
+    setIsEditing(true);
+  };
+
+  const cancelEditing = () => {
+    // Put back what was there: the boxes edit the profile in place, and a
+    // cancelled edit used to stay on screen as if it had been saved.
+    if (beforeEdit) setUserProfile(beforeEdit);
+    setCurrentPassword("");
+    setFormError(null);
+    setPasswordAsked(false);
+    setIsEditing(false);
+  };
+
+  const emailChanged = isEditing && !!beforeEdit && !sameEmail(userProfile?.email, beforeEdit.email);
+  const needsPassword = emailChanged || passwordAsked;
 
   // Initial fetch to hydrate profile (optional if parent already hydrated)
   useEffect(() => {
@@ -93,8 +136,11 @@ export function ProfileSection<T extends UserProfileShape>({
           });
         }
       } catch (e) {
-        console.error("Error fetching user data:", e);
-        showToast("Failed to load user data", "error");
+        // An ended session is already on its way to sign-in (the page).
+        if (!(e instanceof SessionEndedError)) {
+          console.error("Error fetching user data:", e);
+          showToast("Failed to load user data", "error");
+        }
       } finally {
         if (mounted) setLoading(false);
       }
@@ -124,22 +170,41 @@ export function ProfileSection<T extends UserProfileShape>({
 
     // lightweight client validation here if needed
     if (!userProfile.firstName?.trim() || !userProfile.lastName?.trim()) {
-      showToast("First and last name are required", "error");
+      setFormError("First and last name are required");
       return;
     }
+    const typedEmail = (userProfile.email ?? "").trim();
+    if (emailChanged && typedEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(typedEmail)) {
+      setFormError("That email address does not look right. Check it and try again.");
+      return;
+    }
+    if (needsPassword && !currentPassword) {
+      setFormError("Enter your current password to change your email.");
+      return;
+    }
+    setFormError(null);
 
-    const ok = await onSave({
-      firstName: userProfile.firstName,
-      lastName: userProfile.lastName,
-      email: userProfile.email ?? "",
-      phone: userProfile.phone ?? "",
-      // Blank stays blank (the API stores it as "no birthday"); defaulting to
-      // today here used to save a fake birthday on any unrelated edit.
-      dateOfBirth: toDateInputValue(userProfile.dateOfBirth),
-      gender: userProfile.gender ?? "other",
-    } as Pick<T, "firstName" | "lastName" | "email" | "phone" | "dateOfBirth" | "gender">);
+    const result = await onSave(
+      {
+        firstName: userProfile.firstName,
+        lastName: userProfile.lastName,
+        phone: userProfile.phone ?? "",
+        // Blank stays blank (the API stores it as "no birthday"); defaulting to
+        // today here used to save a fake birthday on any unrelated edit.
+        dateOfBirth: toDateInputValue(userProfile.dateOfBirth),
+        gender: userProfile.gender ?? "other",
+      } as Pick<T, "firstName" | "lastName" | "phone" | "dateOfBirth" | "gender">,
+      needsPassword ? { email: typedEmail, currentPassword } : undefined
+    );
 
-    if (ok) setIsEditing(false);
+    if (result.ok) {
+      setCurrentPassword("");
+      setPasswordAsked(false);
+      setIsEditing(false);
+      return;
+    }
+    setFormError(result.message);
+    if (result.needsPassword) setPasswordAsked(true);
   };
 
   if (loading) {
@@ -157,8 +222,9 @@ export function ProfileSection<T extends UserProfileShape>({
         <div className="flex items-center gap-3">
           <button
             type="button"
-            onClick={() => setIsEditing((prev) => !prev)}
-            className="px-4 py-2 border-2 border-primary text-primary font-semibold rounded-lg hover:bg-primary hover:text-black"
+            onClick={isEditing ? cancelEditing : startEditing}
+            disabled={isSaving}
+            className="px-4 py-2 border-2 border-primary text-primary font-semibold rounded-lg hover:bg-primary hover:text-black disabled:opacity-60"
           >
             <i className={`fas ${isEditing ? "fa-times" : "fa-edit"} mr-2`} />
             {isEditing ? "Cancel" : "Edit"}
@@ -238,11 +304,41 @@ export function ProfileSection<T extends UserProfileShape>({
         )}
       </div>
 
+      {/* Asked for only when the email is being changed: it is where sign-in
+          codes and password resets go, so the API wants proof it is still the
+          member at the keyboard. */}
+      {isEditing && needsPassword && (
+        <div className="rounded-xl border-2 border-gray-200 bg-gray-50 p-4">
+          <label className="block text-sm font-semibold text-gray-900" htmlFor="profile-current-password">
+            Current password
+          </label>
+          <p className="mt-1 text-sm text-gray-600">
+            {(userProfile?.email ?? "").trim()
+              ? "You are changing your email address. Enter your current password to confirm it is you."
+              : "You are removing your email address. Enter your current password to confirm it is you."}
+          </p>
+          <input
+            id="profile-current-password"
+            type="password"
+            autoComplete="current-password"
+            value={currentPassword}
+            onChange={(e) => setCurrentPassword(e.target.value)}
+            className="mt-2 w-full max-w-sm border-2 border-gray-200 rounded-lg px-4 py-3 bg-white focus:outline-none focus:border-primary"
+          />
+        </div>
+      )}
+
+      {isEditing && formError && (
+        <p role="alert" className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
+          {formError}
+        </p>
+      )}
+
       {isEditing && (
         <div className="flex justify-end gap-3">
           <button
             type="button"
-            onClick={() => setIsEditing(false)}
+            onClick={cancelEditing}
             className="px-5 py-3 border-2 border-gray-300 rounded-lg hover:border-gray-400 disabled:opacity-60"
             disabled={isSaving}
           >

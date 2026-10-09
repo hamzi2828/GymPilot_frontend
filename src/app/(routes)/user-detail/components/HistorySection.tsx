@@ -123,6 +123,11 @@ function StatusPill({ entry }: { entry: MembershipOrder }) {
 
 export interface HistorySectionProps {
   memberships: MembershipOrder[];
+  /**
+   * Why the memberships could not be loaded, when they could not. Shown in
+   * place of the membership card: a failed request is not "no membership".
+   */
+  error?: string | null;
   /** Every month with recorded visits, newest first. */
   months: AttendanceMonth[];
   loading: boolean;
@@ -137,6 +142,7 @@ export interface HistorySectionProps {
 
 export const HistorySection: React.FC<HistorySectionProps> = ({
   memberships,
+  error = null,
   months,
   loading,
   selectedMonth,
@@ -208,6 +214,19 @@ export const HistorySection: React.FC<HistorySectionProps> = ({
         <div className={`rounded-xl px-4 py-3 text-sm ${notice.tone === "ok" ? "bg-green-50 text-green-800" : "bg-red-50 text-red-700"}`}>{notice.text}</div>
       )}
 
+      {/* A refresh that failed after an earlier one worked: what is on screen
+          is the earlier answer, and says so. */}
+      {error && current && (
+        <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">
+          <span>We could not refresh your membership, so this may be out of date.</span>
+          {onRefresh && (
+            <button type="button" onClick={onRefresh} className="font-semibold underline underline-offset-2">
+              Try again
+            </button>
+          )}
+        </div>
+      )}
+
       {/* ---- Waiting on a bank transfer ---- */}
       {pending.length > 0 && (
         <section>
@@ -240,7 +259,22 @@ export const HistorySection: React.FC<HistorySectionProps> = ({
       {/* ---- What is running now ---- */}
       <section>
         <h2 className="mb-4 text-xl font-bold text-black sm:text-2xl">Your membership</h2>
-        {current ? (
+        {error && !current ? (
+          // Not "No active membership": nothing is known, and offering the
+          // packages here is how a member ends up paying for a second one.
+          <div role="alert" className="rounded-2xl border-2 border-red-200 bg-red-50 p-8 text-center">
+            <h3 className="text-lg font-bold text-gray-900">We could not load your membership</h3>
+            <p className="mt-1 text-sm text-gray-700">{error}</p>
+            <p className="mt-1 text-sm text-gray-700">
+              Nothing has changed on your account. Please do not buy a package again because of this.
+            </p>
+            {onRefresh && (
+              <button type="button" onClick={onRefresh} className="mt-5 rounded-lg bg-primary px-5 py-3 text-sm font-semibold text-black hover:opacity-90">
+                Try again
+              </button>
+            )}
+          </div>
+        ) : current ? (
           <div className="rounded-2xl border-2 border-primary bg-white p-5 sm:p-6">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>

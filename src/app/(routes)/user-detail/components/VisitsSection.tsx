@@ -59,6 +59,9 @@ function VisitRow({ visit }: { visit: AttendanceVisit }) {
 export interface VisitsSectionProps {
   attendance: MyAttendance | null;
   loading: boolean;
+  /** Why the visits could not be loaded, when they could not. */
+  error?: string | null;
+  onRetry?: () => void;
   /** Which month is drilled into, or null for the recent-visits view. */
   selectedMonth: string | null;
   onSelectMonth: (key: string | null) => void;
@@ -68,6 +71,8 @@ export interface VisitsSectionProps {
 export const VisitsSection: React.FC<VisitsSectionProps> = ({
   attendance,
   loading,
+  error = null,
+  onRetry,
   onSelectMonth,
   monthLoading,
 }) => {
@@ -79,6 +84,24 @@ export const VisitsSection: React.FC<VisitsSectionProps> = ({
           <p className="mt-2 text-gray-500">Loading your visits…</p>
         </div>
       </div>
+    );
+  }
+
+  // A failed request is not "No visits recorded yet".
+  if (error && !attendance) {
+    return (
+      <section>
+        <h2 className="mb-4 text-xl font-bold text-black sm:text-2xl">Your visits</h2>
+        <div role="alert" className="rounded-2xl border-2 border-red-200 bg-red-50 p-8 text-center">
+          <h3 className="text-lg font-bold text-gray-900">We could not load your visits</h3>
+          <p className="mt-1 text-sm text-gray-700">{error}</p>
+          {onRetry && (
+            <button type="button" onClick={onRetry} className="mt-5 rounded-lg bg-primary px-5 py-3 text-sm font-semibold text-black hover:opacity-90">
+              Try again
+            </button>
+          )}
+        </div>
+      </section>
     );
   }
 
