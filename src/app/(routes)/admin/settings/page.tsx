@@ -17,12 +17,14 @@ import {
   Spinner,
   Modal,
   Select2,
+  useConfirm,
+  ErrorState,
 } from "../_shared/ui";
 import { countryOptions, currencyOptions, countryByCode } from "@/data/countries";
-import { API_BASE, GYMFOLIO_API, apiGet, apiJson, authHeaders } from "../_shared/api";
+import { API_BASE, GYMFOLIO_API, apiForm, apiGet, apiJson, isMaskedSecret } from "../_shared/api";
 import { THEMES, DEFAULT_THEME_KEY } from "@/theme/themes";
 import { setActiveTheme } from "@/components/ThemeProvider";
-import MessagingSettings, { type MessagingConfig } from "./MessagingSettings";
+import MessagingSettings, { messagingToSave, type MessagingConfig } from "./MessagingSettings";
 import WebsiteSettings from "./WebsiteSettings";
 import BillingSettings from "./BillingSettings";
 import BackupSettings from "./BackupSettings";
@@ -220,6 +222,15 @@ function Notice({
   );
 }
 
+// The mail server was changed and the password box still holds the saved
+// password's masked preview. That password belongs to the old server, so it
+// is not carried over to the new one (and the API refuses to): it has to be
+// typed again.
+function smtpNeedsPassword(now: Settings | null, saved: Settings | null): boolean {
+  if (!saved?.smtp?.passSet) return false;
+  return (now?.smtp?.host || "").trim() !== (saved.smtp.host || "").trim() && isMaskedSecret(now?.smtp?.pass);
+}
+
 function isTabKey(v: string | null): v is TabKey {
   return !!v && TABS.some((t) => t.key === v);
 }
@@ -247,6 +258,8 @@ function SettingsAdminPageInner() {
     router.replace(`/admin/settings?${params.toString()}`, { scroll: false });
   };
   const [settings, setSettings] = useState<Settings | null>(null);
+  // The copy last read from the server, to tell which fields have been edited.
+  const [saved, setSaved] = useState<Settings | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -269,7 +282,9 @@ function SettingsAdminPageInner() {
 
   // Banks
   const [banks, setBanks] = useState<Bank[]>([]);
+  const { ask, dialog: confirmDialog } = useConfirm();
   const [banksLoading, setBanksLoading] = useState(false);
+  const [banksErr, setBanksErr] = useState<string | null>(null);
   const [bankModal, setBankModal] = useState(false);
   const [editingBank, setEditingBank] = useState<Bank | null>(null);
   const emptyBank = { name: "", accountNumber: "", accountTitle: "", branch: "", iban: "", notes: "" };
@@ -278,8 +293,8 @@ function SettingsAdminPageInner() {
   const [uploadingFor, setUploadingFor] = useState<string | null>(null);
   const [logoUploading, setLogoUploading] = useState<"logo" | "footerLogo" | null>(null);
 
-  // Logo uploads are multipart, so they bypass the JSON apiJson helper. The
-  // browser must set the boundary itself, hence no Content-Type here.
+  // Logo uploads are multipart, so they go through apiForm, which leaves the
+  // Content-Type for the browser to set with its boundary.
   const uploadLogo = async (which: "logo" | "footerLogo", file: File) => {
     setLogoUploading(which);
     setNotice(null);
@@ -287,13 +302,7 @@ function SettingsAdminPageInner() {
       const form = new FormData();
       form.append(which, file);
       const path = which === "logo" ? "logo" : "footer-logo";
-      const res = await fetch(`${SETTINGS_API}/${path}`, {
-        method: "POST",
-        headers: authHeaders(),
-        body: form,
-      });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json?.message || "Upload failed");
+      await apiForm(`${SETTINGS_API}/${path}`, "POST", form);
       await load();
       setNotice({ tone: "ok", text: "Logo updated. It is live on the site immediately." });
     } catch (e) {
@@ -333,7 +342,9 @@ function SettingsAdminPageInner() {
     setLoading(true);
     try {
       const r = await apiGet<{ data?: Settings; settings?: Settings }>(SETTINGS_API);
-      setSettings(r.data || r.settings || {});
+      const next = r.data || r.settings || {};
+      setSettings(next);
+      setSaved(next);
       setLoadError(null);
     } catch (e) {
       setLoadError(e instanceof Error ? e.message : "Could not load the settings");
@@ -347,8 +358,9 @@ function SettingsAdminPageInner() {
     try {
       const r = await apiGet<{ data?: Bank[]; banks?: Bank[] }>(BANKS_API);
       setBanks(r.data || r.banks || []);
-    } catch {
-      setBanks([]);
+      setBanksErr(null);
+    } catch (e) {
+      setBanksErr(e instanceof Error ? e.message : "Could not load the bank accounts");
     } finally {
       setBanksLoading(false);
     }
@@ -364,10 +376,17 @@ function SettingsAdminPageInner() {
 
   const save = async () => {
     if (!settings) return;
+    if (smtpNeedsPassword(settings, saved)) {
+      setNotice({ tone: "error", text: "You changed the mail server (SMTP host), so type its password again before saving. Nothing was saved." });
+      return;
+    }
     setSaving(true);
     setNotice(null);
     try {
-      const res = await apiJson<{ warnings?: string[] }>(SETTINGS_API, "PUT", settings);
+      // Everything unedited goes back as it came, masked secrets included
+      // (the API keeps what is saved for those).
+      const body = settings.messaging ? { ...settings, messaging: messagingToSave(settings.messaging, saved?.messaging) } : settings;
+      const res = await apiJson<{ warnings?: string[] }>(SETTINGS_API, "PUT", body);
       await load();
       // The save can succeed while refusing part of it (a secret field whose
       // masked value was edited is kept as it was); say which part.
@@ -462,30 +481,26 @@ function SettingsAdminPageInner() {
     }
   };
 
-  const deleteBank = async (id: string) => {
-    if (!confirm("Delete this bank account?")) return;
+  const deleteBank = async (b: Bank) => {
+    const answer = await ask({
+      title: `Delete ${b.name}?`,
+      body: `Account ${b.accountNumber}. This cannot be undone.`,
+      confirmLabel: "Delete bank account",
+    });
+    if (answer === null) return;
     try {
-      await apiJson(`${BANKS_API}/${id}`, "DELETE");
+      await apiJson(`${BANKS_API}/${b._id}`, "DELETE");
       await loadBanks();
     } catch (e) {
       setNotice({ tone: "error", text: e instanceof Error ? e.message : "Delete failed" });
     }
   };
 
-  // Uses fetch directly: the shared apiJson helper sends JSON, and this is
-  // multipart. authHeaders() supplies the bearer token without a Content-Type,
-  // which the browser must set itself so the multipart boundary is correct.
+  // Multipart, so apiForm rather than apiJson.
   const postBarcode = async (bankId: string, file: File) => {
     const form = new FormData();
     form.append("qrCode", file);
-    const res = await fetch(`${BANKS_API}/${bankId}/qr-code`, {
-      method: "POST",
-      headers: authHeaders(),
-      body: form,
-    });
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(json?.message || "Upload failed");
-    return json;
+    return apiForm(`${BANKS_API}/${bankId}/qr-code`, "POST", form);
   };
 
   const uploadBarcode = async (bankId: string, file: File) => {
@@ -562,7 +577,9 @@ function SettingsAdminPageInner() {
     );
   }
 
-  if (loading) return <Spinner />;
+  // Only until the settings have been read once. A reload after a save keeps
+  // the form where it is; swapping it for a spinner lost the user's place.
+  if (loading && !settings) return <Spinner />;
 
   if (!settings) {
     return (
@@ -582,6 +599,7 @@ function SettingsAdminPageInner() {
 
   const stripe = settings.stripe || {};
   const smtp = settings.smtp || {};
+  const smtpPassAgain = smtpNeedsPassword(settings, saved);
   const setStripe = (patch: Partial<StripeConfig>) =>
     setSettings({ ...settings, stripe: { ...stripe, ...patch } });
   const setSmtp = (patch: Partial<SmtpConfig>) =>
@@ -600,6 +618,7 @@ function SettingsAdminPageInner() {
         }
       />
 
+      {confirmDialog}
       {/* Tabs */}
       {tabStrip}
 
@@ -953,6 +972,7 @@ function SettingsAdminPageInner() {
             <div>
               <TextField
                 label="Secret Key"
+                type="password"
                 value={stripe.secretKey}
                 onChange={(v) => setStripe({ secretKey: v })}
                 placeholder="sk_live_..."
@@ -965,6 +985,7 @@ function SettingsAdminPageInner() {
               <TextField
                 label="Webhook Signing Secret (required for card payments)"
                 required
+                type="password"
                 value={stripe.webhookSecret}
                 onChange={(v) => setStripe({ webhookSecret: v })}
                 placeholder="whsec_..."
@@ -1019,12 +1040,16 @@ function SettingsAdminPageInner() {
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
             <TextField label="Host" value={smtp.host} onChange={(v) => setSmtp({ host: v })} placeholder="smtp.gmail.com" />
-            <TextField label="Port" type="number" value={smtp.port} onChange={(v) => setSmtp({ port: Number(v) })} placeholder="587" />
+            <TextField label="Port" type="number" value={smtp.port} onChange={(v) => setSmtp({ port: v.trim() === "" ? undefined : Number(v) })} placeholder="587" />
             <TextField label="Username" value={smtp.user} onChange={(v) => setSmtp({ user: v })} />
             <div>
-              <TextField label="Password" type="password" value={smtp.pass} onChange={(v) => setSmtp({ pass: v })} />
-              {smtp.passSet && (
-                <p className="text-xs text-neutral-500 mt-1">A password is saved. Type a new one to replace it.</p>
+              <TextField label="Password" type="password" required={smtpPassAgain} value={smtpPassAgain ? "" : smtp.pass} onChange={(v) => setSmtp({ pass: v })} />
+              {smtpPassAgain ? (
+                <p className="text-xs text-amber-700 mt-1">
+                  The host has changed, so the saved password is not sent to it. Type the password for the new mail server.
+                </p>
+              ) : (
+                smtp.passSet && <p className="text-xs text-neutral-500 mt-1">A password is saved. Type a new one to replace it.</p>
               )}
             </div>
             <TextField label="From Name" value={smtp.fromName} onChange={(v) => setSmtp({ fromName: v })} placeholder="Your gym name" />
@@ -1050,6 +1075,7 @@ function SettingsAdminPageInner() {
       {tab === "messaging" && (
         <MessagingSettings
           value={settings.messaging || {}}
+          saved={saved?.messaging}
           onChange={(next) => setSettings({ ...settings, messaging: next })}
           onSave={save}
           onReload={load}
@@ -1073,6 +1099,8 @@ function SettingsAdminPageInner() {
 
           {banksLoading ? (
             <Spinner />
+          ) : banksErr ? (
+            <ErrorState message={banksErr} onRetry={loadBanks} />
           ) : banks.length === 0 ? (
             <div className="rounded-xl border border-dashed border-neutral-300 p-10 text-center">
               <p className="text-sm font-medium text-neutral-900">No bank accounts yet</p>
@@ -1131,7 +1159,7 @@ function SettingsAdminPageInner() {
                     </label>
 
                     {b.qrCodeUrl && <SecondaryButton onClick={() => removeBarcode(b._id)}>Remove Barcode</SecondaryButton>}
-                    <DangerButton onClick={() => deleteBank(b._id)}>Delete</DangerButton>
+                    <DangerButton onClick={() => deleteBank(b)}>Delete</DangerButton>
                   </div>
                 </div>
               ))}

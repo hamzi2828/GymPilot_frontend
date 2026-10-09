@@ -14,6 +14,7 @@ import {
   Spinner,
   EmptyState,
   ErrorState,
+  useConfirm,
 } from "../_shared/ui";
 import { API_BASE, apiGet, apiJson } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
@@ -108,6 +109,7 @@ const emptyDraft = { name: "", description: "", isStaff: true };
 
 export default function RolesAdminPage() {
   const { can, reload: reloadPermissions } = usePermissions();
+  const { ask, dialog: confirmDialog } = useConfirm();
   const editable = can("roles", "manage");
 
   const [roles, setRoles] = useState<Role[]>([]);
@@ -211,7 +213,8 @@ export default function RolesAdminPage() {
   };
 
   const remove = async (role: Role) => {
-    if (!confirm(`Delete the "${role.name}" role? This cannot be undone.`)) return;
+    const answer = await ask({ title: `Delete the "${role.name}" role?`, body: "This cannot be undone.", confirmLabel: "Delete role" });
+    if (answer === null) return;
     try {
       await apiJson(`${API_BASE}/roles/${role.id}`, "DELETE");
       setNotice(`${role.name} deleted.`);
@@ -223,6 +226,7 @@ export default function RolesAdminPage() {
 
   return (
     <div>
+      {confirmDialog}
       <PageHeader
         eyebrow="Operations"
         title="Roles & Access"

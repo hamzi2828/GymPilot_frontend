@@ -6,7 +6,7 @@
 // download as CSV or as an Excel workbook.
 
 import { useCallback, useEffect, useState } from "react";
-import { Card, Spinner, ErrorState, Toggle } from "../_shared/ui";
+import { Card, Spinner, ErrorState, Toggle, useLatestRequest } from "../_shared/ui";
 import { API_BASE, apiGet } from "../_shared/api";
 import { downloadExport, FORMAT_LABELS, type ExportFormat } from "./download";
 
@@ -50,17 +50,22 @@ export default function DailySales({ from, to }: { from: string; to: string }) {
   const [exporting, setExporting] = useState<ExportFormat | null>(null);
   const [hideQuiet, setHideQuiet] = useState(false);
 
+  const begin = useLatestRequest();
   const load = useCallback(async () => {
+    const isLatest = begin();
     setLoading(true);
     setError(null);
     try {
-      setData(await apiGet<DailySalesReport>(`${API_BASE}/admin/reports/daily-sales?from=${from}&to=${to}`));
+      const report = await apiGet<DailySalesReport>(`${API_BASE}/admin/reports/daily-sales?from=${from}&to=${to}`);
+      if (!isLatest()) return;
+      setData(report);
     } catch (e) {
+      if (!isLatest()) return;
       setError(e instanceof Error ? e.message : "Could not load the daily sales");
     } finally {
-      setLoading(false);
+      if (isLatest()) setLoading(false);
     }
-  }, [from, to]);
+  }, [from, to, begin]);
 
   useEffect(() => {
     load();

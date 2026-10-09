@@ -3,7 +3,7 @@
 // Wording: the gym's own text for each message the system sends.
 
 import { useCallback, useEffect, useState } from "react";
-import { PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, TextArea, Toggle, Badge, Spinner, Card } from "../_shared/ui";
+import { PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, TextArea, Toggle, Badge, Spinner, Card, useConfirm } from "../_shared/ui";
 import { apiGet, apiJson } from "../_shared/api";
 import { MESSAGING_API, type TemplateEvent } from "./shared";
 
@@ -11,10 +11,12 @@ type Draft = { subject: string; body: string; text: string; enabled: boolean };
 
 export default function TemplatesPanel({ editable }: { editable: boolean }) {
   const [events, setEvents] = useState<TemplateEvent[]>([]);
+  const { ask, dialog: confirmDialog } = useConfirm();
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<TemplateEvent | null>(null);
   const [draft, setDraft] = useState<Draft>({ subject: "", body: "", text: "", enabled: true });
   const [saving, setSaving] = useState(false);
+  const [saveErr, setSaveErr] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
 
   const load = useCallback(async () => {
@@ -42,25 +44,32 @@ export default function TemplatesPanel({ editable }: { editable: boolean }) {
       enabled: ev.custom ? ev.custom.enabled : true,
     });
     setNotice(null);
+    setSaveErr(null);
   };
 
   const save = async () => {
     if (!editing) return;
     setSaving(true);
+    setSaveErr(null);
     try {
       await apiJson(`${MESSAGING_API}/templates/${editing.key}`, "PUT", draft);
       setEditing(null);
       setNotice({ tone: "ok", text: "Wording saved." });
       await load();
     } catch (e) {
-      setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not save" });
+      setSaveErr(e instanceof Error ? e.message : "Could not save");
     } finally {
       setSaving(false);
     }
   };
 
   const reset = async (ev: TemplateEvent) => {
-    if (!confirm(`Go back to the built-in wording for "${ev.label}"?`)) return;
+    const answer = await ask({
+      title: `Go back to the built-in wording for "${ev.label}"?`,
+      body: "Your own wording for this message is deleted.",
+      confirmLabel: "Use built-in wording",
+    });
+    if (answer === null) return;
     try {
       await apiJson(`${MESSAGING_API}/templates/${ev.key}`, "DELETE");
       setEditing(null);
@@ -83,6 +92,7 @@ export default function TemplatesPanel({ editable }: { editable: boolean }) {
 
   return (
     <div>
+      {confirmDialog}
       <p className="mb-4 text-sm text-neutral-600">
         Every message the system sends, with the placeholders you can use. Customise the email and the short text (SMS, WhatsApp, push); reset to go back to the built-in wording.
       </p>
@@ -121,7 +131,7 @@ export default function TemplatesPanel({ editable }: { editable: boolean }) {
         </div>
       )}
 
-      <Modal open={!!editing} onClose={() => setEditing(null)} title={editing ? editing.label : ""} size="lg">
+      <Modal open={!!editing} onClose={() => setEditing(null)} title={editing ? editing.label : ""} size="lg" busy={saving} error={saveErr}>
         {editing && (
           <div className="space-y-4">
             <p className="text-xs text-neutral-500">

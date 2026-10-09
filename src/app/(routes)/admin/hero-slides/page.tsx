@@ -14,6 +14,7 @@ import {
   Toggle,
   Badge,
   Spinner,
+  useConfirm,
 } from "../_shared/ui";
 import { API_BASE, apiGet, apiJson, apiForm, absoluteUrl } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
@@ -36,6 +37,7 @@ const SLIDES_API = `${API_BASE}/hero-slides`;
 
 export default function HeroSlidesAdminPage() {
   const { can } = usePermissions();
+  const { ask, dialog: confirmDialog } = useConfirm();
   const editable = can("hero-slides", "manage");
   const [list, setList] = useState<HeroSlide[]>([]);
   const [loading, setLoading] = useState(true);
@@ -105,10 +107,15 @@ export default function HeroSlidesAdminPage() {
     }
   };
 
-  const remove = async (id: string) => {
-    if (!confirm("Delete this slide?")) return;
+  const remove = async (slide: HeroSlide) => {
+    const answer = await ask({
+      title: slide.title ? `Delete the slide "${slide.title}"?` : "Delete this slide?",
+      body: "It comes off the home page. This cannot be undone.",
+      confirmLabel: "Delete slide",
+    });
+    if (answer === null) return;
     try {
-      await apiJson(`${SLIDES_API}/${id}`, "DELETE");
+      await apiJson(`${SLIDES_API}/${slide._id}`, "DELETE");
       await load();
     } catch (e) {
       alert(e instanceof Error ? e.message : "Delete failed");
@@ -163,6 +170,7 @@ export default function HeroSlidesAdminPage() {
 
   return (
     <div>
+      {confirmDialog}
       <PageHeader
         eyebrow="Content"
         title="Hero Slides"
@@ -263,7 +271,7 @@ export default function HeroSlidesAdminPage() {
                   {editable && (
                     <div className="flex shrink-0 gap-2">
                       <SecondaryButton onClick={() => openEdit(s)}><FiEdit2 className="h-3.5 w-3.5" /></SecondaryButton>
-                      <DangerButton onClick={() => remove(s._id)}><FiTrash2 className="h-3.5 w-3.5" /></DangerButton>
+                      <DangerButton onClick={() => remove(s)} label={`Delete ${s.title || "this slide"}`}><FiTrash2 className="h-3.5 w-3.5" /></DangerButton>
                     </div>
                   )}
                 </li>

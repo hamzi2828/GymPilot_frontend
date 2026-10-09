@@ -7,7 +7,7 @@
 
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { PageHeader, Card, SecondaryButton, TextField, Spinner } from "../_shared/ui";
+import { PageHeader, Card, SecondaryButton, TextField, Spinner, ErrorState, useLatestRequest } from "../_shared/ui";
 import { API_BASE, apiGet } from "../_shared/api";
 import { BarChart, LineChart, HBarList, type Point } from "../_shared/Charts";
 import { downloadExport, FORMAT_LABELS, type ExportFormat } from "./download";
@@ -145,19 +145,26 @@ function ReportsPageInner() {
   const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState<string | null>(null);
 
+  const begin = useLatestRequest();
   const load = useCallback(async () => {
     // The daily sales tab loads its own figures.
     if (tab !== "overview") return;
+    const isLatest = begin();
     setLoading(true);
     setError(null);
     try {
-      setData(await apiGet<Report>(`${API_BASE}/admin/reports/overview?from=${from}&to=${to}`));
+      const report = await apiGet<Report>(`${API_BASE}/admin/reports/overview?from=${from}&to=${to}`);
+      if (!isLatest()) return;
+      setData(report);
     } catch (e) {
+      if (!isLatest()) return;
+      // Not the last range's figures under the new dates.
+      setData(null);
       setError(e instanceof Error ? e.message : "Could not load the report");
     } finally {
-      setLoading(false);
+      if (isLatest()) setLoading(false);
     }
-  }, [from, to, tab]);
+  }, [from, to, tab, begin]);
 
   useEffect(() => {
     load();
@@ -262,9 +269,11 @@ function ReportsPageInner() {
       </div>
 
       {tab === "daily" && <DailySales from={from} to={to} />}
-      {tab === "overview" && error && <p data-print-hide className="mb-4 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
-      {tab !== "overview" ? null : loading || !data ? (
+      {tab === "overview" && error && data && <p data-print-hide className="mb-4 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
+      {tab !== "overview" ? null : loading ? (
         <Spinner />
+      ) : !data ? (
+        <ErrorState message={error || "Could not load the report"} onRetry={load} />
       ) : (
         <div className="space-y-6">
           <div data-print-cols="3" className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-6">

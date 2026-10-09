@@ -13,6 +13,9 @@ import {
   Badge,
   Spinner,
   Table,
+  useConfirm,
+  ErrorState,
+  useLatestRequest,
 } from "../_shared/ui";
 import { GYMFOLIO_API, apiGet, apiJson } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
@@ -80,6 +83,7 @@ const STATUS_LABEL: Record<Booking["status"], string> = {
 
 export default function BookingsAdminPage() {
   const { can } = usePermissions();
+  const { ask, dialog: confirmDialog } = useConfirm();
   // Today in the gym's terms. The API files sessions against a local date key,
   // so the filter has to start from the same idea of "today" the server has.
   const todayKey = useGymToday();
@@ -89,6 +93,7 @@ export default function BookingsAdminPage() {
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [loadErr, setLoadErr] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [pages, setPages] = useState(1);
@@ -98,6 +103,12 @@ export default function BookingsAdminPage() {
   const [classId, setClassId] = useState("");
   const [status, setStatus] = useState("");
   const [search, setSearch] = useState("");
+  // What is sent to the server: the search box, once typing has paused.
+  const [q, setQ] = useState("");
+  useEffect(() => {
+    const timer = setTimeout(() => setQ(search.trim()), 300);
+    return () => clearTimeout(timer);
+  }, [search]);
 
   // Booking a member in from the desk.
   const [bookOpen, setBookOpen] = useState(false);
@@ -110,31 +121,36 @@ export default function BookingsAdminPage() {
   const [booking, setBooking] = useState(false);
   const [bookErr, setBookErr] = useState<string | null>(null);
 
+  const begin = useLatestRequest();
   const load = useCallback(async () => {
+    const isLatest = begin();
     setLoading(true);
     setErr(null);
+    setLoadErr(null);
     try {
       const params = new URLSearchParams();
       if (date) params.set("date", date);
       if (classId) params.set("classId", classId);
       if (status) params.set("status", status);
-      if (search.trim()) params.set("search", search.trim());
+      if (q) params.set("search", q);
       params.set("page", String(page));
       params.set("limit", String(PAGE_SIZE));
 
       const r = await apiGet<{ data: Booking[]; pagination?: { total?: number; pages?: number; limit?: number } }>(
         `${GYMFOLIO_API}/bookings?${params}`
       );
+      if (!isLatest()) return;
       setList(r.data || []);
       setPages(pageCount(r.pagination));
       setTotal(r.pagination?.total ?? (r.data || []).length);
     } catch (e) {
-      setErr(e instanceof Error ? e.message : "Could not load bookings");
+      if (!isLatest()) return;
+      setLoadErr(e instanceof Error ? e.message : "Could not load bookings");
       setList([]);
     } finally {
-      setLoading(false);
+      if (isLatest()) setLoading(false);
     }
-  }, [date, classId, status, search, page]);
+  }, [date, classId, status, q, page, begin]);
 
   useEffect(() => {
     load();
@@ -227,6 +243,17 @@ export default function BookingsAdminPage() {
   };
 
   const cancel = async (booking: Booking) => {
+    const answer = await ask({
+      title: `Cancel ${booking.member_name}'s booking?`,
+      body: `${booking.class_name}, ${booking.date} at ${booking.start_time}. ${
+        booking.status === "waitlisted"
+          ? "They are taken off the waiting list."
+          : "Their place is given up, and whoever is first on the waiting list is moved into it."
+      }`,
+      confirmLabel: "Cancel booking",
+      cancelLabel: "Keep booking",
+    });
+    if (answer === null) return;
     setBusyId(booking.id);
     try {
       // The staff variant, which is what allows cancelling somebody else's
@@ -252,6 +279,7 @@ export default function BookingsAdminPage() {
 
   return (
     <div>
+      {confirmDialog}
       <PageHeader
         eyebrow="Fitness"
         title="Bookings"
@@ -336,6 +364,8 @@ export default function BookingsAdminPage() {
 
       {loading ? (
         <Spinner />
+      ) : loadErr ? (
+        <ErrorState message={loadErr} onRetry={load} />
       ) : (
         <Table
           columns={["Member", "Class", "When", "Status", "Membership", "Actions"]}

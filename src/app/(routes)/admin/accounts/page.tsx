@@ -16,8 +16,11 @@ import {
   Spinner,
   EmptyState,
   Select2,
+  useConfirm,
+  ErrorState,
+  useLatestRequest,
 } from "../_shared/ui";
-import { ACCOUNTS_API, apiGet, apiJson, replaceParams } from "../_shared/api";
+import { ACCOUNTS_API, apiGet, apiJson, csvField, replaceParams } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
 import { useGymToday } from "@/components/ThemeProvider";
 import { TrendChart, CategoryBars, useMoneyFormatter, SERIES_IN, SERIES_OUT, TrendPoint } from "./_charts";
@@ -394,6 +397,7 @@ const emptyAsset = {
 
 function AccountsAdminPageInner() {
   const { can } = usePermissions();
+  const { ask, dialog: confirmDialog } = useConfirm();
   const editable = can("accounts", "manage");
 
   // The address can open a tab already filtered (?tab=assets&service=due,
@@ -417,6 +421,10 @@ function AccountsAdminPageInner() {
 
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
+  // The open tab could not be read. Kept apart from `err` (a refused save or
+  // delete): this one replaces the tab, which would otherwise show the last
+  // period's figures, or "nothing to report", under the new dates.
+  const [loadErr, setLoadErr] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
   const [overview, setOverview] = useState<Overview | null>(null);
@@ -469,9 +477,12 @@ function AccountsAdminPageInner() {
     return () => clearTimeout(timer);
   }, [search]);
 
+  const begin = useLatestRequest();
   const load = useCallback(async () => {
+    const isLatest = begin();
     setLoading(true);
     setErr(null);
+    setLoadErr(null);
     try {
       const params = new URLSearchParams();
       if (from) params.set("from", from);
@@ -480,6 +491,7 @@ function AccountsAdminPageInner() {
 
       if (tab === "overview") {
         const res = await apiGet<Overview>(`${ACCOUNTS_API}/overview?${params}`);
+        if (!isLatest()) return;
         setOverview(res);
         setToday(res.range.today);
         if (!from) setFrom(res.range.from);
@@ -487,6 +499,7 @@ function AccountsAdminPageInner() {
       } else if (tab === "sales") {
         params.set("status", salesStatus);
         const res = await apiGet<SalesResponse>(`${ACCOUNTS_API}/sales?${params}`);
+        if (!isLatest()) return;
         setSales(res);
         if (!from) setFrom(res.range.from);
         if (!to) setTo(res.range.to);
@@ -494,6 +507,7 @@ function AccountsAdminPageInner() {
         if (expenseCategory !== "all") params.set("category", expenseCategory);
         if (expenseStatus !== "all") params.set("status", expenseStatus);
         const res = await apiGet<ExpensesResponse>(`${ACCOUNTS_API}/expenses?${params}`);
+        if (!isLatest()) return;
         setExpenses(res);
         if (!from) setFrom(res.range.from);
         if (!to) setTo(res.range.to);
@@ -508,14 +522,16 @@ function AccountsAdminPageInner() {
         if (assetService !== "all") params.set("service", assetService);
         if (assetWarranty !== "all") params.set("warranty", assetWarranty);
         const res = await apiGet<AssetsResponse>(`${ACCOUNTS_API}/assets?${params}`);
+        if (!isLatest()) return;
         setAssets(res);
       }
     } catch (e) {
-      setErr(e instanceof Error ? e.message : "Could not load the accounts");
+      if (!isLatest()) return;
+      setLoadErr(e instanceof Error ? e.message : "Could not load the accounts");
     } finally {
-      setLoading(false);
+      if (isLatest()) setLoading(false);
     }
-  }, [tab, from, to, assetFrom, assetTo, q, salesStatus, expenseCategory, expenseStatus, assetCategory, assetStatus, assetService, assetWarranty]);
+  }, [tab, from, to, assetFrom, assetTo, q, salesStatus, expenseCategory, expenseStatus, assetCategory, assetStatus, assetService, assetWarranty, begin]);
 
   useEffect(() => {
     load();
@@ -589,7 +605,12 @@ function AccountsAdminPageInner() {
   };
 
   const deleteExpense = async (row: ExpenseRow) => {
-    if (!confirm(`Delete ${row.reference} — ${row.title}?`)) return;
+    const answer = await ask({
+      title: `Delete expense ${row.reference}?`,
+      body: `${row.title}. It is taken out of the books. This cannot be undone.`,
+      confirmLabel: "Delete expense",
+    });
+    if (answer === null) return;
     try {
       const res = await apiJson<{ message: string }>(`${ACCOUNTS_API}/expenses/${row.id}`, "DELETE");
       setNotice(res.message);
@@ -680,7 +701,12 @@ function AccountsAdminPageInner() {
   };
 
   const deleteAsset = async (row: AssetRow) => {
-    if (!confirm(`Remove ${row.tag} — ${row.name} from the register?`)) return;
+    const answer = await ask({
+      title: `Remove ${row.tag} from the register?`,
+      body: `${row.name}. This cannot be undone.`,
+      confirmLabel: "Remove asset",
+    });
+    if (answer === null) return;
     try {
       const res = await apiJson<{ message: string }>(`${ACCOUNTS_API}/assets/${row.id}`, "DELETE");
       setNotice(res.message);
@@ -691,7 +717,8 @@ function AccountsAdminPageInner() {
   };
 
   const exportCsv = () => {
-    const escape = (value: unknown) => `"${String(value ?? "").replace(/"/g, '""')}"`;
+    // Quoted, and never a formula (see csvField).
+    const escape = csvField;
     let header: string[] = [];
     let lines: string[][] = [];
 
@@ -745,6 +772,7 @@ function AccountsAdminPageInner() {
 
   return (
     <div>
+      {confirmDialog}
       <PageHeader
         eyebrow="Operations"
         title="Accounts"
@@ -953,35 +981,40 @@ function AccountsAdminPageInner() {
         </div>
       </Card>
 
-      <div className="mb-4 flex items-center gap-1 border-b border-neutral-200">
-        {([
-          { id: "overview", label: "Overview" },
-          { id: "sales", label: "Sales" },
-          { id: "expenses", label: "Expenses" },
-          { id: "assets", label: "Assets" },
-        ] as { id: Tab; label: string }[]).map((entry) => (
-          <button
-            key={entry.id}
-            type="button"
-            onClick={() => {
-              setTab(entry.id);
-              replaceParams({ tab: entry.id === "overview" ? null : entry.id });
-            }}
-            className={`-mb-px border-b-2 px-4 py-2.5 text-sm font-medium transition-colors ${
-              tab === entry.id
-                ? "border-[var(--accent)] text-neutral-900"
-                : "border-transparent text-neutral-500 hover:text-neutral-800"
-            }`}
-          >
-            {entry.label}
-          </button>
-        ))}
+      {/* The strip scrolls sideways on a phone rather than pushing the page wide. */}
+      <div className="mb-4 border-b border-neutral-200">
+        <div className="-mb-px flex items-center gap-1 overflow-x-auto">
+          {([
+            { id: "overview", label: "Overview" },
+            { id: "sales", label: "Sales" },
+            { id: "expenses", label: "Expenses" },
+            { id: "assets", label: "Assets" },
+          ] as { id: Tab; label: string }[]).map((entry) => (
+            <button
+              key={entry.id}
+              type="button"
+              onClick={() => {
+                setTab(entry.id);
+                replaceParams({ tab: entry.id === "overview" ? null : entry.id });
+              }}
+              className={`shrink-0 whitespace-nowrap border-b-2 px-4 py-2.5 text-sm font-medium transition-colors ${
+                tab === entry.id
+                  ? "border-[var(--accent)] text-neutral-900"
+                  : "border-transparent text-neutral-500 hover:text-neutral-800"
+              }`}
+            >
+              {entry.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Held at reduced opacity on refetch rather than flashing a skeleton. */}
       <div className={loading ? "pointer-events-none opacity-50 transition-opacity" : "transition-opacity"}>
         {loading && !overview && !sales && !expenses && !assets ? (
           <Spinner />
+        ) : loadErr && !loading ? (
+          <ErrorState message={loadErr} onRetry={load} />
         ) : tab === "overview" ? (
           <OverviewTab data={overview} format={format} />
         ) : tab === "sales" ? (

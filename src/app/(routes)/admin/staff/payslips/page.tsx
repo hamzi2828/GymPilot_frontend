@@ -5,8 +5,8 @@
 // printed.
 
 import { useCallback, useEffect, useState } from "react";
-import { PageHeader, Card, PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, TextArea, SelectField, Badge, Spinner, Table, ErrorState } from "../../_shared/ui";
-import { API_BASE, apiGet, apiJson, authHeaders } from "../../_shared/api";
+import { PageHeader, Card, PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, TextArea, SelectField, Badge, Spinner, Table, ErrorState, useConfirm } from "../../_shared/ui";
+import { API_BASE, apiBlob, apiGet, apiJson } from "../../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
 import { useGymToday } from "@/components/ThemeProvider";
 
@@ -56,6 +56,7 @@ const PAYMENT_METHODS = [
 export default function PayslipsPage() {
   const today = useGymToday();
   const { can } = usePermissions();
+  const { ask, dialog: confirmDialog } = useConfirm();
   const editable = can("staff", "manage");
   const [from, setFrom] = useState(monthStart(today()));
   const [to, setTo] = useState(today());
@@ -64,6 +65,8 @@ export default function PayslipsPage() {
   const [loadErr, setLoadErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
+  // Why a save in the open dialog (pay, edit) failed, shown in that dialog.
+  const [dialogErr, setDialogErr] = useState<string | null>(null);
   const [editing, setEditing] = useState<Payslip | null>(null);
   const [draft, setDraft] = useState<{ earnings: Line[]; deductions: Line[]; notes: string }>({ earnings: [], deductions: [], notes: "" });
   const [paying, setPaying] = useState<Payslip | null>(null);
@@ -102,14 +105,24 @@ export default function PayslipsPage() {
   };
 
   const act = async (p: Payslip, action: "issue" | "pay" | "void", body: Record<string, unknown> = {}) => {
-    if (action === "void" && !confirm(`Void ${p.number}?`)) return false;
+    if (action === "void") {
+      const answer = await ask({
+        title: `Void payslip ${p.number}?`,
+        body: `${p.staff_name}, ${p.period.label}. It can no longer be edited, issued or paid. This cannot be undone.`,
+        confirmLabel: "Void payslip",
+      });
+      if (answer === null) return false;
+    }
     try {
       const r = await apiJson<{ message: string }>(`${API_BASE}/staff/payslips/${p.id}/${action}`, "POST", body);
       setNotice({ tone: "ok", text: r.message });
       await load();
       return true;
     } catch (e) {
-      setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not update" });
+      const text = e instanceof Error ? e.message : "Could not update";
+      // Paying happens in a dialog; issuing and voiding happen on the row.
+      if (action === "pay") setDialogErr(text);
+      else setNotice({ tone: "error", text });
       return false;
     }
   };
@@ -119,12 +132,14 @@ export default function PayslipsPage() {
   const openPay = (p: Payslip) => {
     setPaying(p);
     setNotice(null);
+    setDialogErr(null);
     setPayDraft({ paymentMethod: "bank_transfer", paidOn: today(), reference: "" });
   };
 
   const confirmPay = async () => {
     if (!paying) return;
     setBusy(true);
+    setDialogErr(null);
     const done = await act(paying, "pay", {
       paymentMethod: payDraft.paymentMethod,
       paidOn: payDraft.paidOn || undefined,
@@ -136,9 +151,8 @@ export default function PayslipsPage() {
 
   const openPdf = async (p: Payslip) => {
     try {
-      const res = await fetch(`${API_BASE}/staff/payslips/${p.id}/pdf`, { headers: authHeaders() });
-      if (!res.ok) throw new Error("Could not open the payslip");
-      const url = URL.createObjectURL(await res.blob());
+      const { blob } = await apiBlob(`${API_BASE}/staff/payslips/${p.id}/pdf`);
+      const url = URL.createObjectURL(blob);
       window.open(url, "_blank");
       setTimeout(() => URL.revokeObjectURL(url), 60000);
     } catch (e) {
@@ -148,18 +162,20 @@ export default function PayslipsPage() {
 
   const openEdit = (p: Payslip) => {
     setEditing(p);
+    setDialogErr(null);
     setDraft({ earnings: p.earnings.map((l) => ({ label: l.label, amount: l.amount })), deductions: p.deductions.map((l) => ({ label: l.label, amount: l.amount })), notes: p.notes });
   };
 
   const saveEdit = async () => {
     if (!editing) return;
     setBusy(true);
+    setDialogErr(null);
     try {
       await apiJson(`${API_BASE}/staff/payslips/${editing.id}`, "PUT", draft);
       setEditing(null);
       await load();
     } catch (e) {
-      setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not save" });
+      setDialogErr(e instanceof Error ? e.message : "Could not save");
     } finally {
       setBusy(false);
     }
@@ -172,7 +188,7 @@ export default function PayslipsPage() {
         <div key={i} className="mt-2 grid grid-cols-[1fr_120px_auto] gap-2">
           <TextField label="" value={l.label} onChange={(v) => setDraft({ ...draft, [key]: draft[key].map((x, j) => (j === i ? { ...x, label: v } : x)) })} placeholder="Bonus, advance, tax…" />
           <TextField label="" type="number" value={String(l.amount)} onChange={(v) => setDraft({ ...draft, [key]: draft[key].map((x, j) => (j === i ? { ...x, amount: Number(v) || 0 } : x)) })} />
-          <DangerButton onClick={() => setDraft({ ...draft, [key]: draft[key].filter((_, j) => j !== i) })}>×</DangerButton>
+          <DangerButton onClick={() => setDraft({ ...draft, [key]: draft[key].filter((_, j) => j !== i) })} label="Remove this line">×</DangerButton>
         </div>
       ))}
       <div className="mt-2">
@@ -185,6 +201,7 @@ export default function PayslipsPage() {
 
   return (
     <div>
+      {confirmDialog}
       <PageHeader eyebrow="Operations" title="Payslips" actions={editable ? <PrimaryButton onClick={generate} disabled={busy}>{busy ? "Working…" : "Draft payslips for period"}</PrimaryButton> : undefined} />
       {notice && <p className={`mb-4 rounded-lg px-3 py-2 text-sm ${notice.tone === "ok" ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}>{notice.text}</p>}
       <Card className="mb-6 p-4">
@@ -243,7 +260,7 @@ export default function PayslipsPage() {
         />
       )}
 
-      <Modal open={!!paying} onClose={() => setPaying(null)} title={paying ? `Pay ${paying.number} · ${paying.staff_name}` : ""} size="sm">
+      <Modal open={!!paying} onClose={() => setPaying(null)} title={paying ? `Pay ${paying.number} · ${paying.staff_name}` : ""} size="sm" busy={busy} error={dialogErr}>
         {paying && (
           <div className="space-y-4">
             <p className="text-sm text-neutral-600">
@@ -252,7 +269,6 @@ export default function PayslipsPage() {
             <SelectField label="Paid by" value={payDraft.paymentMethod} allowClear={false} onChange={(v) => setPayDraft({ ...payDraft, paymentMethod: v })} options={PAYMENT_METHODS} />
             <TextField label="Paid on" type="date" value={payDraft.paidOn} onChange={(v) => setPayDraft({ ...payDraft, paidOn: v })} />
             <TextField label="Payment reference (optional)" value={payDraft.reference} onChange={(v) => setPayDraft({ ...payDraft, reference: v })} placeholder="Bank ref, cheque number…" />
-            {notice?.tone === "error" && <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{notice.text}</p>}
             <div className="flex justify-end gap-2">
               <SecondaryButton onClick={() => setPaying(null)} disabled={busy}>Cancel</SecondaryButton>
               <PrimaryButton onClick={confirmPay} disabled={busy}>{busy ? "Saving…" : "Mark paid"}</PrimaryButton>
@@ -261,7 +277,7 @@ export default function PayslipsPage() {
         )}
       </Modal>
 
-      <Modal open={!!editing} onClose={() => setEditing(null)} title={editing ? `${editing.number} · ${editing.staff_name}` : ""} size="lg">
+      <Modal open={!!editing} onClose={() => setEditing(null)} title={editing ? `${editing.number} · ${editing.staff_name}` : ""} size="lg" busy={busy} error={dialogErr}>
         {editing && (
           <div className="space-y-5">
             <p className="text-sm text-neutral-600">

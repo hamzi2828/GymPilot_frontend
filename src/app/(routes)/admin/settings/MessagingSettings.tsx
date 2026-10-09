@@ -5,8 +5,8 @@
 // the automated nudges.
 
 import { useState } from "react";
-import { Card, PrimaryButton, SecondaryButton, TextField, SelectField, Toggle } from "../_shared/ui";
-import { API_BASE, apiJson } from "../_shared/api";
+import { Card, PrimaryButton, SecondaryButton, TextField, SelectField, Toggle, useConfirm } from "../_shared/ui";
+import { API_BASE, apiJson, isMaskedSecret } from "../_shared/api";
 
 export interface MessagingConfig {
   defaultCountryCode?: string;
@@ -16,6 +16,27 @@ export interface MessagingConfig {
   transactional?: { sms?: boolean; whatsapp?: boolean; push?: boolean };
   whatsappButton?: { enabled?: boolean; number?: string; message?: string };
   automations?: { absentDays?: number; winBackDays?: number; birthday?: boolean };
+}
+
+/**
+ * A custom gateway's address was changed and its token box still holds the
+ * saved token's masked preview. That token belongs to the old address, so it
+ * is not carried over to the new one (and the API refuses to): it has to be
+ * typed again, or left out.
+ */
+export function gatewayTokenStale(kind: "sms" | "whatsapp", now?: MessagingConfig, saved?: MessagingConfig): boolean {
+  const cfg = now?.[kind] || {};
+  const was = saved?.[kind] || {};
+  return !!was.webhookTokenSet && (cfg.webhookUrl || "").trim() !== (was.webhookUrl || "").trim() && isMaskedSecret(cfg.webhookToken);
+}
+
+/** What is sent on save: as edited, minus any token that belongs to a gateway address since changed. */
+export function messagingToSave(now: MessagingConfig, saved?: MessagingConfig): MessagingConfig {
+  return {
+    ...now,
+    ...(gatewayTokenStale("sms", now, saved) ? { sms: { ...now.sms, webhookToken: "" } } : {}),
+    ...(gatewayTokenStale("whatsapp", now, saved) ? { whatsapp: { ...now.whatsapp, webhookToken: "" } } : {}),
+  };
 }
 
 function Heading({ title, hint }: { title: string; hint?: string }) {
@@ -29,6 +50,7 @@ function Heading({ title, hint }: { title: string; hint?: string }) {
 
 export default function MessagingSettings({
   value,
+  saved,
   onChange,
   onSave,
   onReload,
@@ -36,6 +58,8 @@ export default function MessagingSettings({
   onNotice,
 }: {
   value: MessagingConfig;
+  /** The copy last read from the server, to tell when a gateway address has been edited. */
+  saved?: MessagingConfig;
   onChange: (next: MessagingConfig) => void;
   onSave: () => Promise<void> | void;
   onReload: () => Promise<void> | void;
@@ -50,8 +74,18 @@ export default function MessagingSettings({
   const btn = m.whatsappButton || {};
   const auto = m.automations || {};
   const [busy, setBusy] = useState(false);
+  const { ask, dialog: confirmDialog } = useConfirm();
 
   const patch = (key: keyof MessagingConfig, sub: Record<string, unknown>) => onChange({ ...m, [key]: { ...((m[key] as Record<string, unknown>) || {}), ...sub } });
+
+  const rotateKeys = async () => {
+    const answer = await ask({
+      title: "Rotate the push notification keys?",
+      body: "Every member stops getting push notifications until they allow them again on their own phone.",
+      confirmLabel: "Rotate keys",
+    });
+    if (answer !== null) setupPush(true);
+  };
 
   const setupPush = async (rotate = false) => {
     setBusy(true);
@@ -69,6 +103,7 @@ export default function MessagingSettings({
   const providerFields = (kind: "sms" | "whatsapp") => {
     const cfg = kind === "sms" ? sms : wa;
     const provider = cfg.provider || "none";
+    const tokenStale = gatewayTokenStale(kind, m, saved);
     return (
       <>
         {provider === "twilio" && (
@@ -95,8 +130,14 @@ export default function MessagingSettings({
           <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
             <TextField label="Gateway URL" value={cfg.webhookUrl || ""} onChange={(v) => patch(kind, { webhookUrl: v })} placeholder="https://gateway.example.com/send" />
             <div>
-              <TextField label="Bearer token (optional)" type="password" value={cfg.webhookToken || ""} onChange={(v) => patch(kind, { webhookToken: v })} />
-              {cfg.webhookTokenSet && <p className="mt-1 text-xs text-neutral-500">A token is saved. Type a new one to replace it.</p>}
+              <TextField label="Bearer token (optional)" type="password" value={tokenStale ? "" : cfg.webhookToken || ""} onChange={(v) => patch(kind, { webhookToken: v })} />
+              {tokenStale ? (
+                <p className="mt-1 text-xs text-amber-700">
+                  The gateway address has changed, so the saved token is not sent to it. Type the token for the new address, or leave this empty if it needs none.
+                </p>
+              ) : (
+                cfg.webhookTokenSet && <p className="mt-1 text-xs text-neutral-500">A token is saved. Type a new one to replace it.</p>
+              )}
             </div>
             <p className="text-xs text-neutral-500 md:col-span-2">
               We POST JSON <code>{'{ "channel", "to", "body" }'}</code> to this URL and expect a 2xx. Any local SMS gateway with an HTTP API can be bridged this way.
@@ -109,6 +150,7 @@ export default function MessagingSettings({
 
   return (
     <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+      {confirmDialog}
       <Card className="p-6">
         <Heading title="SMS" hint="Booking confirmations, reminders and campaigns by text message." />
         <SelectField label="Provider" value={sms.provider || "none"} allowClear={false} onChange={(v) => patch("sms", { provider: v })} options={[{ value: "none", label: "Off" }, { value: "twilio", label: "Twilio" }, { value: "http", label: "Custom HTTP gateway" }]} />
@@ -138,7 +180,7 @@ export default function MessagingSettings({
           ) : (
             <>
               <Toggle label="Enabled" checked={!!push.enabled} onChange={(v) => patch("push", { enabled: v })} />
-              <SecondaryButton onClick={() => confirm("Rotating the keys signs every member out of push notifications; they must allow them again. Continue?") && setupPush(true)} disabled={busy}>
+              <SecondaryButton onClick={rotateKeys} disabled={busy}>
                 Rotate keys
               </SecondaryButton>
             </>

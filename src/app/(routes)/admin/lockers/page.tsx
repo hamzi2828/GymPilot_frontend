@@ -5,7 +5,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { FiPlus } from "react-icons/fi";
-import { PageHeader, Card, PrimaryButton, SecondaryButton, DangerButton, Modal, TextField } from "../_shared/ui";
+import { PageHeader, Card, PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, useConfirm, ErrorState, Spinner } from "../_shared/ui";
 import { API_BASE, apiGet, apiJson } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
 import { MemberPicker, type MemberOption } from "../_ops/MemberPicker";
@@ -26,24 +26,35 @@ interface Locker {
 
 export default function LockersPage() {
   const { can } = usePermissions();
+  const { ask, dialog: confirmDialog } = useConfirm();
   const editable = can("lockers", "manage");
   const [rows, setRows] = useState<Locker[]>([]);
   const [counts, setCounts] = useState<{ total: number; free: number; assigned: number; maintenance: number; overdue: number } | null>(null);
   const [notice, setNotice] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
+  // True until the wall has been read once; a reload after a change keeps
+  // the wall on screen.
+  const [loading, setLoading] = useState(true);
+  const [loadErr, setLoadErr] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [addDraft, setAddDraft] = useState({ from: "1", to: "20", zone: "", fee: "0" });
   const [selected, setSelected] = useState<Locker | null>(null);
   const [member, setMember] = useState<MemberOption | null>(null);
   const [assign, setAssign] = useState({ until: "", fee: "" });
   const [saving, setSaving] = useState(false);
+  // Every save here starts from a dialog (add, or one locker), so a refusal
+  // is shown in whichever is open.
+  const [saveErr, setSaveErr] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
       const r = await apiGet<{ counts: typeof counts; data: Locker[] }>(`${API_BASE}/admin/lockers`);
       setRows(r.data || []);
       setCounts(r.counts);
+      setLoadErr(null);
     } catch (e) {
-      setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not load lockers" });
+      setLoadErr(e instanceof Error ? e.message : "Could not load lockers");
+    } finally {
+      setLoading(false);
     }
   }, []);
 
@@ -55,6 +66,7 @@ export default function LockersPage() {
 
   const open = (l: Locker) => {
     setSelected(l);
+    setSaveErr(null);
     setAssign({ until: "", fee: String(l.fee || "") });
     setMember(null);
   };
@@ -62,43 +74,72 @@ export default function LockersPage() {
   const run = async (fn: () => Promise<{ message?: string } | void>) => {
     setSaving(true);
     setNotice(null);
+    setSaveErr(null);
     try {
       const r = await fn();
       if (r && r.message) setNotice({ tone: "ok", text: r.message });
       setSelected(null);
       await load();
     } catch (e) {
-      setNotice({ tone: "error", text: e instanceof Error ? e.message : "Something went wrong" });
+      setSaveErr(e instanceof Error ? e.message : "Something went wrong");
     } finally {
       setSaving(false);
     }
   };
 
-  // A cancelled prompt returns null and must leave the locker as it was; an
-  // empty answer is still a yes, just without a note.
-  const markOutOfOrder = (l: Locker) => {
-    const notes = prompt("What is wrong with it?");
+  const lockerName = (l: Locker) => `${l.zone ? `${l.zone}-` : ""}${l.number}`;
+
+  // Backing out leaves the locker as it was; an empty note is still a yes.
+  const markOutOfOrder = async (l: Locker) => {
+    const notes = await ask({
+      title: `Mark locker ${lockerName(l)} out of order?`,
+      body: "It cannot be given to a member until you put it back in service.",
+      confirmLabel: "Mark out of order",
+      danger: false,
+      reason: { label: "What is wrong with it? (optional)", placeholder: "Broken lock, door will not close…" },
+    });
     if (notes === null) return;
     run(() => apiJson(`${API_BASE}/admin/lockers/${l.id}`, "PUT", { status: "maintenance", notes }));
+  };
+
+  const release = async (l: Locker) => {
+    const answer = await ask({
+      title: `Release locker ${lockerName(l)}?`,
+      body: `${l.member_name || "The member"} no longer has it, and it shows as free for someone else.`,
+      confirmLabel: "Release locker",
+    });
+    if (answer === null) return;
+    run(() => apiJson<{ message: string }>(`${API_BASE}/admin/lockers/${l.id}/release`, "POST"));
+  };
+
+  const removeLocker = async (l: Locker) => {
+    const answer = await ask({
+      title: `Remove locker ${lockerName(l)}?`,
+      body: "It is taken off the wall for good. This cannot be undone.",
+      confirmLabel: "Remove locker",
+    });
+    if (answer === null) return;
+    run(() => apiJson(`${API_BASE}/admin/lockers/${l.id}`, "DELETE"));
   };
 
   const tone = (l: Locker) => (l.status === "maintenance" ? "border-neutral-300 bg-neutral-100 text-neutral-400" : l.status === "assigned" ? (l.overdue ? "border-rose-300 bg-rose-50 text-rose-800" : "border-neutral-900 bg-neutral-900 text-white") : "border-emerald-200 bg-emerald-50 text-emerald-800");
 
   return (
     <div>
+      {confirmDialog}
       <PageHeader
         eyebrow="Operations"
         title="Lockers"
         actions={
           editable ? (
-            <PrimaryButton onClick={() => setAddOpen(true)}>
+            <PrimaryButton onClick={() => { setSaveErr(null); setAddOpen(true); }}>
               <FiPlus className="mr-1.5 h-4 w-4" /> Add lockers
             </PrimaryButton>
           ) : undefined
         }
       />
       {notice && <p className={`mb-4 rounded-lg px-3 py-2 text-sm ${notice.tone === "ok" ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}>{notice.text}</p>}
-      {counts && (
+      {counts && !loadErr && (
         <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-5">
           {[["Total", counts.total], ["Free", counts.free], ["Assigned", counts.assigned], ["Overdue", counts.overdue], ["Out of order", counts.maintenance]].map(([label, value]) => (
             <div key={String(label)} className="rounded-lg border border-neutral-200 bg-white p-4">
@@ -108,7 +149,17 @@ export default function LockersPage() {
           ))}
         </div>
       )}
-      {rows.length === 0 ? (
+      {loading ? (
+        <Spinner />
+      ) : loadErr ? (
+        <ErrorState
+          message={loadErr}
+          onRetry={() => {
+            setLoading(true);
+            load();
+          }}
+        />
+      ) : rows.length === 0 ? (
         <Card className="p-8 text-center text-sm text-neutral-500">No lockers yet. Add a range to draw the wall.</Card>
       ) : (
         zones.map((zone) => (
@@ -128,7 +179,7 @@ export default function LockersPage() {
         ))
       )}
 
-      <Modal open={addOpen} onClose={() => setAddOpen(false)} title="Add lockers" size="sm">
+      <Modal open={addOpen} onClose={() => setAddOpen(false)} title="Add lockers" size="sm" busy={saving} error={saveErr}>
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <TextField label="From number" type="number" value={addDraft.from} onChange={(v) => setAddDraft({ ...addDraft, from: v })} />
@@ -143,7 +194,7 @@ export default function LockersPage() {
         </div>
       </Modal>
 
-      <Modal open={!!selected} onClose={() => setSelected(null)} title={selected ? `Locker ${selected.zone ? `${selected.zone}-` : ""}${selected.number}` : ""} size="sm">
+      <Modal open={!!selected} onClose={() => setSelected(null)} title={selected ? `Locker ${lockerName(selected)}` : ""} size="sm" busy={saving} error={saveErr}>
         {selected && (
           <div className="space-y-4 text-sm">
             {selected.status === "assigned" ? (
@@ -153,7 +204,7 @@ export default function LockersPage() {
                   {selected.until ? ` until ${selected.until}` : ""}
                   {selected.overdue && <span className="ml-1 font-semibold text-rose-600">(overdue)</span>}
                 </p>
-                {editable && <PrimaryButton onClick={() => run(() => apiJson<{ message: string }>(`${API_BASE}/admin/lockers/${selected.id}/release`, "POST"))} disabled={saving}>Release</PrimaryButton>}
+                {editable && <PrimaryButton onClick={() => release(selected)} disabled={saving}>Release</PrimaryButton>}
               </>
             ) : (
               <>
@@ -177,7 +228,7 @@ export default function LockersPage() {
                 ) : (
                   <SecondaryButton onClick={() => run(() => apiJson(`${API_BASE}/admin/lockers/${selected.id}`, "PUT", { status: "free", notes: "" }))} disabled={saving}>Back in service</SecondaryButton>
                 )}
-                <DangerButton onClick={() => confirm("Remove this locker?") && run(() => apiJson(`${API_BASE}/admin/lockers/${selected.id}`, "DELETE"))} disabled={saving}>Remove</DangerButton>
+                <DangerButton onClick={() => removeLocker(selected)} disabled={saving}>Remove</DangerButton>
               </div>
             )}
           </div>

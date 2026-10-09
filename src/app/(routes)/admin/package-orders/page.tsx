@@ -18,8 +18,11 @@ import {
   Spinner,
   Card,
   EmptyState,
+  useConfirm,
+  ErrorState,
+  useLatestRequest,
 } from "../_shared/ui";
-import { GYMFOLIO_API, apiGet, apiJson, authHeaders, absoluteUrl, replaceParams } from "../_shared/api";
+import { GYMFOLIO_API, apiBlob, apiGet, apiJson, absoluteUrl, replaceParams } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
 import { MemberPicker, type MemberOption } from "../_ops/MemberPicker";
 import { Pager, pageCount } from "../_ops/lists";
@@ -181,6 +184,7 @@ function memberName(o: PackageOrder) {
 
 function PackageOrdersAdminPageInner() {
   const { can } = usePermissions();
+  const { ask, dialog: confirmDialog } = useConfirm();
   const manage = can("package-orders", "manage");
   // The filters live in the address as well, and it can name an order to
   // open (?id=, from the header search). Read again whenever the address
@@ -197,6 +201,7 @@ function PackageOrdersAdminPageInner() {
   const [filters, setFilters] = useState<Filters>(url);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [loadErr, setLoadErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const [selected, setSelected] = useState<PackageOrder | null>(null);
@@ -234,7 +239,9 @@ function PackageOrdersAdminPageInner() {
 
   // Paged: a fixed limit of 200 used to cut the list off without saying so
   // beyond a small "showing N of M".
+  const begin = useLatestRequest();
   const load = useCallback(async () => {
+    const isLatest = begin();
     setLoading(true);
     try {
       const params = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE) });
@@ -244,17 +251,20 @@ function PackageOrdersAdminPageInner() {
       if (filters.paymentMethod) params.set("paymentMethod", filters.paymentMethod);
       if (filters.hasDues) params.set("hasDues", "1");
       const r = await apiGet<{ data: PackageOrder[]; pagination?: { total?: number; pages?: number; limit?: number } }>(`${GYMFOLIO_API}/package-orders?${params.toString()}`);
+      if (!isLatest()) return;
       setList(r.data || []);
       setTotal(r.pagination?.total ?? (r.data || []).length);
       setPages(pageCount(r.pagination));
+      setLoadErr(null);
     } catch (e) {
+      if (!isLatest()) return;
       setList([]);
       setTotal(0);
-      setError(e instanceof Error ? e.message : "Could not load orders");
+      setLoadErr(e instanceof Error ? e.message : "Could not load orders");
     } finally {
-      setLoading(false);
+      if (isLatest()) setLoading(false);
     }
-  }, [filters, page]);
+  }, [filters, page, begin]);
 
   useEffect(() => {
     const t = setTimeout(load, filters.search ? 250 : 0);
@@ -406,23 +416,23 @@ function PackageOrdersAdminPageInner() {
   // are only recorded -- the money moves by hand. Either way the membership
   // ends now, which is why this asks first.
   const viaStripe = (o: PackageOrder) => o.payment.method === "stripe" || !!o.payment.stripePaymentIntentId || !!o.payment.stripeSessionId;
-  const refund = (o: PackageOrder) => {
+  const refund = async (o: PackageOrder) => {
     const amount = draft.amount.trim();
     const shown = amount ? money(Number(amount), o.payment.currency) : `the full ${money(o.payment.amountPaid ?? o.payment.amount, o.payment.currency)}`;
     const how = viaStripe(o) ? "It is sent back to the member's card through Stripe." : "Give the money back by hand; this only records it.";
-    if (!confirm(`Refund ${shown} on ${o.orderNumber}? ${how} The membership is cancelled straight away. This cannot be undone.`)) return;
+    const answer = await ask({
+      title: `Refund ${shown} on ${o.orderNumber}?`,
+      body: `${how} The membership is cancelled straight away. This cannot be undone.`,
+      confirmLabel: "Refund",
+    });
+    if (answer === null) return;
     run("Refunded.", () => post(o, "refund", { amount: amount || undefined, reason: draft.reason }));
   };
 
   const invoiceUrl = (o: PackageOrder) => `${GYMFOLIO_API}/package-orders/${o._id}/invoice.pdf?download=1`;
   const openInvoice = async (o: PackageOrder) => {
     try {
-      const res = await fetch(invoiceUrl(o), { headers: authHeaders() });
-      if (!res.ok) {
-        const j = await res.json().catch(() => ({}));
-        throw new Error(j.message || "Could not load the invoice");
-      }
-      const blob = await res.blob();
+      const { blob } = await apiBlob(invoiceUrl(o));
       const url = URL.createObjectURL(blob);
       window.open(url, "_blank");
       setTimeout(() => URL.revokeObjectURL(url), 60000);
@@ -451,6 +461,7 @@ function PackageOrdersAdminPageInner() {
 
   return (
     <div>
+      {confirmDialog}
       <PageHeader eyebrow="Sales" title="Package Orders" actions={manage ? <PrimaryButton onClick={openAssign}>Assign Package</PrimaryButton> : undefined} />
 
       {notice && (
@@ -498,11 +509,13 @@ function PackageOrdersAdminPageInner() {
           <input type="checkbox" checked={filters.hasDues === "1"} onChange={(e) => filterBy({ hasDues: e.target.checked ? "1" : "" })} className="h-4 w-4 accent-[var(--accent)]" />
           Has dues
         </label>
-        {!loading && <span className="text-xs text-neutral-500">{total} order{total === 1 ? "" : "s"}</span>}
+        {!loading && !loadErr && <span className="text-xs text-neutral-500">{total} order{total === 1 ? "" : "s"}</span>}
       </div>
 
       {loading ? (
         <Spinner />
+      ) : loadErr ? (
+        <ErrorState message={loadErr} onRetry={load} />
       ) : !list.length ? (
         <EmptyState title="No package orders match" />
       ) : (

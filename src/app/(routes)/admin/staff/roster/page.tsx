@@ -57,7 +57,7 @@ export default function RosterPage() {
         eyebrow="Operations"
         title="Roster"
         actions={
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <SecondaryButton onClick={() => setFrom(addDays(from, -7))}>← Previous week</SecondaryButton>
             <SecondaryButton onClick={() => setFrom(startOfWeek(today()))}>This week</SecondaryButton>
             <SecondaryButton onClick={() => setFrom(addDays(from, 7))}>Next week →</SecondaryButton>

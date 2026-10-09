@@ -13,6 +13,7 @@ import {
   Badge,
   Spinner,
   Table,
+  useConfirm,
 } from "../_shared/ui";
 import { GYMFOLIO_API, apiGet, apiJson, replaceParams } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
@@ -42,6 +43,7 @@ const PAGE_SIZE = 50;
 
 function PackageRegistrationsAdminPageInner() {
   const { can } = usePermissions();
+  const { ask, dialog: confirmDialog } = useConfirm();
   const editable = can("registrations", "manage");
   // The status filter lives in the address too (?status=pending, from the
   // bell), read again whenever the address changes.
@@ -111,10 +113,15 @@ function PackageRegistrationsAdminPageInner() {
     }
   };
 
-  const remove = async (id: string) => {
-    if (!confirm("Delete this registration?")) return;
+  const remove = async (r: Registration) => {
+    const answer = await ask({
+      title: `Delete the registration from ${r.username || r.email || "this person"}?`,
+      body: "This cannot be undone.",
+      confirmLabel: "Delete registration",
+    });
+    if (answer === null) return;
     try {
-      await apiJson(`${GYMFOLIO_API}/package-registrations/${id}`, "DELETE");
+      await apiJson(`${GYMFOLIO_API}/package-registrations/${r._id}`, "DELETE");
       await load();
     } catch (e) {
       alert(e instanceof Error ? e.message : "Delete failed");
@@ -123,6 +130,7 @@ function PackageRegistrationsAdminPageInner() {
 
   return (
     <div>
+      {confirmDialog}
       <PageHeader eyebrow="Sales" title="Package Registrations" />
 
       <div className="mb-4 w-48">
@@ -156,7 +164,7 @@ function PackageRegistrationsAdminPageInner() {
             editable ? (
               <div key="a" className="flex gap-2">
                 <SecondaryButton onClick={() => open(r)}>Update</SecondaryButton>
-                <DangerButton onClick={() => remove(r._id)}>Delete</DangerButton>
+                <DangerButton onClick={() => remove(r)}>Delete</DangerButton>
               </div>
             ) : (
               <span key="a" />

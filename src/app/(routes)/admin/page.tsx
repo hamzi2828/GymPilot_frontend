@@ -467,7 +467,7 @@ export default function AdminHomePage() {
       </div>
 
       {/* Catalogue counts, demoted to the bottom: they are reference, not news. */}
-      <div className="mt-8 grid grid-cols-3 gap-4">
+      <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-3">
         {[
           { name: "Classes", href: "/admin/classes", icon: FiActivity, count: data.catalogue.classes },
           { name: "Trainers", href: "/admin/trainers", icon: FiUserCheck, count: data.catalogue.trainers },

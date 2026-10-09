@@ -19,6 +19,7 @@ import {
   ErrorState,
   UpgradePlanLink,
   Select2,
+  useConfirm,
 } from "../_shared/ui";
 import { API_BASE, apiGet, apiJson, isPlanLimitError, replaceParams } from "../_shared/api";
 import {
@@ -272,6 +273,7 @@ function RosterEditor({ shifts, onChange }: { shifts: Shift[]; onChange: (next: 
 
 function StaffAdminPageInner() {
   const { can } = usePermissions();
+  const { ask, dialog: confirmDialog } = useConfirm();
   const editable = can("staff", "manage");
   // The address carries the search (?q=) and can name someone to open (?id=,
   // from the header search). Both are read again whenever the address
@@ -537,6 +539,14 @@ function StaffAdminPageInner() {
   };
 
   const setStatus = async (member: StaffMember, isActive: boolean) => {
+    if (!isActive) {
+      const answer = await ask({
+        title: `Deactivate ${member.name}?`,
+        body: "They are signed out now and cannot sign in, or use the front-desk app, until you reactivate them. Their records are kept.",
+        confirmLabel: "Deactivate",
+      });
+      if (answer === null) return;
+    }
     try {
       const res = await apiJson<{ message: string }>(`${API_BASE}/staff/${member.id}/status`, "PATCH", {
         isActive,
@@ -549,12 +559,12 @@ function StaffAdminPageInner() {
   };
 
   const removeStaff = async (member: StaffMember) => {
-    if (
-      !confirm(
-        `Remove ${member.name} from staff? Their account and attendance history are kept — they simply become an ordinary member.`
-      )
-    )
-      return;
+    const answer = await ask({
+      title: `Remove ${member.name} from staff?`,
+      body: "Their account and attendance history are kept — they simply become an ordinary member.",
+      confirmLabel: "Remove from staff",
+    });
+    if (answer === null) return;
     try {
       const res = await apiJson<{ message: string }>(`${API_BASE}/staff/${member.id}`, "DELETE");
       setNotice(res.message);
@@ -566,6 +576,7 @@ function StaffAdminPageInner() {
 
   return (
     <div>
+      {confirmDialog}
       <PageHeader
         eyebrow="Operations"
         title="Staff"

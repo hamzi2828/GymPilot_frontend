@@ -4,7 +4,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { FiPlus } from "react-icons/fi";
-import { PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, TextArea, SelectField, Toggle, Badge, Spinner, Table } from "../_shared/ui";
+import { PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, TextArea, SelectField, Toggle, Badge, Spinner, Table, useConfirm } from "../_shared/ui";
 import { apiGet, apiJson } from "../_shared/api";
 import { MESSAGING_API, when, dateInput, type Announcement } from "./shared";
 
@@ -13,6 +13,7 @@ const emptyDraft: Draft = { title: "", body: "", audience: "members", tone: "inf
 
 export default function AnnouncementsPanel({ editable }: { editable: boolean }) {
   const [rows, setRows] = useState<Announcement[]>([]);
+  const { ask, dialog: confirmDialog } = useConfirm();
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Announcement | null>(null);
@@ -66,7 +67,8 @@ export default function AnnouncementsPanel({ editable }: { editable: boolean }) 
   };
 
   const remove = async (a: Announcement) => {
-    if (!confirm(`Delete "${a.title}"?`)) return;
+    const answer = await ask({ title: `Delete "${a.title}"?`, body: "The announcement stops showing straight away. This cannot be undone.", confirmLabel: "Delete announcement" });
+    if (answer === null) return;
     try {
       await apiJson(`${MESSAGING_API}/announcements/${a.id}`, "DELETE");
       await load();
@@ -85,6 +87,7 @@ export default function AnnouncementsPanel({ editable }: { editable: boolean }) 
 
   return (
     <div>
+      {confirmDialog}
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-neutral-600">Shown as a bar on the website, a banner in the member portal, or both — no email needed.</p>
         {editable && (

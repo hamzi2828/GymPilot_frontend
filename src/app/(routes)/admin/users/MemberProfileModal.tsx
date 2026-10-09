@@ -4,7 +4,7 @@
 // the signed agreement, tags and the notes staff keep.
 
 import { useCallback, useEffect, useState } from "react";
-import { Modal, PrimaryButton, SecondaryButton, DangerButton, TextField, TextArea, SelectField, Badge, Spinner } from "../_shared/ui";
+import { Modal, PrimaryButton, SecondaryButton, DangerButton, TextField, TextArea, SelectField, Badge, Spinner, useConfirm, ErrorState } from "../_shared/ui";
 import { API_BASE, apiGet, apiJson, apiForm, absoluteUrl } from "../_shared/api";
 
 interface Profile {
@@ -56,8 +56,10 @@ function dayLabel(value: string) {
 
 export default function MemberProfileModal({ userId, onClose, onSaved }: { userId: string | null; onClose: () => void; onSaved?: () => void }) {
   const [tab, setTab] = useState<TabKey>("details");
+  const { ask, dialog: confirmDialog } = useConfirm();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(false);
+  const [loadErr, setLoadErr] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
   const [docName, setDocName] = useState("");
@@ -76,8 +78,13 @@ export default function MemberProfileModal({ userId, onClose, onSaved }: { userI
     try {
       const res = await apiGet<{ data: Profile }>(`${API_BASE}/admin/users/${userId}/profile`);
       setProfile(res.data);
+      setLoadErr(null);
     } catch (e) {
-      setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not load the member" });
+      // With a profile already on screen (a reload after a save) it stays,
+      // under a line saying so; with none, the error takes its place.
+      const text = e instanceof Error ? e.message : "Could not load the member";
+      setLoadErr(text);
+      setNotice({ tone: "error", text });
     } finally {
       setLoading(false);
     }
@@ -155,10 +162,12 @@ export default function MemberProfileModal({ userId, onClose, onSaved }: { userI
     }
   };
 
-  const removeDocument = async (id: string) => {
-    if (!profile || !confirm("Remove this document?")) return;
+  const removeDocument = async (doc: { id: string; name: string }) => {
+    if (!profile) return;
+    const answer = await ask({ title: `Remove ${doc.name || "this document"}?`, body: "The file is deleted from their profile. This cannot be undone.", confirmLabel: "Remove document" });
+    if (answer === null) return;
     try {
-      await apiJson(`${API_BASE}/admin/users/${profile.id}/documents/${id}`, "DELETE");
+      await apiJson(`${API_BASE}/admin/users/${profile.id}/documents/${doc.id}`, "DELETE");
       await load();
     } catch (e) {
       setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not remove" });
@@ -180,8 +189,11 @@ export default function MemberProfileModal({ userId, onClose, onSaved }: { userI
 
   return (
     <Modal open={!!userId} onClose={onClose} title={name} size="xl">
-      {loading || !profile ? (
+      {confirmDialog}
+      {loading ? (
         <Spinner />
+      ) : !profile ? (
+        <ErrorState message={loadErr || "Could not load the member"} onRetry={load} />
       ) : (
         <div>
           <div className="flex flex-wrap items-center gap-4">
@@ -308,7 +320,7 @@ export default function MemberProfileModal({ userId, onClose, onSaved }: { userI
                           {(d.size / 1024).toFixed(0)} KB · {new Date(d.uploadedAt).toLocaleDateString()}
                         </p>
                       </div>
-                      <DangerButton onClick={() => removeDocument(d.id)}>Remove</DangerButton>
+                      <DangerButton onClick={() => removeDocument(d)}>Remove</DangerButton>
                     </div>
                   ))}
                 </div>

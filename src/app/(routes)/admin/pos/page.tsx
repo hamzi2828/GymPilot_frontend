@@ -5,10 +5,11 @@
 // shown after a sale is the one that prints: the same component, sent to the
 // printer on its own at the roll's width (components/receipts).
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { PageHeader, Card, PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, TextArea, SelectField, Toggle, Badge, Spinner } from "../_shared/ui";
-import { API_BASE, apiGet, apiJson, authHeaders } from "../_shared/api";
+import { PageHeader, Card, PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, TextArea, SelectField, Toggle, Badge, Spinner, useConfirm, ErrorState, useLatestRequest } from "../_shared/ui";
+import { API_BASE, apiGet, apiJson } from "../_shared/api";
+import { downloadExport } from "../reports/download";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
 import { useGymToday } from "@/components/ThemeProvider";
 import { MemberPicker, type MemberOption } from "../_ops/MemberPicker";
@@ -171,6 +172,7 @@ function sampleReceipt(profile: ReceiptProfile, settings: ReceiptSettings, curre
 
 export default function PosPage() {
   const { can } = usePermissions();
+  const { ask, dialog: confirmDialog } = useConfirm();
   const editable = can("pos", "manage");
   const [products, setProducts] = useState<Product[]>([]);
   const [currency, setCurrency] = useState("");
@@ -198,6 +200,14 @@ export default function PosPage() {
   const [setup, setSetup] = useState<ReceiptSettings | null>(null);
   const [savingSetup, setSavingSetup] = useState(false);
   const [setupError, setSetupError] = useState<string | null>(null);
+  // A shelf or a sales list that could not be read says so where it would
+  // have been, rather than reading as "no products" or "no sales".
+  const [loadErr, setLoadErr] = useState<string | null>(null);
+  const [salesErr, setSalesErr] = useState<string | null>(null);
+  // Why the sale was refused, shown beside "Take payment" (which on a phone
+  // is a long way below the top of the page).
+  const [checkoutErr, setCheckoutErr] = useState<string | null>(null);
+  const basketRef = useRef<HTMLHeadingElement>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -206,8 +216,9 @@ export default function PosPage() {
       setProducts(p.data || []);
       setCurrency(p.currency || "");
       setTaxRate(Number(p.tax_rate) || 0);
+      setLoadErr(null);
     } catch (e) {
-      setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not load the shop" });
+      setLoadErr(e instanceof Error ? e.message : "Could not load the shop");
     } finally {
       setLoading(false);
     }
@@ -215,17 +226,23 @@ export default function PosPage() {
 
   // The sales for the chosen days. Loaded on their own so changing the dates
   // does not reload the shelf or blank the till.
+  const begin = useLatestRequest();
   const loadSales = useCallback(async () => {
+    const isLatest = begin();
     setSalesLoading(true);
     try {
-      setSales(await apiGet<SalesResponse>(`${POS_API}/sales?from=${from}&to=${to}`));
+      const res = await apiGet<SalesResponse>(`${POS_API}/sales?from=${from}&to=${to}`);
+      if (!isLatest()) return;
+      setSales(res);
       setVisible(SALES_PAGE);
+      setSalesErr(null);
     } catch (e) {
-      setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not load the sales" });
+      if (!isLatest()) return;
+      setSalesErr(e instanceof Error ? e.message : "Could not load the sales");
     } finally {
-      setSalesLoading(false);
+      if (isLatest()) setSalesLoading(false);
     }
-  }, [from, to]);
+  }, [from, to, begin]);
 
   useEffect(() => {
     load();
@@ -243,16 +260,7 @@ export default function PosPage() {
   const exportSales = async () => {
     setExporting(true);
     try {
-      const res = await fetch(`${POS_API}/sales/export?from=${from}&to=${to}`, { headers: authHeaders() });
-      if (!res.ok) throw new Error("Could not export the sales");
-      const blob = await res.blob();
-      const name = (res.headers.get("Content-Disposition") || "").match(/filename="([^"]+)"/)?.[1] || `sales_${from}_${to}.csv`;
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = name;
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(url), 30000);
+      await downloadExport(`${POS_API}/sales/export?from=${from}&to=${to}`, `sales_${from}_${to}.csv`);
     } catch (e) {
       setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not export the sales" });
     } finally {
@@ -316,6 +324,7 @@ export default function PosPage() {
   const checkout = async () => {
     setBusy(true);
     setNotice(null);
+    setCheckoutErr(null);
     try {
       const res = await apiJson<{ data: Sale }>(`${POS_API}/sales`, "POST", {
         items: basket.map((x) => ({ productId: x.product.id, quantity: x.quantity })),
@@ -331,14 +340,19 @@ export default function PosPage() {
       setMember(null);
       await Promise.all([load(), loadSales()]);
     } catch (e) {
-      setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not record the sale" });
+      setCheckoutErr(e instanceof Error ? e.message : "Could not record the sale");
     } finally {
       setBusy(false);
     }
   };
 
   const refund = async (s: Sale) => {
-    const reason = prompt(`Refund ${s.receipt_number} (${fmt(s.total, s.currency)})? Reason:`);
+    const reason = await ask({
+      title: `Refund ${s.receipt_number}?`,
+      body: `${fmt(s.total, s.currency)}. The sale is marked as refunded and its items go back into stock. Give the customer their money back at the desk — this does not send it. This cannot be undone.`,
+      confirmLabel: "Refund sale",
+      reason: { label: "Reason (optional)", placeholder: "Wrong item, faulty, changed their mind…" },
+    });
     if (reason === null) return;
     try {
       await apiJson(`${POS_API}/sales/${s.id}/refund`, "POST", { reason });
@@ -350,6 +364,7 @@ export default function PosPage() {
 
   return (
     <div>
+      {confirmDialog}
       <PageHeader
         eyebrow="Sales"
         title="Shop / POS"
@@ -375,9 +390,13 @@ export default function PosPage() {
       {loading ? (
         <Spinner />
       ) : (
-        <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
-          <div>
-            {products.length === 0 ? (
+        // One column below lg, in the order the desk works: the shelf, the
+        // basket, then past sales. From lg the basket is the right-hand column.
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px] lg:grid-rows-[auto_1fr]">
+          <div className="order-1 min-w-0 lg:col-start-1 lg:row-start-1">
+            {loadErr ? (
+              <ErrorState message={loadErr} onRetry={load} />
+            ) : products.length === 0 ? (
               <Card className="p-8 text-center text-sm text-neutral-500">
                 No products yet. <Link href="/admin/inventory" className="underline">Add some</Link> to start selling.
               </Card>
@@ -402,8 +421,10 @@ export default function PosPage() {
                 </div>
               </>
             )}
+          </div>
 
-            <Card className="mt-6 p-5">
+          <div className="order-3 min-w-0 lg:col-start-1 lg:row-start-2">
+            <Card className="p-5">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                 <h2 className="text-sm font-semibold text-neutral-900">Sales{sales ? ` · ${sales.range.label}` : ""}</h2>
                 <SecondaryButton onClick={exportSales} disabled={exporting}>
@@ -425,6 +446,8 @@ export default function PosPage() {
               </div>
               {salesLoading && !sales ? (
                 <Spinner />
+              ) : salesErr && !salesLoading ? (
+                <ErrorState message={salesErr} onRetry={loadSales} />
               ) : sales ? (
                 <div className={salesLoading ? "opacity-60" : ""}>
                   <p className="text-xs text-neutral-500">
@@ -515,8 +538,8 @@ export default function PosPage() {
             </Card>
           </div>
 
-          <Card className="h-fit p-5 lg:sticky lg:top-4">
-            <h2 className="text-sm font-semibold text-neutral-900">Basket</h2>
+          <Card className="order-2 h-fit min-w-0 p-5 lg:sticky lg:top-4 lg:col-start-2 lg:row-span-2 lg:row-start-1">
+            <h2 ref={basketRef} className="scroll-mt-6 text-sm font-semibold text-neutral-900">Basket</h2>
             {basket.length === 0 ? (
               <p className="mt-2 text-sm text-neutral-500">Tap products to add them.</p>
             ) : (
@@ -533,10 +556,10 @@ export default function PosPage() {
                         {taxRate > 0 && !x.product.taxable ? " · no tax" : ""}
                       </p>
                       <div className="flex items-center gap-1">
-                        <button type="button" onClick={() => setQty(x.product.id, x.quantity - 1)} className="h-7 w-7 rounded-md border border-neutral-200">−</button>
+                        <button type="button" onClick={() => setQty(x.product.id, x.quantity - 1)} aria-label={`One fewer ${x.product.name}`} title="One fewer" className="h-7 w-7 rounded-md border border-neutral-200">−</button>
                         <span className="w-6 text-center">{x.quantity}</span>
-                        <button type="button" onClick={() => setQty(x.product.id, x.quantity + 1)} className="h-7 w-7 rounded-md border border-neutral-200">+</button>
-                        <button type="button" onClick={() => remove(x.product.id)} className="ml-1 text-neutral-400 hover:text-rose-600">×</button>
+                        <button type="button" onClick={() => setQty(x.product.id, x.quantity + 1)} aria-label={`One more ${x.product.name}`} title="One more" className="h-7 w-7 rounded-md border border-neutral-200">+</button>
+                        <button type="button" onClick={() => remove(x.product.id)} aria-label={`Remove ${x.product.name} from the basket`} title="Remove from the basket" className="ml-1 text-neutral-400 hover:text-rose-600">×</button>
                       </div>
                     </div>
                   </div>
@@ -584,11 +607,43 @@ export default function PosPage() {
                   ) : null}
                 </div>
               )}
+              {/* Below lg the bar at the bottom of the screen says it. */}
+              {checkoutErr && (
+                <p role="alert" className="hidden rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700 lg:block">
+                  {checkoutErr}
+                </p>
+              )}
               <PrimaryButton onClick={checkout} disabled={!editable || busy || basket.length === 0 || cashShort}>
                 {busy ? "Recording…" : "Take payment"}
               </PrimaryButton>
             </div>
           </Card>
+        </div>
+      )}
+
+      {/* Phones and portrait tablets: the total and "Take payment" stay at the
+          bottom of the screen however far the shelf has been scrolled. */}
+      {!loading && editable && basket.length > 0 && (
+        <div className="sticky bottom-0 z-10 -mx-6 mt-6 border-t border-neutral-200 bg-white px-6 py-3 shadow-[0_-4px_12px_rgba(16,24,40,0.06)] lg:hidden">
+          {checkoutErr && (
+            <p role="alert" className="mb-2 text-sm text-rose-700">
+              {checkoutErr}
+            </p>
+          )}
+          {cashShort && <p className="mb-2 text-xs text-rose-600">The cash received is less than the total.</p>}
+          <div className="flex items-center justify-between gap-3">
+            <button type="button" onClick={() => basketRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })} className="min-w-0 text-left">
+              <span className="block text-lg font-semibold leading-tight text-neutral-900">{fmt(totals.total, currency)}</span>
+              <span className="block truncate text-xs text-neutral-500 underline underline-offset-2">
+                {basket.reduce((n, x) => n + x.quantity, 0)} in the basket · {methodLabel(method)} · view
+              </span>
+            </button>
+            <div className="shrink-0">
+              <PrimaryButton onClick={checkout} disabled={busy || cashShort}>
+                {busy ? "Recording…" : "Take payment"}
+              </PrimaryButton>
+            </div>
+          </div>
         </div>
       )}
 

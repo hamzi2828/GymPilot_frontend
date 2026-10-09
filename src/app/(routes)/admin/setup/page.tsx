@@ -8,9 +8,10 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { PageHeader, Card, PrimaryButton, SecondaryButton, TextField, TextArea, Toggle, UpgradePlanLink } from "../_shared/ui";
+import { PageHeader, Card, PrimaryButton, SecondaryButton, TextField, TextArea, Toggle, UpgradePlanLink, ErrorState } from "../_shared/ui";
 import { API_BASE, GYMFOLIO_API, apiGet, apiJson, apiForm, isPlanLimitError } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
+import { PACKAGE_TERMS } from "../packages/terms";
 
 const STEPS = ["Your gym", "Money & time", "First package", "Getting paid", "Your team", "Done"] as const;
 
@@ -49,6 +50,10 @@ export default function SetupWizardPage() {
   const [step, setStep] = useState(0);
   const [settings, setSettings] = useState<SettingsShape>({});
   const [loading, setLoading] = useState(true);
+  // The gym's settings could not be read. Nothing is offered for saving then:
+  // the form would be blank, and saving it would write blanks, USD and UTC
+  // over what the gym really has.
+  const [loadErr, setLoadErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Set when a step was refused by the gym's platform plan (e.g. the staff
@@ -58,18 +63,26 @@ export default function SetupWizardPage() {
 
   const [pkg, setPkg] = useState({ name: "Monthly", price: "", period: "month", features: "Full gym access\nAll classes", recurring: false });
   const [packageCreated, setPackageCreated] = useState<string | null>(null);
+  // What this run of the wizard has already created. Going Back and saving a
+  // step again updates the same package, bank account and invitation rather
+  // than making a second one.
+  const [packageId, setPackageId] = useState<string | null>(null);
+  const [bankId, setBankId] = useState<string | null>(null);
+  const [invitedEmail, setInvitedEmail] = useState<string | null>(null);
   const [payment, setPayment] = useState({ useStripe: false, publishableKey: "", secretKey: "", webhookSecret: "", useBank: false, bankName: "", accountTitle: "", accountNumber: "", iban: "" });
   const [staff, setStaff] = useState({ firstName: "", lastName: "", email: "", role: "receptionist" });
   const [staffCreated, setStaffCreated] = useState<string | null>(null);
   const [logoFile, setLogoFile] = useState<File | null>(null);
 
   const load = useCallback(async () => {
+    setLoading(true);
     try {
       const r = await apiGet<{ data: SettingsShape }>(`${API_BASE}/settings`);
       setSettings(r.data || {});
       setPayment((p) => ({ ...p, useStripe: !!r.data?.stripe?.enabled, publishableKey: r.data?.stripe?.publishableKey || "" }));
+      setLoadErr(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not load settings");
+      setLoadErr(e instanceof Error ? e.message : "Could not load settings");
     } finally {
       setLoading(false);
     }
@@ -121,7 +134,7 @@ export default function SetupWizardPage() {
   const savePackage = () =>
     run(async () => {
       if (!pkg.name.trim() || !pkg.price.trim()) throw new Error("Give the package a name and a price");
-      const r = await apiJson<{ data?: { name?: string } }>(`${GYMFOLIO_API}/packages`, "POST", {
+      const body = {
         name: pkg.name,
         price: pkg.price,
         currency: settings.currency || "USD",
@@ -129,8 +142,12 @@ export default function SetupWizardPage() {
         features: pkg.features.split("\n").map((s) => s.trim()).filter(Boolean),
         kind: "membership",
         billing: pkg.recurring ? { mode: "recurring", interval: "month", intervalCount: 1, trialDays: 0 } : { mode: "one_time" },
-      });
-      setPackageCreated(r.data?.name || pkg.name);
+      };
+      const r = packageId
+        ? await apiJson<{ data?: { _id?: string; name?: string } }>(`${GYMFOLIO_API}/packages/${packageId}`, "PUT", body)
+        : await apiJson<{ data?: { _id?: string; name?: string } }>(`${GYMFOLIO_API}/packages`, "POST", body);
+      if (r.data?._id) setPackageId(r.data._id);
+      setPackageCreated(`${r.data?.name || pkg.name} ${packageId ? "updated" : "created"}.`);
     });
 
   const savePayment = () =>
@@ -144,14 +161,23 @@ export default function SetupWizardPage() {
       }
       if (payment.useBank) {
         if (!payment.bankName.trim() || !payment.accountTitle.trim() || !payment.accountNumber.trim()) throw new Error("Enter the bank name, account title and number");
-        await apiJson(`${API_BASE}/banks`, "POST", { name: payment.bankName, accountTitle: payment.accountTitle, accountNumber: payment.accountNumber, iban: payment.iban });
+        const bank = { name: payment.bankName, accountTitle: payment.accountTitle, accountNumber: payment.accountNumber, iban: payment.iban };
+        if (bankId) {
+          await apiJson(`${API_BASE}/banks/${bankId}`, "PUT", bank);
+        } else {
+          const created = await apiJson<{ data?: { _id?: string } }>(`${API_BASE}/banks`, "POST", bank);
+          if (created.data?._id) setBankId(created.data._id);
+        }
       }
     });
 
   const saveStaff = () =>
     run(async () => {
-      if (!staff.email.trim()) return;
+      const email = staff.email.trim();
+      // Already invited on an earlier pass through this step.
+      if (!email || email.toLowerCase() === invitedEmail) return;
       const r = await apiJson<{ message: string }>(`${API_BASE}/staff`, "POST", { firstName: staff.firstName, lastName: staff.lastName, email: staff.email, role: staff.role });
+      setInvitedEmail(email.toLowerCase());
       setStaffCreated(r.message || `${staff.email} invited`);
     });
 
@@ -163,6 +189,15 @@ export default function SetupWizardPage() {
     }, false);
 
   if (loading) return <p className="text-sm text-neutral-500">Loading…</p>;
+
+  if (loadErr) {
+    return (
+      <div className="mx-auto max-w-3xl">
+        <PageHeader eyebrow="Welcome" title="Set up your gym" />
+        <ErrorState message={`Your gym's settings could not be loaded, so setup cannot start yet. ${loadErr}`} onRetry={load} />
+      </div>
+    );
+  }
 
   const input = "mt-1 h-9 w-full rounded-lg border border-neutral-200 bg-white px-3 text-sm";
 
@@ -228,11 +263,22 @@ export default function SetupWizardPage() {
         {step === 2 && (
           <div className="space-y-4">
             <p className="text-sm text-neutral-600">Your first membership package. You can add more, session packs and day passes later under Packages.</p>
-            {packageCreated && <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{packageCreated} created.</p>}
+            {packageCreated && <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{packageCreated}</p>}
             <div className="grid gap-4 md:grid-cols-3">
               <TextField label="Name" value={pkg.name} onChange={(v) => setPkg({ ...pkg, name: v })} />
               <TextField label={`Price (${settings.currency || "USD"})`} value={pkg.price} onChange={(v) => setPkg({ ...pkg, price: v })} placeholder="40" />
-              <TextField label="Period" value={pkg.period} onChange={(v) => setPkg({ ...pkg, period: v })} placeholder="month" />
+              <label className="block">
+                <span className="text-xs font-semibold text-neutral-700">How long it lasts</span>
+                {/* Monthly when the card is charged automatically; otherwise
+                    one of the lengths the server reads correctly. */}
+                <select value={pkg.recurring ? "month" : pkg.period} disabled={pkg.recurring} onChange={(e) => setPkg({ ...pkg, period: e.target.value })} className={`${input} disabled:opacity-60`}>
+                  {PACKAGE_TERMS.map((t) => (
+                    <option key={t.label} value={t.label}>
+                      {t.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
             </div>
             <TextArea label="What is included (one per line)" value={pkg.features} onChange={(v) => setPkg({ ...pkg, features: v })} />
             <Toggle label="Charge the card automatically every month (needs Stripe, next step)" checked={pkg.recurring} onChange={(v) => setPkg({ ...pkg, recurring: v })} />
@@ -240,7 +286,7 @@ export default function SetupWizardPage() {
               <SecondaryButton onClick={() => setStep(1)}>Back</SecondaryButton>
               <div className="flex gap-2">
                 <SecondaryButton onClick={() => setStep(3)}>Skip</SecondaryButton>
-                <PrimaryButton onClick={savePackage} disabled={busy}>{busy ? "Saving…" : "Create and continue"}</PrimaryButton>
+                <PrimaryButton onClick={savePackage} disabled={busy}>{busy ? "Saving…" : packageId ? "Save and continue" : "Create and continue"}</PrimaryButton>
               </div>
             </div>
           </div>

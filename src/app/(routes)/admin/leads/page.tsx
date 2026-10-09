@@ -7,7 +7,7 @@
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { FiPlus } from "react-icons/fi";
-import { PageHeader, Card, PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, TextArea, SelectField, Badge, Spinner, ErrorState, Pager } from "../_shared/ui";
+import { PageHeader, Card, PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, TextArea, SelectField, Badge, Spinner, ErrorState, Pager, useConfirm } from "../_shared/ui";
 import { API_BASE, apiGet, apiJson, replaceParams } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
 
@@ -75,6 +75,7 @@ function overdue(v?: string | null) {
 
 function LeadsAdminPageInner() {
   const { can } = usePermissions();
+  const { ask, dialog: confirmDialog } = useConfirm();
   const editable = can("leads", "manage");
   // The address carries the search, the stage and "due for follow-up"
   // (?due=1, where the bell's "Lead follow-ups due" links), and can name a
@@ -105,6 +106,7 @@ function LeadsAdminPageInner() {
   const [editing, setEditing] = useState<Lead | null>(null);
   const [draft, setDraft] = useState<Draft>(emptyDraft);
   const [saving, setSaving] = useState(false);
+  const [saveErr, setSaveErr] = useState<string | null>(null);
   const [note, setNote] = useState("");
   const [lostReason, setLostReason] = useState("");
   const [notice, setNotice] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
@@ -187,6 +189,7 @@ function LeadsAdminPageInner() {
     setDraft(emptyDraft);
     setNote("");
     setLostReason("");
+    setSaveErr(null);
     setOpen(true);
   };
   const openEdit = (l: Lead) => {
@@ -194,6 +197,7 @@ function LeadsAdminPageInner() {
     setDraft({ firstName: l.first_name, lastName: l.last_name, email: l.email, phone: l.phone, source: l.source, interest: l.interest, nextFollowUpAt: dateInput(l.next_follow_up_at), assignedTo: l.assigned_to || "", tags: l.tags.join(", ") });
     setNote("");
     setLostReason(l.lost_reason || "");
+    setSaveErr(null);
     setOpen(true);
   };
 
@@ -235,6 +239,7 @@ function LeadsAdminPageInner() {
 
   const save = async () => {
     setSaving(true);
+    setSaveErr(null);
     try {
       if (editing) {
         await apiJson(`${LEADS_API}/${editing.id}`, "PUT", payload());
@@ -245,7 +250,7 @@ function LeadsAdminPageInner() {
       setOpen(false);
       await load();
     } catch (e) {
-      setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not save" });
+      setSaveErr(e instanceof Error ? e.message : "Could not save");
     } finally {
       setSaving(false);
     }
@@ -254,8 +259,13 @@ function LeadsAdminPageInner() {
   const setStatus = async (l: Lead, status: Status) => {
     let reason = "";
     if (status === "lost") {
-      // Cancel on the prompt leaves the lead where it was.
-      const answer = prompt("Why did they not join? (optional)");
+      // Backing out leaves the lead where it was.
+      const answer = await ask({
+        title: `Mark ${l.name} as lost?`,
+        confirmLabel: "Mark as lost",
+        danger: false,
+        reason: { label: "Why did they not join? (optional)" },
+      });
       if (answer === null) return;
       reason = answer;
     }
@@ -283,7 +293,12 @@ function LeadsAdminPageInner() {
   };
 
   const remove = async (l: Lead) => {
-    if (!confirm(`Delete ${l.name}?`)) return;
+    const answer = await ask({
+      title: `Delete ${l.name}?`,
+      body: "The lead and the notes on it are deleted. This cannot be undone.",
+      confirmLabel: "Delete lead",
+    });
+    if (answer === null) return;
     try {
       await apiJson(`${LEADS_API}/${l.id}`, "DELETE");
       await load();
@@ -305,6 +320,7 @@ function LeadsAdminPageInner() {
 
   return (
     <div>
+      {confirmDialog}
       <PageHeader
         eyebrow="Customers"
         title="Leads"
@@ -401,7 +417,7 @@ function LeadsAdminPageInner() {
                             </select>
                             <SecondaryButton onClick={() => openEdit(l)}>Open</SecondaryButton>
                             {!l.converted_user_id && l.status !== "lost" && <SecondaryButton onClick={() => convert(l)}>Make member</SecondaryButton>}
-                            <DangerButton onClick={() => remove(l)}>×</DangerButton>
+                            <DangerButton onClick={() => remove(l)} label={`Delete ${l.name}`}>×</DangerButton>
                           </div>
                         )}
                       </Card>
@@ -415,7 +431,7 @@ function LeadsAdminPageInner() {
         </>
       )}
 
-      <Modal open={open} onClose={() => setOpen(false)} title={editing ? editing.name : "New lead"} size="lg">
+      <Modal open={open} onClose={() => setOpen(false)} title={editing ? editing.name : "New lead"} size="lg" busy={saving} error={saveErr}>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <TextField label="First name" required value={draft.firstName} onChange={(v) => setDraft({ ...draft, firstName: v })} />
           <TextField label="Last name" value={draft.lastName} onChange={(v) => setDraft({ ...draft, lastName: v })} />

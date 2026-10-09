@@ -15,11 +15,13 @@ import {
   Badge,
   Spinner,
   Table,
+  useConfirm,
 } from "../_shared/ui";
 import { API_BASE, GYMFOLIO_API, ApiError, apiGet, apiJson } from "../_shared/api";
 import { currencyOptions } from "@/data/countries";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
 import { LoadError } from "../_ops/lists";
+import { PACKAGE_TERMS, TERM_IN_DAYS, daysLabel, isDaysLabel, termOptions } from "./terms";
 
 const CURRENCY_OPTIONS = currencyOptions();
 
@@ -75,6 +77,7 @@ function describeBilling(p: Package) {
 
 export default function PackagesAdminPage() {
   const { can } = usePermissions();
+  const { ask, dialog: confirmDialog } = useConfirm();
   const editable = can("packages", "manage");
   const [list, setList] = useState<Package[]>([]);
   const [loading, setLoading] = useState(true);
@@ -83,6 +86,9 @@ export default function PackagesAdminPage() {
   const [editing, setEditing] = useState<Package | null>(null);
   const [form, setForm] = useState<Partial<Package>>({});
   const [billing, setBilling] = useState<Billing>(DEFAULT_BILLING);
+  // A one-off package's length is given in days rather than picked from the
+  // list (see ./terms).
+  const [byDays, setByDays] = useState(false);
   const [featuresText, setFeaturesText] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -121,6 +127,7 @@ export default function PackagesAdminPage() {
     setEditing(null);
     setForm({ isActive: true, currency: defaultCurrency, theme: "light", period: "month", kind: "membership", durationDays: 0, sessions: 0, joiningFee: 0 });
     setBilling(DEFAULT_BILLING);
+    setByDays(false);
     setFeaturesText("");
     setError(null);
     setOpen(true);
@@ -128,7 +135,11 @@ export default function PackagesAdminPage() {
 
   const openEdit = (p: Package) => {
     setEditing(p);
-    setForm(p);
+    // "45 days" typed as the period before the list existed is a length in
+    // days; the server reads it as one too.
+    const typedDays = !p.durationDays && isDaysLabel(p.period || "") ? parseInt(p.period, 10) : 0;
+    setForm(typedDays ? { ...p, durationDays: typedDays } : p);
+    setByDays((p.durationDays || 0) > 0 || typedDays > 0);
     setBilling({ ...DEFAULT_BILLING, ...(p.billing || {}) });
     setFeaturesText((p.features || []).join("\n"));
     setError(null);
@@ -136,15 +147,27 @@ export default function PackagesAdminPage() {
   };
 
   const save = async () => {
+    const oneOff = billing.mode !== "recurring";
+    const days = Math.floor(Number(form.durationDays) || 0);
+    if (oneOff && byDays && days < 1) {
+      setError("Enter how many days the package lasts.");
+      return;
+    }
+    if (oneOff && !byDays && !(form.period || "").trim()) {
+      setError("Choose how long the package lasts.");
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
-      const period = billing.mode === "recurring" ? billing.interval : form.period;
+      const period = oneOff ? form.period : billing.interval;
       const payload = {
         ...form,
         period,
         billing,
-        durationDays: Number(form.durationDays) || 0,
+        // Days win over the period on the server, so they are sent only when
+        // the length was given in days.
+        durationDays: oneOff && byDays ? days : 0,
         sessions: Number(form.sessions) || 0,
         joiningFee: Number(form.joiningFee) || 0,
         features: featuresText
@@ -167,7 +190,12 @@ export default function PackagesAdminPage() {
   };
 
   const remove = async (p: Package) => {
-    if (!confirm("Delete this package?")) return;
+    const answer = await ask({
+      title: `Delete ${p.name}?`,
+      body: "It can no longer be sold. This cannot be undone. A package members still hold is not deleted — you are offered Deactivate instead.",
+      confirmLabel: "Delete package",
+    });
+    if (answer === null) return;
     setRefusal(null);
     try {
       await apiJson(`${GYMFOLIO_API}/packages/${p._id}`, "DELETE");
@@ -194,6 +222,7 @@ export default function PackagesAdminPage() {
 
   return (
     <div>
+      {confirmDialog}
       <PageHeader
         eyebrow="Fitness"
         title="Packages"
@@ -252,10 +281,10 @@ export default function PackagesAdminPage() {
             </button>,
             editable ? (
               <div key="a" className="flex gap-2">
-                <SecondaryButton onClick={() => openEdit(p)}>
+                <SecondaryButton onClick={() => openEdit(p)} label={`Edit ${p.name}`}>
                   <FiEdit2 className="w-3.5 h-3.5" />
                 </SecondaryButton>
-                <DangerButton onClick={() => remove(p)}>
+                <DangerButton onClick={() => remove(p)} label={`Delete ${p.name}`}>
                   <FiTrash2 className="w-3.5 h-3.5" />
                 </DangerButton>
               </div>
@@ -267,7 +296,7 @@ export default function PackagesAdminPage() {
         />
       )}
 
-      <Modal open={open} onClose={() => setOpen(false)} title={editing ? "Edit Package" : "New Package"} size="lg">
+      <Modal open={open} onClose={() => setOpen(false)} title={editing ? "Edit Package" : "New Package"} size="lg" busy={saving}>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <TextField label="Name" required value={form.name} onChange={(v) => setForm({ ...form, name: v })} />
           <SelectField
@@ -323,19 +352,45 @@ export default function PackagesAdminPage() {
                 </>
               ) : (
                 <>
-                  <TextField
-                    label="Period label"
-                    required
-                    value={form.period}
-                    placeholder="e.g. month, 3 months, year"
-                    onChange={(v) => setForm({ ...form, period: v })}
-                  />
-                  <TextField
-                    label="Valid for (days, 0 = use the period)"
-                    type="number"
-                    value={form.durationDays}
-                    onChange={(v) => setForm({ ...form, durationDays: Number(v) || 0 })}
-                  />
+                  <div>
+                    <SelectField
+                      label="How long it lasts"
+                      value={byDays ? TERM_IN_DAYS : (form.period || "").trim()}
+                      allowClear={false}
+                      placeholder="Choose a length"
+                      options={termOptions(form.period || "")}
+                      onChange={(v) => {
+                        if (v === TERM_IN_DAYS) {
+                          const days = Number(form.durationDays) || 30;
+                          setByDays(true);
+                          setForm({ ...form, durationDays: days, period: daysLabel(days) });
+                        } else {
+                          setByDays(false);
+                          setForm({ ...form, durationDays: 0, period: v });
+                        }
+                      }}
+                    />
+                    {!byDays && !!(form.period || "").trim() && !PACKAGE_TERMS.some((t) => t.label === (form.period || "").trim()) && (
+                      <p className="mt-1 text-xs text-amber-700">
+                        This package&apos;s length is read from its old label, which may not be what you meant. Pick a length from the list to be sure.
+                      </p>
+                    )}
+                  </div>
+                  {byDays && (
+                    <TextField
+                      label="Number of days"
+                      type="number"
+                      required
+                      value={form.durationDays || ""}
+                      onChange={(v) => {
+                        const days = Math.max(0, Math.floor(Number(v) || 0));
+                        // The label shown after the price follows the days,
+                        // unless it is wording of the gym's own.
+                        const period = !form.period || isDaysLabel(form.period) ? (days ? daysLabel(days) : "") : form.period;
+                        setForm({ ...form, durationDays: days, period });
+                      }}
+                    />
+                  )}
                 </>
               )}
               <TextField label="Joining fee (charged once)" type="number" value={form.joiningFee} onChange={(v) => setForm({ ...form, joiningFee: Number(v) || 0 })} />
@@ -373,7 +428,7 @@ export default function PackagesAdminPage() {
         </div>
         {error && <p className="mt-4 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
         <div className="flex justify-end gap-2 mt-6">
-          <SecondaryButton onClick={() => setOpen(false)}>Cancel</SecondaryButton>
+          <SecondaryButton onClick={() => setOpen(false)} disabled={saving}>Cancel</SecondaryButton>
           <PrimaryButton onClick={save} disabled={saving}>
             {saving ? "Saving..." : editing ? "Update" : "Create"}
           </PrimaryButton>

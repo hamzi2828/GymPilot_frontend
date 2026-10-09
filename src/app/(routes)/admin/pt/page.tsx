@@ -6,7 +6,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { FiPlus } from "react-icons/fi";
-import { PageHeader, Card, PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, SelectField, Badge, Spinner, Table } from "../_shared/ui";
+import { PageHeader, Card, PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, SelectField, Badge, Spinner, Table, useConfirm, ErrorState } from "../_shared/ui";
 import { GYMFOLIO_API, apiGet, apiJson } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
 import { useGymToday } from "@/components/ThemeProvider";
@@ -72,6 +72,7 @@ const STATUS_TONE: Record<Session["status"], "green" | "neutral" | "rose" | "blu
 export default function PtAdminPage() {
   const today = useGymToday();
   const { can } = usePermissions();
+  const { ask, dialog: confirmDialog } = useConfirm();
   const editable = can("pt", "manage");
   const [from, setFrom] = useState(today());
   const [to, setTo] = useState(addDays(today(), 14));
@@ -81,12 +82,15 @@ export default function PtAdminPage() {
   const [summary, setSummary] = useState<Summary[]>([]);
   const [trainers, setTrainers] = useState<TrainerOption[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadErr, setLoadErr] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState({ trainerId: "", date: today(), startTime: "", notes: "" });
   const [member, setMember] = useState<MemberOption | null>(null);
   const [slots, setSlots] = useState<Slot[]>([]);
   const [saving, setSaving] = useState(false);
+  // Why the booking was refused, shown in the form itself.
+  const [bookErr, setBookErr] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -97,8 +101,9 @@ export default function PtAdminPage() {
       const [s, sum] = await Promise.all([apiGet<{ data: Session[] }>(`${PT_API}/sessions?${params}`), apiGet<{ data: Summary[] }>(`${PT_API}/summary?from=${from}&to=${to}`)]);
       setRows(s.data || []);
       setSummary(sum.data || []);
+      setLoadErr(null);
     } catch (e) {
-      setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not load sessions" });
+      setLoadErr(e instanceof Error ? e.message : "Could not load sessions");
     } finally {
       setLoading(false);
     }
@@ -127,19 +132,21 @@ export default function PtAdminPage() {
   const openBook = () => {
     setDraft({ trainerId: trainerId || "", date: today(), startTime: "", notes: "" });
     setMember(null);
+    setBookErr(null);
     setOpen(true);
   };
 
   const book = async () => {
     setSaving(true);
     setNotice(null);
+    setBookErr(null);
     try {
       const res = await apiJson<{ message: string }>(`${PT_API}/sessions/staff`, "POST", { ...draft, userId: member?.id });
       setNotice({ tone: "ok", text: res.message });
       setOpen(false);
       await load();
     } catch (e) {
-      setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not book" });
+      setBookErr(e instanceof Error ? e.message : "Could not book");
     } finally {
       setSaving(false);
     }
@@ -155,7 +162,13 @@ export default function PtAdminPage() {
   };
 
   const cancel = async (s: Session) => {
-    const reason = prompt(`Cancel ${s.member_name}'s session with ${s.trainer_name}? Reason (optional):`);
+    const reason = await ask({
+      title: `Cancel ${s.member_name}'s session?`,
+      body: `With ${s.trainer_name} on ${s.date} at ${s.start_time}.`,
+      confirmLabel: "Cancel session",
+      cancelLabel: "Keep session",
+      reason: { label: "Reason (optional)" },
+    });
     if (reason === null) return;
     try {
       await apiJson(`${PT_API}/sessions/staff/${s.id}`, "DELETE", { reason });
@@ -167,6 +180,7 @@ export default function PtAdminPage() {
 
   return (
     <div>
+      {confirmDialog}
       <PageHeader
         eyebrow="Fitness"
         title="Personal Training"
@@ -189,7 +203,7 @@ export default function PtAdminPage() {
         </div>
       </Card>
 
-      {summary.length > 0 && (
+      {!loadErr && summary.length > 0 && (
         <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {summary.map((t) => (
             <div key={t.trainer_id} className="rounded-lg border border-neutral-200 bg-white p-4">
@@ -212,6 +226,8 @@ export default function PtAdminPage() {
 
       {loading ? (
         <Spinner />
+      ) : loadErr ? (
+        <ErrorState message={loadErr} onRetry={load} />
       ) : (
         <Table
           columns={["When", "Trainer", "Member", "Paid by", "Status", ""]}
@@ -251,7 +267,7 @@ export default function PtAdminPage() {
         />
       )}
 
-      <Modal open={open} onClose={() => setOpen(false)} title="Book a session" size="lg">
+      <Modal open={open} onClose={() => setOpen(false)} title="Book a session" size="lg" busy={saving} error={bookErr}>
         <div className="space-y-4">
           <SelectField label="Trainer" value={draft.trainerId} allowClear={false} onChange={(v) => setDraft({ ...draft, trainerId: v, startTime: "" })} options={trainers.map((t) => ({ value: t.id, label: t.name }))} />
           <MemberPicker label="Find a member" type="member" value={member} onChange={setMember} listWhenEmpty />

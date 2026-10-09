@@ -6,7 +6,7 @@
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { FiPlus } from "react-icons/fi";
-import { PageHeader, PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, TextArea, SelectField, Toggle, Badge, Spinner, Table, ErrorState } from "../../_shared/ui";
+import { PageHeader, PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, TextArea, SelectField, Toggle, Badge, Spinner, Table, ErrorState, useConfirm } from "../../_shared/ui";
 import { API_BASE, apiGet, apiJson, replaceParams } from "../../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
 import { useGymToday } from "@/components/ThemeProvider";
@@ -47,6 +47,7 @@ const TONE: Record<Leave["status"], "amber" | "green" | "rose" | "neutral"> = { 
 function LeavePageInner() {
   const today = useGymToday();
   const { can } = usePermissions();
+  const { ask, dialog: confirmDialog } = useConfirm();
   const editable = can("staff", "manage");
   const [rows, setRows] = useState<Leave[]>([]);
   const [staff, setStaff] = useState<StaffOption[]>([]);
@@ -60,6 +61,7 @@ function LeavePageInner() {
   const [notice, setNotice] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [saveErr, setSaveErr] = useState<string | null>(null);
   const [draft, setDraft] = useState({ staffId: "", type: "annual", from: today(), to: today(), reason: "", approve: true });
 
   const load = useCallback(async () => {
@@ -92,8 +94,13 @@ function LeavePageInner() {
   const decide = async (l: Leave, next: "approved" | "rejected" | "pending") => {
     let note = "";
     if (next === "rejected") {
-      // Cancel on the prompt means "not now", not "reject without a reason".
-      const reason = prompt("Reason (optional):");
+      // Backing out means "not now", not "reject without a reason".
+      const reason = await ask({
+        title: `Reject ${l.staff_name}'s leave?`,
+        body: `${l.from}${l.to !== l.from ? ` to ${l.to}` : ""} (${l.days} day${l.days === 1 ? "" : "s"}).`,
+        confirmLabel: "Reject leave",
+        reason: { label: "Reason (optional)" },
+      });
       if (reason === null) return;
       note = reason;
     }
@@ -120,12 +127,13 @@ function LeavePageInner() {
   const save = async () => {
     setSaving(true);
     setNotice(null);
+    setSaveErr(null);
     try {
       await apiJson(`${API_BASE}/staff/leave`, "POST", draft);
       setOpen(false);
       await load();
     } catch (e) {
-      setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not record leave" });
+      setSaveErr(e instanceof Error ? e.message : "Could not record leave");
     } finally {
       setSaving(false);
     }
@@ -133,12 +141,13 @@ function LeavePageInner() {
 
   return (
     <div>
+      {confirmDialog}
       <PageHeader
         eyebrow="Operations"
         title="Leave"
         actions={
           editable ? (
-            <PrimaryButton onClick={() => { setDraft({ staffId: "", type: "annual", from: today(), to: today(), reason: "", approve: true }); setOpen(true); }}>
+            <PrimaryButton onClick={() => { setDraft({ staffId: "", type: "annual", from: today(), to: today(), reason: "", approve: true }); setSaveErr(null); setOpen(true); }}>
               <FiPlus className="mr-1.5 h-4 w-4" /> Record leave
             </PrimaryButton>
           ) : undefined
@@ -190,7 +199,7 @@ function LeavePageInner() {
         />
       )}
 
-      <Modal open={open} onClose={() => setOpen(false)} title="Record leave" size="md">
+      <Modal open={open} onClose={() => setOpen(false)} title="Record leave" size="md" busy={saving} error={saveErr}>
         <div className="space-y-4">
           <SelectField label="Staff member" value={draft.staffId} allowClear={false} onChange={(v) => setDraft({ ...draft, staffId: v })} options={staff.map((s) => ({ value: s.id, label: s.name }))} />
           <SelectField label="Type" value={draft.type} allowClear={false} onChange={(v) => setDraft({ ...draft, type: v })} options={TYPES} />

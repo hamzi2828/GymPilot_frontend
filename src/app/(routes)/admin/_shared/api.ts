@@ -43,6 +43,15 @@ export function isSessionEndError(error: unknown): boolean {
   return error instanceof ApiError && error.status === 401 && !!error.code && SESSION_END_CODES.has(error.code);
 }
 
+/**
+ * True for the preview the API sends in place of a saved secret ("••••••••1234",
+ * settingsController maskSecret). Sent back unchanged it means "keep what is
+ * saved"; it is never the secret itself.
+ */
+export function isMaskedSecret(value: unknown): boolean {
+  return typeof value === "string" && value.includes("•");
+}
+
 export function authHeaders(extra: Record<string, string> = {}): Record<string, string> {
   const token = getAuthToken();
   const headers: Record<string, string> = { ...extra };
@@ -83,38 +92,47 @@ function failureMessage(status: number, serverMessage: string, code?: string): s
   return "Request failed";
 }
 
-// Status first, body second: an error page from a proxy is HTML, and parsing
-// it as JSON is how "Unexpected token '<'" used to reach the screen.
-async function handle<T>(request: () => Promise<Response>): Promise<T> {
-  let res: Response;
+async function send(request: () => Promise<Response>): Promise<Response> {
   try {
-    res = await request();
+    return await request();
   } catch {
     throw new ApiError("Could not reach the server — check your connection and try again.", 0);
   }
+}
 
+// The body as JSON, or undefined when it is empty or is not JSON.
+async function readJson(res: Response): Promise<{ text: string; json: unknown }> {
   const text = await res.text().catch(() => "");
-  let json: unknown = undefined;
-  if (text) {
-    try {
-      json = JSON.parse(text);
-    } catch {
-      json = undefined;
-    }
+  if (!text) return { text, json: undefined };
+  try {
+    return { text, json: JSON.parse(text) };
+  } catch {
+    return { text, json: undefined };
   }
+}
 
-  if (!res.ok) {
-    const body = json && typeof json === "object" ? (json as { message?: unknown; code?: unknown }) : {};
-    const serverMessage = typeof body.message === "string" ? body.message.trim() : "";
-    const code = typeof body.code === "string" ? body.code : undefined;
+// A refused call as an error fit to show, with the sign-out when it was
+// refused because the session is over.
+function refusal(res: Response, json: unknown): ApiError {
+  const body = json && typeof json === "object" ? (json as { message?: unknown; code?: unknown }) : {};
+  const serverMessage = typeof body.message === "string" ? body.message.trim() : "";
+  const code = typeof body.code === "string" ? body.code : undefined;
 
-    const error = new ApiError(failureMessage(res.status, serverMessage, code), res.status, code);
-    if (isSessionEndError(error)) {
-      error.message = "Your session has ended. Please sign in again.";
-      endSession();
-    }
-    throw error;
+  const error = new ApiError(failureMessage(res.status, serverMessage, code), res.status, code);
+  if (isSessionEndError(error)) {
+    error.message = "Your session has ended. Please sign in again.";
+    endSession();
   }
+  return error;
+}
+
+// Status first, body second: an error page from a proxy is HTML, and parsing
+// it as JSON is how "Unexpected token '<'" used to reach the screen.
+async function handle<T>(request: () => Promise<Response>): Promise<T> {
+  const res = await send(request);
+  const { text, json } = await readJson(res);
+
+  if (!res.ok) throw refusal(res, json);
 
   // An empty success (a 204) is still a success.
   if (!text) return {} as T;
@@ -149,6 +167,20 @@ export async function apiForm<T>(url: string, method: "POST" | "PUT", form: Form
 }
 
 /**
+ * A file from the API -- an export, an invoice, a payslip -- as its bytes and
+ * the name the server gave it. A plain link cannot carry the Authorization
+ * header, and a bare fetch loses what apiGet gives every other call: the
+ * server's own sentence when it refuses, and the sign-out when the session
+ * is over.
+ */
+export async function apiBlob(url: string): Promise<{ blob: Blob; filename: string | null }> {
+  const res = await send(() => fetch(url, { headers: authHeaders() }));
+  if (!res.ok) throw refusal(res, (await readJson(res)).json);
+  const filename = (res.headers.get("Content-Disposition") || "").match(/filename="([^"]+)"/)?.[1] || null;
+  return { blob: await res.blob(), filename };
+}
+
+/**
  * Rewrites the current page's address in place. Next keeps useSearchParams
  * in step with history.replaceState, and unlike router.replace it does not
  * refetch the page (for every key typed into a search box, say). An empty
@@ -167,6 +199,19 @@ export function replaceParams(changes: Record<string, string | null | undefined>
     // Browsers cap how often a page may rewrite its address. Past the cap the
     // address lags behind; the page itself is unaffected.
   }
+}
+
+/**
+ * One value as a quoted CSV field, for the exports the panel builds itself.
+ * A value a spreadsheet would run as a formula (a member types their own
+ * name, and "=HYPERLINK(...)" is a name) is kept as text with a leading
+ * apostrophe: the same rule as the API's own exports (services/csv.js). A
+ * plain negative number is left alone, since -40 is a refund.
+ */
+export function csvField(value: unknown): string {
+  let text = String(value ?? "");
+  if (/^[=+\-@\t\r]/.test(text) && !/^-\d+(\.\d+)?$/.test(text)) text = `'${text}`;
+  return `"${text.replace(/"/g, '""')}"`;
 }
 
 export function absoluteUrl(p?: string): string {
