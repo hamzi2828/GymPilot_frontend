@@ -1,88 +1,34 @@
-"use client";
-import React, { useState, useEffect, Suspense } from "react";
-import "@fortawesome/fontawesome-free/css/all.css";
-import { useSearchParams } from "next/navigation";
-import GymClassDetailSection from "./components/GymClassDetailSection";
-import ContactSection from "../main/components/ContactSection";
-import HeroAbout from "../about-us/components/HeroAbout";
-import GymTrainersSection from "./components/GymTrainersSection";
-import { gymClassService, GymClass } from "../main/services/gymClassService";
+// app/(routes)/classdetail/page.tsx
+import type { Metadata } from "next";
+import { absoluteMediaUrl, fetchForMetadata, metaText, pageMetadata } from "@/helper/siteMetadata";
+import ClassDetailPage from "./ClassDetailPage";
 
-const ClassDetailContent = () => {
-  const searchParams = useSearchParams();
-  const classId = searchParams.get('id');
-  const [selectedClass, setSelectedClass] = useState<GymClass | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+type Props = { searchParams: Promise<{ id?: string | string[] }> };
 
-  useEffect(() => {
-    const fetchClassDetail = async () => {
-      if (!classId) {
-        setError("No class ID provided");
-        setLoading(false);
-        return;
-      }
+// The class's own name and description, for the browser tab, search results
+// and link previews. Every class used to be called "Class Details". When the
+// class cannot be read, the layout's general title stands.
+export async function generateMetadata({ searchParams }: Props): Promise<Metadata> {
+  const { id: raw } = await searchParams;
+  const id = Array.isArray(raw) ? raw[0] : raw;
+  if (!id) return {};
 
-      try {
-        setLoading(true);
-        setError(null);
-        const classData = await gymClassService.getClassById(classId);
-        setSelectedClass(classData);
-      } catch (err) {
-        console.error("Error fetching class details:", err);
-        setError(err instanceof Error ? err.message : "Failed to load class details");
-      } finally {
-        setLoading(false);
-      }
-    };
+  const gymClass = await fetchForMetadata<{
+    name?: string;
+    shortDescription?: string;
+    description?: string;
+    thumbnail?: string;
+  }>(`/api/gymfolio/gym-classes/${encodeURIComponent(id)}`);
+  if (!gymClass?.name) return {};
 
-    fetchClassDetail();
-  }, [classId]);
+  return pageMetadata({
+    title: gymClass.name,
+    description: metaText(gymClass.shortDescription || gymClass.description) || gymClass.name,
+    path: `/classdetail?id=${encodeURIComponent(id)}`,
+    image: absoluteMediaUrl(gymClass.thumbnail),
+  });
+}
 
-  if (loading) {
-    return (
-      <main className="pt-20">
-        <div className="flex justify-center items-center min-h-screen">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#91b200]"></div>
-        </div>
-      </main>
-    );
-  }
-
-  if (error || !selectedClass) {
-    return (
-      <main className="pt-20">
-        <div className="flex justify-center items-center min-h-screen">
-          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded text-center max-w-2xl">
-            {error || "Class not found"}
-          </div>
-        </div>
-      </main>
-    );
-  }
-
-  return (
-    <main className="pt-20">
-        <HeroAbout title={selectedClass.name} />
-      <GymClassDetailSection gymClass={selectedClass} />
-<GymTrainersSection />
-        <ContactSection />
-    </main>
-  );
-};
-
-const ClassDetail = () => {
-  return (
-    <Suspense fallback={
-      <main className="pt-20">
-        <div className="flex justify-center items-center min-h-screen">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#91b200]"></div>
-        </div>
-      </main>
-    }>
-      <ClassDetailContent />
-    </Suspense>
-  );
-};
-
-export default ClassDetail;
+export default function Page() {
+  return <ClassDetailPage />;
+}

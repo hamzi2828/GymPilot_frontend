@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
 import { pageMetadata } from "@/helper/siteMetadata";
 
+// The general title, for when the class itself cannot be read; page.tsx
+// replaces it with the class's own name and description.
 export async function generateMetadata(): Promise<Metadata> {
   return pageMetadata({
     title: "Class Details",
-    description: "Full details for this class: what to expect, the weekly schedule and the coaches who run it.",
+    description: "What this class is and when it runs.",
     path: "/classdetail",
   });
 }

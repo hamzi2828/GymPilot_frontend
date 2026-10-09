@@ -111,3 +111,39 @@ export async function pageMetadata({
     },
   };
 }
+
+/**
+ * One public record, read on the server for a detail page's metadata (a blog
+ * post, a class). Null on any failure: the page then keeps its layout's
+ * general title rather than failing to render.
+ */
+export async function fetchForMetadata<T>(path: string): Promise<T | null> {
+  try {
+    const res = await serverTenantFetch(`${API_BASE}${path}`, { next: { revalidate: 300 } });
+    if (!res.ok) return null;
+    const json = await res.json();
+    return (json?.data as T) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Plain text for a meta description: markup removed, cut at a word. */
+export function metaText(html: string | null | undefined, max = 160): string {
+  const text = (html || "")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (text.length <= max) return text;
+  const cut = text.slice(0, max);
+  return `${cut.slice(0, Math.max(cut.lastIndexOf(" "), max - 30)).trim()}…`;
+}
+
+/** Uploaded media is stored as a path on the API host; a link preview needs a full URL. */
+export function absoluteMediaUrl(url: string | null | undefined): string | undefined {
+  if (!url) return undefined;
+  if (/^https?:\/\//i.test(url)) return url;
+  return url.startsWith("/uploads") ? `${API_BASE}${url}` : undefined;
+}
