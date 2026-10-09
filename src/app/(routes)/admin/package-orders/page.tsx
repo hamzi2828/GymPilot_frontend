@@ -136,6 +136,10 @@ const PAYMENT_STATUSES = ["pending", "processing", "paid", "failed", "refunded"]
 type Filters = { search: string; status: string; paymentStatus: string; paymentMethod: string; hasDues: string };
 type PanelAction = "" | "status" | "freeze" | "cancel" | "renew" | "change" | "reject" | "refund" | "payment" | "terms";
 type Terms = { startDate?: string | null; endDate?: string | null; discountAmount?: number; discountNote?: string; amount?: number; balanceDue?: number };
+// Refusals that mean the order is no longer as this page shows it: a
+// colleague confirmed the transfer first or is doing so now, or it has since
+// been refunded or rejected.
+const ORDER_MOVED_ON = ["ALREADY_PAID", "ORDER_CLOSED", "REVIEW_IN_PROGRESS"];
 
 // The list's filters as the address gives them (the bell links to
 // ?status=past_due, for one). A value the filters do not offer is ignored.
@@ -334,9 +338,24 @@ function PackageOrdersAdminPageInner() {
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Request failed");
+      // The reason stays on screen, over the order and the list read again,
+      // so what is offered next is what can still be done.
+      if (e instanceof ApiError && ORDER_MOVED_ON.includes(e.code || "")) await refreshAfterRefusal();
     } finally {
       setBusy(false);
     }
+  };
+
+  const refreshAfterRefusal = async () => {
+    const open = selected;
+    if (open) {
+      const fresh = await apiGet<{ data?: PackageOrder }>(`${GYMFOLIO_API}/package-orders/${open._id}`).catch(() => null);
+      if (fresh?.data) {
+        setSelected(fresh.data);
+        setAction("status");
+      }
+    }
+    await load();
   };
 
   const assignPackage = () =>
@@ -844,8 +863,10 @@ function PackageOrdersAdminPageInner() {
               )}
             </div>
 
-            {/* Bank transfer review */}
-            {selected.payment.method === "bank_transfer" && selected.payment.status !== "paid" && (
+            {/* Bank transfer review: only while there is still something to
+                decide. One already rejected, failed or refunded is closed,
+                and the API refuses to open it again (409 ORDER_CLOSED). */}
+            {selected.payment.method === "bank_transfer" && ["pending", "processing"].includes(selected.payment.status) && (
               <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
                 <p className="text-sm font-semibold text-amber-900">Bank transfer {selected.payment.status === "processing" ? "awaiting review" : "not yet sent"}</p>
                 {selected.payment.proof?.uploadedAt ? (
