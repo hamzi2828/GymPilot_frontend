@@ -124,7 +124,7 @@ export default function UsersImportModal({ open, onClose, onImported }: { open: 
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "gympilot-members-template.csv";
+    a.download = "gymspilotpro-members-template.csv";
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 10000);
   };

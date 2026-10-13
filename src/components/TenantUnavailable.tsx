@@ -19,15 +19,15 @@ import { openPortal, startCheckout } from "@/app/(routes)/admin/settings/billing
 const COPY: Record<string, { title: string; body: string }> = {
   TENANT_NOT_FOUND: {
     title: "This domain isn't connected to a gym yet",
-    body: "If you are setting this gym up, add this domain to the gym in the GymPilot platform panel. It usually takes effect within a minute.",
+    body: "If you are setting this gym up, add this domain to the gym in the GymsPilotPro platform panel. It usually takes effect within a minute.",
   },
   TENANT_SUSPENDED: {
     title: "This gym's website is currently suspended",
-    body: "Please contact GymPilot support to restore access.",
+    body: "Please contact GymsPilotPro support to restore access.",
   },
   SUBSCRIPTION_INACTIVE: {
-    title: "This gym's GymPilot subscription is not active",
-    body: "Please contact GymPilot support to renew the subscription and bring the website back.",
+    title: "This gym's GymsPilotPro subscription is not active",
+    body: "Please contact GymsPilotPro support to renew the subscription and bring the website back.",
   },
 };
 
@@ -131,7 +131,7 @@ function RenewPanel() {
         return;
       }
       if (res.status === 403) setError("Only the gym's owner or an admin with Settings access can renew.");
-      else if (res.code === "PLATFORM_STRIPE_NOT_CONFIGURED") setError("Online payment isn't set up yet. Please contact GymPilot support to renew.");
+      else if (res.code === "PLATFORM_STRIPE_NOT_CONFIGURED") setError("Online payment isn't set up yet. Please contact GymsPilotPro support to renew.");
       else setError(res.message || "Could not start the payment. Please try again.");
     } catch {
       setError("Could not reach the server. Please try again.");
@@ -195,7 +195,7 @@ function RenewPanel() {
         <button type="button" onClick={() => window.location.reload()} className="mt-3 text-sm font-semibold underline underline-offset-2">
           Check again
         </button>
-        <p className="mt-2 text-xs">Still showing this in a few minutes? Contact GymPilot support.</p>
+        <p className="mt-2 text-xs">Still showing this in a few minutes? Contact GymsPilotPro support.</p>
       </div>
     );
   }
@@ -306,7 +306,7 @@ export default function TenantUnavailable({
   return (
     <main className="min-h-screen flex items-center justify-center bg-neutral-50 px-6 py-24 text-neutral-900">
       <div className="w-full max-w-md text-center">
-        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-neutral-400">GymPilot</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-neutral-400">GymsPilotPro</p>
         <h1 className="mt-3 text-2xl font-semibold tracking-tight">{copy.title}</h1>
         <p className="mt-3 text-sm text-neutral-600">{canRenew ? RENEWABLE_BODY : copy.body}</p>
         {canRenew && <RenewPanel />}

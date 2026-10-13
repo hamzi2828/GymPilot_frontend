@@ -12,7 +12,7 @@ import { serverTenantFetch, serverTenantHost } from "@/helper/tenant.server";
 const API_BASE = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:4000";
 
 /** Used when the settings request fails or no name has been set yet. */
-const FALLBACK_SITE_NAME = "GymPilot";
+const FALLBACK_SITE_NAME = "GymsPilotPro";
 
 /**
  * The address this request came in on, e.g. "https://gym.example": the site's
@@ -105,7 +105,7 @@ export async function getSiteSettings(): Promise<Required<Pick<PublicSettings, "
  * Builds page metadata from a title and description.
  *
  * `title` is the page's own name — the business name is appended by the root
- * layout's title template, so pass "Classes", not "Classes | GymPilot".
+ * layout's title template, so pass "Classes", not "Classes | GymsPilotPro".
  */
 export async function pageMetadata({
   title,

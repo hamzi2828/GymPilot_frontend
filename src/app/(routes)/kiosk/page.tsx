@@ -539,7 +539,7 @@ export default function KioskPage() {
     return (
       <main className="flex min-h-screen items-center justify-center bg-neutral-950 px-6">
         <form onSubmit={login} className="w-full max-w-sm rounded-2xl border border-white/10 bg-neutral-900 p-8 text-neutral-100 shadow-2xl">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-500">GymPilot</p>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-500">GymsPilotPro</p>
           <h1 className="mt-1 text-xl font-semibold text-white">Check-in kiosk</h1>
           <p className="mt-1 text-sm text-neutral-400">Sign in with a staff account that is allowed to use the attendance app.</p>
           <label className="mt-6 block">
@@ -565,7 +565,7 @@ export default function KioskPage() {
     <main className="min-h-screen bg-neutral-950 text-neutral-100">
       <header className="flex items-center justify-between border-b border-white/10 px-6 py-3">
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-500">GymPilot check-in</p>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-500">GymsPilotPro check-in</p>
           <p className="text-sm text-neutral-300">
             {operator?.name}
             {operator?.location ? ` · ${operator.location}` : ""} · {dateLabel}

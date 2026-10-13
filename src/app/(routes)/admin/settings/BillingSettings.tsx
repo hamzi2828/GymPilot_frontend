@@ -1,6 +1,6 @@
 "use client";
 
-// Settings → Billing: the gym's own GymPilot subscription. Anyone who can
+// Settings → Billing: the gym's own GymsPilotPro subscription. Anyone who can
 // open Settings sees what the gym is on; only Settings · manage can pay,
 // change plan or open the Stripe portal (the API checks the same thing again).
 //
@@ -75,7 +75,7 @@ function periodLabel(sub: BillingSubscription) {
 }
 
 function contactLine(sub: BillingSubscription) {
-  return sub.contactEmail ? sub.contactEmail : "GymPilot support";
+  return sub.contactEmail ? sub.contactEmail : "GymsPilotPro support";
 }
 
 // A limit this full is worth a warning before it starts refusing people.
@@ -384,7 +384,7 @@ export default function BillingSettings() {
       setNotice({ tone: "warn", text: res.message || "This gym already has a subscription. Change its plan here, or its card from Manage billing." });
       await load();
     } else if (res.code === "PLATFORM_STRIPE_NOT_CONFIGURED") {
-      setNotice({ tone: "warn", text: `Online payment isn't set up yet — contact ${sub ? contactLine(sub) : "GymPilot support"}.` });
+      setNotice({ tone: "warn", text: `Online payment isn't set up yet — contact ${sub ? contactLine(sub) : "GymsPilotPro support"}.` });
       await load();
     } else {
       setNotice({ tone: "error", text: res.message || "Could not start the checkout." });
@@ -527,7 +527,7 @@ export default function BillingSettings() {
 
       <Card className="p-6">
         <div className="mb-5">
-          <h2 className="text-sm font-semibold text-neutral-900">Your GymPilot plan</h2>
+          <h2 className="text-sm font-semibold text-neutral-900">Your GymsPilotPro plan</h2>
           <p className="mt-1 text-xs text-neutral-500">What keeps your website, member app and admin running.</p>
         </div>
 
@@ -708,7 +708,7 @@ export default function BillingSettings() {
           <p className="text-sm text-neutral-600">Your plan is free — there is nothing to pay.</p>
         ) : sub.status === "active" ? (
           <p className="text-sm text-neutral-600">
-            GymPilot bills this gym directly. To pay by card instead, contact {contactLine(sub)}.
+            GymsPilotPro bills this gym directly. To pay by card instead, contact {contactLine(sub)}.
           </p>
         ) : (
           <div className="space-y-4">

@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 export default async function manifest(): Promise<MetadataRoute.Manifest> {
   const settings = await getSiteSettings();
-  const name = settings.siteName || "GymPilot";
+  const name = settings.siteName || "GymsPilotPro";
   // The gym's own logo joins the icons when it has one; the neutral app icon
   // is always there.
   const logo = settings.logoUrl && /^https?:\/\//.test(settings.logoUrl) ? settings.logoUrl : "";

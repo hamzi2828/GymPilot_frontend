@@ -45,5 +45,5 @@
     "tailwindcss": "^3.4.1",
     "typescript": "^5"
   },
-  "description": "GymPilot - gym management frontend (public site, member portal and admin panel)"
+  "description": "GymsPilotPro - gym management frontend (public site, member portal and admin panel)"
 }

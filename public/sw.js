@@ -1,4 +1,4 @@
-/* GymPilot service worker: installability, an offline page, and push. */
+/* GymsPilotPro service worker: installability, an offline page, and push. */
 
 const SHELL_CACHE = 'gympilot-shell-v1';
 const OFFLINE_URL = '/offline.html';
@@ -32,7 +32,7 @@ self.addEventListener('push', (event) => {
   } catch {
     data = { body: event.data ? event.data.text() : '' };
   }
-  const title = data.title || 'GymPilot';
+  const title = data.title || 'GymsPilotPro';
   const options = {
     body: data.body || '',
     icon: data.icon || '/icons/app-icon.svg',

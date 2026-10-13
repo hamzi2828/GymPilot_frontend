@@ -1,4 +1,4 @@
-// The gym's own subscription to GymPilot, as the backend's /api/billing
+// The gym's own subscription to GymsPilotPro, as the backend's /api/billing
 // routes describe it (GymPilot_backend src/platform/controllers/billingController.js).
 // Used by Settings → Billing, the admin shell's billing banner, and the
 // "sign in to renew" page a lapsed gym shows instead of its site.

@@ -64,7 +64,7 @@ export interface ThermalReceiptProps {
   tax?: number;
   /** The tax rate in percent, printed beside the amount. */
   taxRate?: number;
-  /** Prices include the tax (the default, as everywhere in GymPilot): it is shown as "incl." and not added to the total. */
+  /** Prices include the tax (the default, as everywhere in GymsPilotPro): it is shown as "incl." and not added to the total. */
   taxInclusive?: boolean;
   total: number;
   /** What was handed over. Printed only when given. */

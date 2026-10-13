@@ -84,7 +84,7 @@ export const DemoAccounts: React.FC<DemoAccountsProps> = ({ show, fillCredential
             Super admin
           </span>
           <span className="mt-0.5 truncate text-xs font-medium text-gray-500 w-full">
-            Platform panel · opens the GymPilot admin app
+            Platform panel · opens the GymsPilotPro admin app
           </span>
         </a>
       </div>

@@ -163,7 +163,7 @@ const TABS: { key: TabKey; label: string; hint: string }[] = [
   { key: "messaging", label: "Messaging", hint: "SMS, WhatsApp, push and automations" },
   { key: "banks", label: "Banks", hint: "Bank accounts and payment barcodes" },
   { key: "theme", label: "Colour Scheme", hint: "Public site palette" },
-  { key: "billing", label: "Billing", hint: "Your GymPilot plan and payments" },
+  { key: "billing", label: "Billing", hint: "Your GymsPilotPro plan and payments" },
   { key: "backup", label: "Data & backup", hint: "Download, daily backups and restore" },
 ];
 
