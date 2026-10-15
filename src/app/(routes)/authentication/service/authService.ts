@@ -43,8 +43,9 @@ export interface SignUpPayload {
 }
 
 export async function signUp(payload: SignUpPayload) {
-  // `emailVerified` is false on a new account: the API emails a link to confirm the address.
-  return post<{ message?: string; data?: { emailVerified?: boolean } }>("/user/signup", payload, "Sign up failed");
+  // `emailVerified` is false on a new account: the API emails a link to confirm the address,
+  // and `verificationEmailSent` says whether that email actually went.
+  return post<{ message?: string; verificationEmailSent?: boolean; data?: { emailVerified?: boolean } }>("/user/signup", payload, "Sign up failed");
 }
 
 export interface LoginPayload {

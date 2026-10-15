@@ -274,13 +274,16 @@ const AuthPage: React.FC = () => {
         const created = await signUp(payload);
         updateMode("signin");
         // A new address starts unconfirmed and is emailed a link. The account
-        // works straight away, so the link is mentioned after the sign-in.
+        // works straight away, so the link is mentioned after the sign-in --
+        // and only promised when the API says the email really went.
         setNotice({
           tone: "ok",
           text:
-            created.data?.emailVerified === false
+            created.data?.emailVerified !== false
+              ? "Account created. You can sign in now."
+              : created.verificationEmailSent
               ? `Account created. You can sign in now. We have also emailed ${payload.email.trim()} a link to confirm the address is yours.`
-              : "Account created. You can sign in now.",
+              : "Your account is ready. We couldn't send the confirmation email right now — you can still sign in, and send it again from your account page.",
         });
         return;
       }

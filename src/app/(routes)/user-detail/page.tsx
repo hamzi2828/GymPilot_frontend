@@ -55,6 +55,8 @@ const UserProfilePageContent: React.FC = () => {
   });
 
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  // Whether the gym's plan includes the phone app (the profile API says).
+  const [memberApp, setMemberApp] = useState(false);
   const [saving, setSaving] = useState(false);
   const [memberships, setMemberships] = useState<MembershipOrder[]>([]);
   const [attendance, setAttendance] = useState<MyAttendance | null>(null);
@@ -152,6 +154,7 @@ const UserProfilePageContent: React.FC = () => {
       }
 
       const resp = await getUserDetailForProfile();
+      setMemberApp(!(resp && typeof resp === 'object' && (resp as { memberApp?: boolean }).memberApp === false));
       // Handle both { data: UserProfile } and direct UserProfile responses
       const payload = (resp && typeof resp === 'object' && 'data' in resp) 
         ? (resp as { data: Partial<UserProfile> }).data
@@ -363,6 +366,7 @@ const UserProfilePageContent: React.FC = () => {
             showToast={showToast}
             onSave={handleSave}              // ✅ pass function, not result
             isSaving={saving}                // ✅ parent controls saving state
+            memberApp={memberApp}
           />
         )}
         {activeTab === "profile" && userProfile && (

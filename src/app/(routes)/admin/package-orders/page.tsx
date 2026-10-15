@@ -875,7 +875,7 @@ function PackageOrdersAdminPageInner() {
                     {selected.payment.proof.note && <p className="text-xs">“{selected.payment.proof.note}”</p>}
                     {selected.payment.proof.url && (
                       <a href={absoluteUrl(selected.payment.proof.url)} target="_blank" rel="noreferrer" className="mt-2 inline-block text-xs font-semibold underline">
-                        View receipt
+                        {/\.pdf($|[?#])/i.test(selected.payment.proof.url) ? "Open receipt (PDF)" : "View receipt"}
                       </a>
                     )}
                   </div>
@@ -894,8 +894,16 @@ function PackageOrdersAdminPageInner() {
                 )}
                 {action === "reject" && (
                   <div className="mt-3 space-y-2">
-                    <TextField label="Reason (sent to the member)" value={draft.reason} onChange={(v) => setDraft({ ...draft, reason: v })} />
-                    <DangerButton disabled={busy} onClick={() => run("Payment rejected.", () => post(selected, "reject", { reason: draft.reason }))}>
+                    {/* The member sees this on their account page and in the
+                        email, so it is asked for before the rejection goes. */}
+                    <TextField
+                      label="Reason (shown to the member)"
+                      required
+                      placeholder="e.g. No transfer with this reference reached our account"
+                      value={draft.reason}
+                      onChange={(v) => setDraft({ ...draft, reason: v })}
+                    />
+                    <DangerButton disabled={busy || !String(draft.reason || "").trim()} onClick={() => run("Payment rejected.", () => post(selected, "reject", { reason: draft.reason }))}>
                       Confirm rejection
                     </DangerButton>
                   </div>

@@ -39,7 +39,7 @@ export const EmailConfirmNotice: React.FC<{
         <div className="max-w-xl">
           <p className="text-sm font-semibold text-black">Your email is not confirmed yet</p>
           <p className="text-sm text-gray-700">
-            We emailed you a link. Open it to confirm the address is yours. You can keep using your account in the meantime.
+            Open the link in our confirmation email to show the address is yours. Not received it? Send it again. You can keep using your account in the meantime.
           </p>
         </div>
         <button

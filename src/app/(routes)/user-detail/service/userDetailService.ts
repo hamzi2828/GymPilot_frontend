@@ -212,6 +212,9 @@ export interface MembershipOrder {
   sessionsLeft: number;
   invoiceNumber: string | null;
   lastPaymentError: string;
+  /** Staff rejected the bank transfer receipt; why, in their words ("" if none given). */
+  paymentRejected: boolean;
+  rejectionReason: string;
   kind: string;
 }
 
@@ -404,6 +407,8 @@ export async function getMembershipHistory(): Promise<MembershipOrder[]> {
         sessionsLeft: Math.max(0, Number(sessions.total || 0) - Number(sessions.used || 0)),
         invoiceNumber: invoice.number ? String(invoice.number) : null,
         lastPaymentError: String(payment.lastPaymentError || ""),
+        paymentRejected: String(payment.method) === "bank_transfer" && String(payment.status) === "failed",
+        rejectionReason: String(((payment.proof as Record<string, unknown>) || {}).rejectionReason || "").trim(),
         kind: String(pkg.kind || "membership"),
       };
     })

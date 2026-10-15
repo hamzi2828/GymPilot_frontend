@@ -97,6 +97,15 @@ function shownStatus(entry: MembershipOrder, now: number) {
   return entry.status;
 }
 
+/**
+ * What to tell a member whose bank transfer receipt staff turned down. The
+ * order itself is closed, so a new receipt goes with a new order.
+ */
+export function rejectionMessage(entry: Pick<MembershipOrder, "rejectionReason">) {
+  const reason = entry.rejectionReason.replace(/[.\s]+$/, "");
+  return `Payment not accepted${reason ? `: ${reason}` : ""}. Please contact the gym, or choose the package again and upload a new receipt.`;
+}
+
 function StatusPill({ entry }: { entry: MembershipOrder }) {
   const map: Record<string, string> = {
     active: "bg-green-50 text-green-700 ring-green-600/20",
@@ -108,8 +117,9 @@ function StatusPill({ entry }: { entry: MembershipOrder }) {
     cancelled: "bg-red-50 text-red-700 ring-red-600/20",
   };
   const status = shownStatus(entry, Date.now());
-  const label =
-    status === "upcoming"
+  const label = entry.paymentRejected
+    ? "Payment not accepted"
+    : status === "upcoming"
       ? `Starts ${dateLabel(entry.startDate)}`
       : status === "past_due"
       ? "Payment overdue"
@@ -184,6 +194,21 @@ export const HistorySection: React.FC<HistorySectionProps> = ({
     null;
   const upNext = memberships.filter((entry) => entry !== current && startsLater(entry, now));
   const pending = memberships.filter((entry) => entry.status === "pending" && entry.paymentStatus !== "failed" && !abandonedCheckout(entry, now));
+  // Receipts turned down in the last month, unless the same package has been
+  // ordered again since: the member needs to know why, and what to do next.
+  const rejected = memberships.filter(
+    (entry) =>
+      entry.paymentRejected &&
+      !!entry.purchasedAt &&
+      now - new Date(entry.purchasedAt).getTime() < 30 * DAY_MS &&
+      !memberships.some(
+        (other) =>
+          other !== entry &&
+          other.packageName === entry.packageName &&
+          !other.paymentRejected &&
+          new Date(other.purchasedAt || 0).getTime() > new Date(entry.purchasedAt || 0).getTime()
+      )
+  );
   const progress = current ? termProgress(current.startDate, current.endDate) : null;
   const past = memberships.filter(
     (entry) => entry !== current && !pending.includes(entry) && !upNext.includes(entry) && !abandonedCheckout(entry, now)
@@ -225,6 +250,24 @@ export const HistorySection: React.FC<HistorySectionProps> = ({
             </button>
           )}
         </div>
+      )}
+
+      {/* ---- A bank transfer receipt staff did not accept ---- */}
+      {rejected.length > 0 && (
+        <section className="space-y-3">
+          {rejected.map((entry) => (
+            <div key={entry.id} role="alert" className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border-2 border-red-200 bg-red-50 p-5">
+              <div>
+                <p className="text-base font-bold text-black">{entry.packageName}</p>
+                <p className="text-sm text-red-800">{rejectionMessage(entry)}</p>
+                <p className="text-xs text-gray-500">#{entry.orderNumber}</p>
+              </div>
+              <Link href="/packages" className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-black hover:opacity-90">
+                Choose the package again
+              </Link>
+            </div>
+          ))}
+        </section>
       )}
 
       {/* ---- Waiting on a bank transfer ---- */}

@@ -129,7 +129,9 @@ function BankTransferContent() {
               : awaiting
               ? "We have your transfer details. Staff will confirm the payment shortly and your membership starts the moment they do."
               : rejected
-              ? order.payment.proof?.rejectionReason || "We could not match a transfer to this order. Please contact the gym."
+              ? `Payment not accepted${
+                  order.payment.proof?.rejectionReason?.trim() ? `: ${order.payment.proof.rejectionReason.trim().replace(/[.\s]+$/, "")}` : ""
+                }. Please contact the gym, or choose the package again and upload a new receipt.`
               : "Send the amount below to one of our accounts, then attach the receipt so we can confirm it quickly."}
           </p>
 
@@ -177,8 +179,8 @@ function BankTransferContent() {
             <form onSubmit={submit} className="mt-8 rounded-2xl border-2 border-gray-200 bg-white p-6 space-y-4">
               <h2 className="text-lg font-bold text-black">{awaiting ? "Update your receipt" : "Attach your receipt"}</h2>
               <div>
-                <label className="block text-sm font-medium text-gray-700">Receipt or screenshot (image)</label>
-                <input type="file" accept="image/*" onChange={(e) => setFile(e.target.files?.[0] || null)} className="mt-1 block w-full text-sm" />
+                <label className="block text-sm font-medium text-gray-700">Receipt or screenshot (photo or PDF)</label>
+                <input type="file" accept="image/jpeg,image/png,image/webp,image/gif,application/pdf,.pdf" onChange={(e) => setFile(e.target.files?.[0] || null)} className="mt-1 block w-full text-sm" />
                 {order.payment.proof?.url && !file && (
                   <a href={assetUrl(order.payment.proof.url)} target="_blank" rel="noreferrer" className="mt-1 inline-block text-xs underline text-gray-600">
                     View the receipt you sent
@@ -215,7 +217,7 @@ function BankTransferContent() {
               </Link>
               {rejected && (
                 <Link href="/packages" className="rounded-lg border border-gray-300 px-5 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50">
-                  Try again
+                  Choose the package again
                 </Link>
               )}
             </div>

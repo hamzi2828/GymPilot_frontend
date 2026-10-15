@@ -40,6 +40,8 @@ export interface ProfileSectionProps<T extends UserProfileShape> {
     change?: { email: string; currentPassword: string }
   ) => Promise<SaveResult>;
   isSaving: boolean;
+  /** The gym's plan includes the phone app; without it the app username is not shown. */
+  memberApp?: boolean;
 }
 
 // Two addresses that differ only in case or stray spaces are the same address.
@@ -83,6 +85,7 @@ export function ProfileSection<T extends UserProfileShape>({
   showToast,
   onSave,
   isSaving,
+  memberApp = true,
 }: ProfileSectionProps<T>) {
   const [loading, setLoading] = useState(true);
   // The profile as it was when Edit was pressed: what Cancel puts back, and
@@ -299,8 +302,9 @@ export function ProfileSection<T extends UserProfileShape>({
         </div>
 
         {/* The gym issues this for the phone app. Read-only: staff reissue it
-            from the admin panel if it ever needs to change. */}
-        {userProfile?.username && (
+            from the admin panel if it ever needs to change. Hidden when the
+            gym's plan has no member app: there is nothing to sign in to. */}
+        {memberApp && userProfile?.username && (
           <div>
             <label className="block text-sm font-semibold text-gray-900 mb-2">App Username</label>
             <div className="w-full border-2 border-gray-100 rounded-lg px-4 py-3 bg-gray-50 text-gray-900 font-mono">
