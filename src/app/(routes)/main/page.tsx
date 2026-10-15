@@ -4,6 +4,7 @@
 // managed in /admin/homepage (order, visibility and content all come from the
 // backend — see HomeSections).
 import HeroCarousel from "./components/HeroCarousel";
+import ClassMarquee from "./components/ClassMarquee";
 import HomeSections from "./components/HomeSections";
 
 export default function MainPage() {
@@ -12,6 +13,7 @@ export default function MainPage() {
   return (
     <main>
       <HeroCarousel />
+      <ClassMarquee />
       <HomeSections />
     </main>
   );

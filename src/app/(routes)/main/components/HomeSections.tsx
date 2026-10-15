@@ -32,6 +32,7 @@ import GymTrainersSection from "./GymTrainersSection";
 import TestimonialsSection from "./TestimonialsSection";
 import ContactSection from "./ContactSection";
 import BlogsSection from "./BlogsSection";
+import HomeReveal from "./HomeReveal";
 
 /**
  * Everything on the homepage below the hero banner.
@@ -69,72 +70,76 @@ export default function HomeSections() {
 
   return (
     <>
-      {ordered.map((section) => {
-        switch (section.key) {
-          case "about":
-            return (
-              <GymAboutSection
-                key={section.key}
-                content={mergeContent<AboutContent>(DEFAULT_ABOUT, section.content)}
-              />
-            );
-          case "stats":
-            return (
-              <StatsSection
-                key={section.key}
-                content={mergeContent<StatsContent>(DEFAULT_STATS, section.content)}
-              />
-            );
-          case "classes":
-            return (
-              <GymFolioClasses
-                key={section.key}
-                content={mergeContent<SectionHeaderContent>(DEFAULT_CLASSES, section.content)}
-              />
-            );
-          case "gallery":
-            // Gallery has its own normaliser: it also converts legacy flat
-            // image lists, which a plain field merge would mask with defaults.
-            return <GymfolioGallery key={section.key} content={normalizeGalleryContent(section.content)} />;
-          case "videos":
-            return (
-              <VideosSection
-                key={section.key}
-                content={mergeContent<VideosContent>(DEFAULT_VIDEOS, section.content)}
-              />
-            );
-          case "trainers":
-            return (
-              <GymTrainersSection
-                key={section.key}
-                content={mergeContent<TrainersContent>(DEFAULT_TRAINERS, section.content)}
-              />
-            );
-          case "testimonials":
-            return (
-              <TestimonialsSection
-                key={section.key}
-                content={mergeContent<SectionHeaderContent>(DEFAULT_TESTIMONIALS_HEADER, section.content)}
-              />
-            );
-          case "contact":
-            return (
-              <ContactSection
-                key={section.key}
-                content={mergeContent<ContactContent>(DEFAULT_CONTACT, section.content)}
-              />
-            );
-          case "blogs":
-            return (
-              <BlogsSection
-                key={section.key}
-                content={mergeContent<BlogsContent>(DEFAULT_BLOGS, section.content)}
-              />
-            );
-          default:
-            return null;
-        }
-      })}
+      {ordered.map((section) => (
+        <HomeReveal key={section.key}>{renderSection(section)}</HomeReveal>
+      ))}
     </>
   );
+
+  function renderSection(section: HomeSection) {
+    switch (section.key) {
+      case "about":
+        return (
+          <GymAboutSection
+            key={section.key}
+            content={mergeContent<AboutContent>(DEFAULT_ABOUT, section.content)}
+          />
+        );
+      case "stats":
+        return (
+          <StatsSection
+            key={section.key}
+            content={mergeContent<StatsContent>(DEFAULT_STATS, section.content)}
+          />
+        );
+      case "classes":
+        return (
+          <GymFolioClasses
+            key={section.key}
+            content={mergeContent<SectionHeaderContent>(DEFAULT_CLASSES, section.content)}
+          />
+        );
+      case "gallery":
+        // Gallery has its own normaliser: it also converts legacy flat
+        // image lists, which a plain field merge would mask with defaults.
+        return <GymfolioGallery key={section.key} content={normalizeGalleryContent(section.content)} />;
+      case "videos":
+        return (
+          <VideosSection
+            key={section.key}
+            content={mergeContent<VideosContent>(DEFAULT_VIDEOS, section.content)}
+          />
+        );
+      case "trainers":
+        return (
+          <GymTrainersSection
+            key={section.key}
+            content={mergeContent<TrainersContent>(DEFAULT_TRAINERS, section.content)}
+          />
+        );
+      case "testimonials":
+        return (
+          <TestimonialsSection
+            key={section.key}
+            content={mergeContent<SectionHeaderContent>(DEFAULT_TESTIMONIALS_HEADER, section.content)}
+          />
+        );
+      case "contact":
+        return (
+          <ContactSection
+            key={section.key}
+            content={mergeContent<ContactContent>(DEFAULT_CONTACT, section.content)}
+          />
+        );
+      case "blogs":
+        return (
+          <BlogsSection
+            key={section.key}
+            content={mergeContent<BlogsContent>(DEFAULT_BLOGS, section.content)}
+          />
+        );
+      default:
+        return null;
+    }
+  }
 }

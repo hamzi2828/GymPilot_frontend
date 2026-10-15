@@ -9,11 +9,13 @@ import {
   resolveMediaUrl,
 } from "../services/homeService";
 import { SectionHeading, Reveal } from "./SectionHeading";
+import GalleryLightbox from "./GalleryLightbox";
 
 /**
  * Photo gallery split into admin-defined sub-sections (Strength, Cardio, …).
  * Photos render 4 per row, at most 2 rows per page; a slider pages through
- * anything beyond the first 8.
+ * anything beyond the first 8. A click on a photo opens it big, and from there
+ * every photo in the category can be slid through (GalleryLightbox).
  */
 const GymfolioGallery = ({ content = DEFAULT_GALLERY }: { content?: GalleryContent }) => {
   const normalized = useMemo(() => normalizeGalleryContent(content), [content]);
@@ -21,6 +23,7 @@ const GymfolioGallery = ({ content = DEFAULT_GALLERY }: { content?: GalleryConte
 
   const [activeGroup, setActiveGroup] = useState(0);
   const [page, setPage] = useState(0);
+  const [viewing, setViewing] = useState<number | null>(null);
 
   const group = groups[Math.min(activeGroup, groups.length - 1)];
   const images = group?.images ?? [];
@@ -31,7 +34,10 @@ const GymfolioGallery = ({ content = DEFAULT_GALLERY }: { content?: GalleryConte
   const selectGroup = (idx: number) => {
     setActiveGroup(idx);
     setPage(0);
+    setViewing(null);
   };
+
+  const photos = images.map((image) => ({ src: resolveMediaUrl(image.src), alt: image.alt || group?.title || "Gym gallery image" }));
 
   const prevPage = () => setPage((p) => (p <= 0 ? pageCount - 1 : p - 1));
   const nextPage = () => setPage((p) => (p >= pageCount - 1 ? 0 : p + 1));
@@ -75,7 +81,13 @@ const GymfolioGallery = ({ content = DEFAULT_GALLERY }: { content?: GalleryConte
             {visible.map((image, index) => {
               const src = resolveMediaUrl(image.src);
               return (
-                <figure key={`${safePage}-${index}`} className="home-gallery-tile group">
+                <button
+                  key={`${safePage}-${index}`}
+                  type="button"
+                  onClick={() => setViewing(safePage * GALLERY_PAGE_SIZE + index)}
+                  aria-label={`Open photo ${safePage * GALLERY_PAGE_SIZE + index + 1} of ${images.length}`}
+                  className="home-gallery-tile home-gallery-tile--open group"
+                >
                   <Image
                     src={src}
                     alt={image.alt || group.title || "Gym gallery image"}
@@ -85,7 +97,12 @@ const GymfolioGallery = ({ content = DEFAULT_GALLERY }: { content?: GalleryConte
                     loading="lazy"
                     unoptimized={/^https?:\/\//i.test(src)}
                   />
-                </figure>
+                  <span className="home-gallery-tile__zoom" aria-hidden="true">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
+                    </svg>
+                  </span>
+                </button>
               );
             })}
           </div>
@@ -132,6 +149,10 @@ const GymfolioGallery = ({ content = DEFAULT_GALLERY }: { content?: GalleryConte
           )}
         </Reveal>
       </div>
+
+      {viewing !== null && photos[viewing] && (
+        <GalleryLightbox photos={photos} index={viewing} onIndex={setViewing} onClose={() => setViewing(null)} />
+      )}
     </section>
   );
 };

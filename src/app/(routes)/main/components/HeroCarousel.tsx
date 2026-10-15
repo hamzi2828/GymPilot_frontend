@@ -1,7 +1,7 @@
 "use client";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, ChevronLeft, ChevronRight } from "lucide-react";
+import { ArrowRight, CalendarCheck, ChevronLeft, ChevronRight, CreditCard, QrCode } from "lucide-react";
 import { heroService, type HeroSlide } from "../services/heroService";
 import { resolveMediaUrl } from "../services/homeService";
 import { useSiteSettings } from "@/components/ThemeProvider";
@@ -193,6 +193,26 @@ const HeroCarousel: React.FC<{ compact?: boolean }> = ({ compact = false }) => {
           </div>
         </div>
       </div>
+
+      {/* What the site does for a member, floating over the photo on wide
+          screens: true for every gym on the platform. */}
+      <ul className="hero-perks" aria-label="What you can do here">
+        {[
+          { icon: CalendarCheck, title: "Book classes online", text: "Pick a slot in seconds" },
+          { icon: CreditCard, title: "Pay your fees online", text: "Bank, JazzCash or Easypaisa" },
+          { icon: QrCode, title: "Check in with your QR", text: "No queue at the desk" },
+        ].map(({ icon: Icon, title, text }, i) => (
+          <li key={title} className="hero-perk" style={{ "--perk-i": i } as React.CSSProperties}>
+            <span className="hero-perk__icon" aria-hidden="true">
+              <Icon size={18} strokeWidth={2.2} />
+            </span>
+            <span>
+              <span className="hero-perk__title">{title}</span>
+              <span className="hero-perk__text">{text}</span>
+            </span>
+          </li>
+        ))}
+      </ul>
 
       {/* Controls */}
       {slides.length > 1 && (
