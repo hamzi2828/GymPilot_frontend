@@ -63,14 +63,11 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  // The gym's language and direction are set on the document up front so the
-  // first paint is already right-to-left where it should be; the client
-  // provider then honours a visitor's own choice.
+  // The site reads in English, left to right, for every gym: translation is
+  // switched off for now (see i18n/LanguageProvider.tsx).
   const settings = await getSiteSettings();
-  const lang = settings.locale?.language || "en";
-  const dir = settings.locale?.direction === "rtl" ? "rtl" : "ltr";
   return (
-    <html lang={lang} dir={dir}>
+    <html lang="en" dir="ltr">
       <body className={`${inter.variable} antialiased bg-white text-gray-900 min-h-screen`}>
         <SiteJsonLd settings={settings} />
         <ThemeProvider>

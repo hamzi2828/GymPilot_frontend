@@ -176,7 +176,7 @@ const GENERAL_SECTIONS: { key: SectionKey; label: string; hint: string; icon: Re
   { key: "money", label: "Money & time", hint: "Country, currency, tax, clock, invoices", icon: FiDollarSign },
   { key: "members", label: "Memberships", hint: "Self-service and the signed agreement", icon: FiUsers },
   { key: "bookings", label: "Bookings & PT", hint: "Class rules, personal training, rooms", icon: FiCalendar },
-  { key: "website", label: "Website", hint: "Language, search, map, opening hours", icon: FiGlobe },
+  { key: "website", label: "Website", hint: "Search, map, opening hours", icon: FiGlobe },
 ];
 
 function isSectionKey(v: string | null): v is SectionKey {

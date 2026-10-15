@@ -1,14 +1,17 @@
 "use client";
 
-// Which language the site reads in. The gym's choice (Settings → General)
-// is the default; a visitor may switch from the header, and the choice is
-// remembered in this browser. Right-to-left languages flip the document.
+// Which language the site reads in. For now that is English, everywhere:
+// translation is switched off (no picker in the header, no language setting
+// in the admin). The dictionaries and t() stay, so turning it back on is a
+// matter of choosing the language here again. A choice a visitor made while
+// switching was on is cleared, so nobody is left reading the site in another
+// language.
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { useSiteSettings } from "@/components/ThemeProvider";
-import { LANGUAGES, dirFor, isLang, translate, type DictKey, type Lang } from "./dictionaries";
+import { createContext, useContext, useEffect } from "react";
+import { LANGUAGES, translate, type DictKey, type Lang } from "./dictionaries";
 
 const STORAGE_KEY = "site_lang";
+const LANG: Lang = "en";
 
 interface LanguageState {
   lang: Lang;
@@ -18,69 +21,30 @@ interface LanguageState {
   t: (key: DictKey, vars?: Record<string, string | number>) => string;
 }
 
-const LanguageContext = createContext<LanguageState>({
-  lang: "en",
+const ENGLISH: LanguageState = {
+  lang: LANG,
   dir: "ltr",
   languages: LANGUAGES,
   setLang: () => {},
-  t: (key, vars) => translate("en", key, vars),
-});
+  t: (key, vars) => translate(LANG, key, vars),
+};
 
-function readOverride(): Lang | null {
-  try {
-    const value = localStorage.getItem(STORAGE_KEY);
-    return isLang(value) ? value : null;
-  } catch {
-    return null;
-  }
-}
+const LanguageContext = createContext<LanguageState>(ENGLISH);
 
 export function LanguageProvider({ children }: { children: React.ReactNode }) {
-  const settings = useSiteSettings();
-  const gymDefault: Lang = isLang(settings.locale.language) ? settings.locale.language : "en";
-  const [override, setOverride] = useState<Lang | null>(null);
-
   useEffect(() => {
-    setOverride(readOverride());
-  }, []);
-
-  const lang = override || gymDefault;
-  const dir = dirFor(lang);
-
-  useEffect(() => {
-    document.documentElement.lang = lang;
-    document.documentElement.dir = dir;
-  }, [lang, dir]);
-
-  const setLang = useCallback((next: Lang) => {
-    setOverride(next);
+    document.documentElement.lang = LANG;
+    document.documentElement.dir = "ltr";
     try {
-      localStorage.setItem(STORAGE_KEY, next);
+      localStorage.removeItem(STORAGE_KEY);
     } catch {
       /* fine */
     }
   }, []);
 
-  const t = useCallback((key: DictKey, vars?: Record<string, string | number>) => translate(lang, key, vars), [lang]);
-
-  const value = useMemo(() => ({ lang, dir, languages: LANGUAGES, setLang, t }), [lang, dir, setLang, t]);
-  return <LanguageContext.Provider value={value}>{children}</LanguageContext.Provider>;
+  return <LanguageContext.Provider value={ENGLISH}>{children}</LanguageContext.Provider>;
 }
 
 export function useLanguage() {
   return useContext(LanguageContext);
-}
-
-/** A small select for the header. */
-export function LanguageSwitcher({ className = "" }: { className?: string }) {
-  const { lang, languages, setLang, t } = useLanguage();
-  return (
-    <select aria-label={t("nav.language")} value={lang} onChange={(e) => setLang(e.target.value as Lang)} className={`rounded-md border border-neutral-300 bg-transparent px-2 py-1 text-xs ${className}`}>
-      {languages.map((l) => (
-        <option key={l.code} value={l.code}>
-          {l.label}
-        </option>
-      ))}
-    </select>
-  );
 }

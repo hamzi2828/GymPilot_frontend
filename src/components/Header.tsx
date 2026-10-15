@@ -7,7 +7,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { ArrowRight, LogOut, Menu, ShieldCheck, UserRound, X } from "lucide-react";
 import { getAuthHeader, getAuthToken, getCurrentUser, getRole, signOut } from "@/helper/helper";
 import { useSiteSettings } from "@/components/ThemeProvider";
-import { LanguageSwitcher, useLanguage } from "@/i18n/LanguageProvider";
+import { useLanguage } from "@/i18n/LanguageProvider";
 
 /** Distance scrolled before the bar leaves its "over the hero" state. */
 const CONDENSE_AT = 28;
@@ -301,7 +301,6 @@ const Header = () => {
         {/* Actions */}
         <div className="site-header__actions">
           <div className="site-header__actions-desktop">
-            <LanguageSwitcher className="mr-2 hidden text-white lg:inline-block [&>option]:text-neutral-900" />
             {desktopActions()}
           </div>
 
@@ -358,14 +357,6 @@ const Header = () => {
         </nav>
 
         <div className="site-drawer__footer">
-          {/* The bar's own switcher is hidden below desktop width, and this
-              drawer is the whole menu on a phone: without it here a phone
-              visitor could not change language at all. 16px text, or iOS
-              zooms the page when the list is opened. */}
-          <label className="mb-1 flex flex-col gap-1.5 text-[11px] font-semibold uppercase tracking-[0.1em] text-white/60">
-            {t("nav.language")}
-            <LanguageSwitcher className="h-11 w-full !text-base font-medium normal-case tracking-normal text-white [&>option]:text-neutral-900" />
-          </label>
           {!mounted ? (
             <Link
               href={routes.auth}

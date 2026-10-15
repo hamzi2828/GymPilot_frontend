@@ -1,11 +1,11 @@
 "use client";
 
-// Settings → General → Website: the site language and direction, what
-// search engines and social previews show, the Google Maps embed, opening
-// hours, and the snippet for embedding the timetable elsewhere. One card
+// Settings → General → Website: what search engines and social previews
+// show, the Google Maps embed, opening hours, and the snippet for embedding
+// the timetable elsewhere. One card
 // per topic; the page's sticky bar saves them all.
 
-import { Card, TextField, TextArea, SelectField } from "../_shared/ui";
+import { Card, TextField, TextArea } from "../_shared/ui";
 
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
@@ -34,26 +34,6 @@ export default function WebsiteSettings<T extends WebsiteFields>({ settings, set
 
   return (
     <>
-      <Card className="p-6">
-        <Heading title="Language" hint="The language the public site and member portal open in. Visitors can still switch in the header." />
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-          <SelectField
-            label="Site language"
-            value={settings.locale?.language ?? "en"}
-            allowClear={false}
-            onChange={(v) => setSettings({ ...settings, locale: { language: v, direction: v === "ar" || v === "ur" ? "rtl" : "ltr" } })}
-            options={[
-              { value: "en", label: "English" },
-              { value: "ar", label: "العربية (RTL)" },
-              { value: "ur", label: "اردو (RTL)" },
-              { value: "es", label: "Español" },
-              { value: "fr", label: "Français" },
-            ]}
-          />
-          <SelectField label="Text direction" value={settings.locale?.direction ?? "ltr"} allowClear={false} onChange={(v) => setSettings({ ...settings, locale: { ...(settings.locale || {}), direction: v as "ltr" | "rtl" } })} options={[{ value: "ltr", label: "Left to right" }, { value: "rtl", label: "Right to left" }]} />
-        </div>
-      </Card>
-
       <Card className="p-6">
         <Heading title="Search & social" hint="What Google shows for your site and what appears when a link is shared on WhatsApp or social media." />
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
