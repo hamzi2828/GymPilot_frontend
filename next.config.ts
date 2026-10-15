@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 // The platform panel (every gym, their plans) lives in its own app,
-// GymPilot_frontendAdmin, together with the marketing site. Old /super-admin
+// GymPilot_marketing, together with the marketing site. Old /super-admin
 // links on a gym's website are sent there.
 const PLATFORM_ADMIN_URL = (process.env.NEXT_PUBLIC_PLATFORM_ADMIN_URL || 'http://localhost:3001').replace(/\/+$/, '');
 

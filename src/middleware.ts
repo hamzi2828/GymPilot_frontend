@@ -5,7 +5,7 @@ import { NextRequest, NextResponse } from 'next/server';
 // below never ran.
 
 // The platform panel (every gym, their plans) moved to its own app,
-// GymPilot_frontendAdmin, together with the marketing site. Old links and
+// GymPilot_marketing, together with the marketing site. Old links and
 // bookmarks to /super-admin here are sent there so nothing that used to
 // work stops working.
 const PLATFORM_ADMIN_URL = (process.env.NEXT_PUBLIC_PLATFORM_ADMIN_URL || 'http://localhost:3001').replace(/\/+$/, '');
