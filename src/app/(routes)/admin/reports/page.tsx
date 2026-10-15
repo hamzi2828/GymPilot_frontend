@@ -7,7 +7,7 @@
 
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { PageHeader, Card, SecondaryButton, TextField, Spinner, ErrorState, useLatestRequest } from "../_shared/ui";
+import { PageHeader, Card, PrimaryButton, SecondaryButton, TextField, Spinner, ErrorState, useLatestRequest } from "../_shared/ui";
 import { API_BASE, apiGet } from "../_shared/api";
 import { BarChart, LineChart, HBarList, type Point } from "../_shared/Charts";
 import { downloadExport, FORMAT_LABELS, type ExportFormat } from "./download";
@@ -144,6 +144,9 @@ function ReportsPageInner() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState<string | null>(null);
+  // The export picker: one list, one format, one button.
+  const [exportId, setExportId] = useState(EXPORTS[0].id);
+  const [exportFormat, setExportFormat] = useState<ExportFormat>("xlsx");
 
   const begin = useLatestRequest();
   const load = useCallback(async () => {
@@ -244,25 +247,41 @@ function ReportsPageInner() {
             </div>
           </div>
           {tab === "overview" && (
-            <div className="mt-3 flex flex-wrap items-center gap-1.5 text-xs text-neutral-500">
-              <span className="mr-1">Export as CSV or Excel:</span>
-              {EXPORTS.map((item) => (
-                <span key={item.id} className="inline-flex items-center overflow-hidden rounded-md border border-neutral-200">
-                  <span className="px-2 py-1 font-medium text-neutral-700">{item.label}</span>
-                  {(["csv", "xlsx"] as const).map((format) => (
-                    <button
-                      key={format}
-                      type="button"
-                      onClick={() => download(item, format)}
-                      disabled={exporting === `${item.id}.${format}`}
-                      title={`${item.label} as ${format === "csv" ? "CSV" : "an Excel workbook (.xlsx)"}`}
-                      className="border-l border-neutral-200 px-1.5 py-1 font-semibold text-neutral-500 hover:bg-neutral-50 hover:text-neutral-900 disabled:opacity-50"
-                    >
-                      {exporting === `${item.id}.${format}` ? "…" : FORMAT_LABELS[format]}
-                    </button>
-                  ))}
-                </span>
-              ))}
+            // One line instead of a wall of buttons: pick what, pick the
+            // format, download -- for the dates above.
+            <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-neutral-100 pt-4 text-sm">
+              <span className="font-medium text-neutral-700">Download</span>
+              <select
+                value={exportId}
+                onChange={(e) => setExportId(e.target.value)}
+                aria-label="What to download"
+                className="h-9 rounded-lg border border-neutral-300 bg-white px-3 text-sm text-neutral-900 focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/30"
+              >
+                {EXPORTS.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.label}
+                  </option>
+                ))}
+              </select>
+              <span className="text-neutral-500">as</span>
+              <div className="inline-flex overflow-hidden rounded-lg border border-neutral-300" role="radiogroup" aria-label="File type">
+                {(["xlsx", "csv"] as const).map((format) => (
+                  <button
+                    key={format}
+                    type="button"
+                    role="radio"
+                    aria-checked={exportFormat === format}
+                    onClick={() => setExportFormat(format)}
+                    className={`h-9 px-3 text-sm font-medium transition-colors ${exportFormat === format ? "bg-neutral-900 text-white" : "bg-white text-neutral-600 hover:bg-neutral-50"}`}
+                  >
+                    {FORMAT_LABELS[format]}
+                  </button>
+                ))}
+              </div>
+              <PrimaryButton onClick={() => download(EXPORTS.find((e) => e.id === exportId) || EXPORTS[0], exportFormat)} disabled={exporting !== null}>
+                {exporting ? "Preparing…" : "Download"}
+              </PrimaryButton>
+              <span className="text-xs text-neutral-400">for the dates above</span>
             </div>
           )}
         </Card>
