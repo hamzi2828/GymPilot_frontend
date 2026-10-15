@@ -5,7 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { ArrowRight, LogOut, Menu, ShieldCheck, UserRound, X } from "lucide-react";
-import { getAuthHeader, getAuthToken, getCurrentUser, getRole, removeToken } from "@/helper/helper";
+import { getAuthHeader, getAuthToken, getCurrentUser, getRole, signOut } from "@/helper/helper";
 import { useSiteSettings } from "@/components/ThemeProvider";
 import { LanguageSwitcher, useLanguage } from "@/i18n/LanguageProvider";
 
@@ -50,7 +50,8 @@ const Header = () => {
 
   const handleLogout = () => {
     try {
-      removeToken();
+      // Ends the session on the server too, not only in this browser.
+      signOut();
       panelAnswer.current = null;
       setIsLoggedIn(false);
       setIsAdmin(false);

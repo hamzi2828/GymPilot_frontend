@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { FiMenu, FiX, FiLogOut } from "react-icons/fi";
-import { removeToken } from "@/helper/helper";
+import { signOut } from "@/helper/helper";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
 import AdminSearch from "@/components/admin/AdminSearch";
 import AdminNotifications from "@/components/admin/AdminNotifications";
@@ -25,10 +25,11 @@ export default function AdminHeader({
   const roleLabel = me?.role_name || me?.job_title || "";
   const initial = (me?.name || me?.email || "?").trim().charAt(0).toUpperCase() || "?";
 
-  // Same sign-out as the website header: drop the token and role, then go to
-  // the sign-in page rather than a panel that can no longer load.
+  // Same sign-out as the website header: end the session on the server, drop
+  // the token and role, then go to the sign-in page rather than a panel that
+  // can no longer load.
   const logout = () => {
-    removeToken();
+    signOut();
     router.replace("/authentication");
   };
 

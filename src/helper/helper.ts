@@ -118,6 +118,25 @@ export interface JwtBasePayload {
     } catch {}
   }
 
+  /**
+   * Signing out the person asked for: the server is told to end this token
+   * (POST /user/logout), then the browser forgets it. Not awaited -- leaving
+   * must never wait on the network -- and `keepalive`, so the request still
+   * goes when the page navigates away straight after. A session the server
+   * had already ended is simply refused there; nothing here depends on it.
+   */
+  export function signOut() {
+    if (typeof window === 'undefined') return;
+    const token = getAuthToken();
+    const api = (process.env.NEXT_PUBLIC_BACKEND_URL || '').replace(/\/+$/, '');
+    if (token && api) {
+      try {
+        fetch(`${api}/user/logout`, { method: 'POST', headers: { Authorization: `Bearer ${token}` }, keepalive: true }).catch(() => {});
+      } catch {}
+    }
+    removeToken();
+  }
+
   /** Whether the cookie the route guard (src/middleware.ts) looks for is there. */
   export function hasSessionCookie(): boolean {
     if (typeof document === 'undefined') return false;

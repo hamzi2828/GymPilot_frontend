@@ -6,7 +6,7 @@ import { FiExternalLink } from "react-icons/fi";
 import AdminHeader from "@/components/admin/AdminHeader";
 import AdminSidebar from "@/components/admin/AdminSidebar";
 import { PermissionsProvider, usePermissions } from "@/components/admin/PermissionsProvider";
-import { isAuthenticated, removeToken, signInUrl } from "@/helper/helper";
+import { isAuthenticated, signInUrl, signOut } from "@/helper/helper";
 import { getSubscription, type BillingSubscription } from "./settings/billingApi";
 
 // Which tab each admin route belongs to. Longest prefix wins, so
@@ -142,7 +142,7 @@ function AdminShell({ children }: { children: React.ReactNode }) {
             <button
               type="button"
               onClick={() => {
-                removeToken();
+                signOut();
                 router.replace(signInUrl());
               }}
               className="inline-flex h-9 items-center rounded-lg border border-neutral-200 px-4 text-sm font-medium text-neutral-700"

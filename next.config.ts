@@ -21,6 +21,76 @@ function backendImagePattern(): RemotePattern[] {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Content-Security-Policy
+//
+// The session token lives in localStorage (the API is on its own domain, so
+// an HttpOnly cookie would be a third-party one, which browsers block). Any
+// script that runs on these pages can read it; this policy narrows what can
+// run and where anything it reads could be sent.
+//
+//   script-src  'self' plus 'unsafe-inline'. Next.js writes inline scripts
+//               into every page (the RSC payload, bootstrapping). The only
+//               way to avoid 'unsafe-inline' is a per-request nonce from
+//               middleware, which makes every page dynamic -- the public site
+//               relies on static rendering and caching. So: no scripts from
+//               any other host, and inline allowed. No third-party scripts
+//               are loaded (checkout is a redirect to Stripe, Google sign-in
+//               is a server redirect). 'unsafe-eval' only under `next dev`.
+//   connect-src 'self', the API, and Vercel Blob (direct uploads PUT there).
+//               This is the main exfiltration channel an injected script
+//               would use (fetch/XHR/beacon/WebSocket).
+//   img-src / media-src  any https host: admins paste image and video URLs
+//               from anywhere (homepage builder, blog posts, social preview).
+//   frame-src   the Google Maps embed and YouTube/Vimeo players gyms add.
+//   style-src / font-src  Google Fonts and the Font Awesome sheet on cdnjs
+//               that globals.css imports; inline styles are everywhere.
+//   object-src 'none', base-uri 'self', form-action 'self'.
+// Preview deployments also get Vercel's toolbar (vercel.live).
+// ---------------------------------------------------------------------------
+function originOf(value: string | undefined): string {
+  try {
+    return new URL(value || '').origin;
+  } catch {
+    return '';
+  }
+}
+
+const IS_DEV = process.env.NODE_ENV !== 'production';
+const IS_PREVIEW = process.env.VERCEL_ENV === 'preview';
+// Several API clients fall back to localhost:4000 when the variable is unset.
+const API_ORIGIN = originOf(process.env.NEXT_PUBLIC_BACKEND_URL) || (IS_DEV ? 'http://localhost:4000' : '');
+
+function contentSecurityPolicy({ framed }: { framed: boolean }): string {
+  const vercelLive = IS_PREVIEW ? ['https://vercel.live'] : [];
+  const directives: Record<string, string[]> = {
+    'default-src': ["'self'"],
+    'script-src': ["'self'", "'unsafe-inline'", ...(IS_DEV ? ["'unsafe-eval'"] : []), ...vercelLive],
+    'style-src': ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com', 'https://cdnjs.cloudflare.com', ...vercelLive],
+    'font-src': ["'self'", 'data:', 'https://fonts.gstatic.com', 'https://cdnjs.cloudflare.com', ...(IS_PREVIEW ? ['https://vercel.live', 'https://assets.vercel.com'] : [])],
+    'img-src': ["'self'", 'data:', 'blob:', 'https:', ...(API_ORIGIN.startsWith('http:') ? [API_ORIGIN] : [])],
+    'media-src': ["'self'", 'blob:', 'https:', ...(API_ORIGIN.startsWith('http:') ? [API_ORIGIN] : [])],
+    'connect-src': [
+      "'self'",
+      ...(API_ORIGIN ? [API_ORIGIN] : []),
+      'https://blob.vercel-storage.com',
+      'https://*.public.blob.vercel-storage.com',
+      ...(IS_PREVIEW ? ['https://vercel.live', 'wss://ws-us3.pusher.com'] : []),
+    ],
+    'frame-src': ["'self'", 'https://www.google.com', 'https://maps.google.com', 'https://www.youtube.com', 'https://www.youtube-nocookie.com', 'https://player.vimeo.com', ...vercelLive],
+    'worker-src': ["'self'", 'blob:'],
+    'manifest-src': ["'self'"],
+    'object-src': ["'none'"],
+    'base-uri': ["'self'"],
+    'form-action': ["'self'"],
+    // Only /embed may be put in a frame, by any site (see headers() below).
+    ...(framed ? {} : { 'frame-ancestors': ["'none'"] }),
+  };
+  return Object.entries(directives)
+    .map(([name, values]) => `${name} ${values.join(' ')}`)
+    .join('; ');
+}
+
 const nextConfig: NextConfig = {
   /* config options here */
   reactStrictMode: true,
@@ -53,10 +123,13 @@ const nextConfig: NextConfig = {
         // Everything except /embed and /embed/... ("/embedded" is not exempt).
         source: '/((?!embed(?:/|$)).*)',
         headers: [
-          { key: 'Content-Security-Policy', value: "frame-ancestors 'none'" },
+          { key: 'Content-Security-Policy', value: contentSecurityPolicy({ framed: false }) },
           { key: 'X-Frame-Options', value: 'DENY' },
         ],
       },
+      // The embeds: the same policy, without frame-ancestors.
+      { source: '/embed', headers: [{ key: 'Content-Security-Policy', value: contentSecurityPolicy({ framed: true }) }] },
+      { source: '/embed/:path*', headers: [{ key: 'Content-Security-Policy', value: contentSecurityPolicy({ framed: true }) }] },
     ];
   },
   async redirects() {
