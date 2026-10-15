@@ -48,6 +48,9 @@ type SiteSettings = {
   openingHours: { day: string; open: string; close: string; closed: boolean }[];
   // The gym's IANA timezone, for "today" on the admin pages; "" until known.
   ianaTimezone: string;
+  // The gym's currency (Settings → General → Money): every price it sells is
+  // in it. "" until known.
+  currency: string;
 };
 
 // What stands where the logo goes until the gym's own is known: a transparent
@@ -102,6 +105,7 @@ const DEFAULTS: SiteSettings = {
   maps: { embedUrl: "", placeUrl: "" },
   openingHours: [],
   ianaTimezone: "",
+  currency: "",
 };
 
 const SiteSettingsContext = createContext<SiteSettings>(DEFAULTS);
@@ -229,6 +233,7 @@ export default function ThemeProvider({ children }: { children: React.ReactNode 
           maps: { embedUrl: (d.maps && d.maps.embedUrl) || "", placeUrl: (d.maps && d.maps.placeUrl) || "" },
           openingHours: Array.isArray(d.openingHours) ? d.openingHours : [],
           ianaTimezone: typeof d.ianaTimezone === "string" ? d.ianaTimezone : "",
+          currency: typeof d.currency === "string" ? d.currency.toUpperCase() : "",
         });
       } catch {
         // Offline or API down — CSS defaults in globals.css still apply.

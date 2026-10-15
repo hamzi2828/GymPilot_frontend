@@ -32,9 +32,7 @@ import {
   type RevealedPassword,
 } from "../users/PasswordDialogs";
 import UsernameModal, { type UsernameTarget } from "../users/UsernameModal";
-import { currencyOptions } from "@/data/countries";
 
-const CURRENCY_OPTIONS = currencyOptions();
 import { usePermissions } from "@/components/admin/PermissionsProvider";
 
 const WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
@@ -323,8 +321,8 @@ function StaffAdminPageInner() {
     setSearch(urlQuery);
   }, [urlQuery]);
 
-  // The gym's currency (Settings → General); payroll starts on it.
-  const [defaultCurrency, setDefaultCurrency] = useState("USD");
+  // The gym's currency (Settings → General): everyone is paid in it.
+  const [defaultCurrency, setDefaultCurrency] = useState("");
   useEffect(() => {
     apiGet<{ data?: { currency?: string } }>(`${API_BASE}/settings`)
       .then((r) => {
@@ -463,7 +461,7 @@ function StaffAdminPageInner() {
         basis: draft.basis,
         salary: Number(draft.salary) || 0,
         hourlyRate: Number(draft.hourlyRate) || 0,
-        currency: draft.currency.trim() || defaultCurrency,
+        currency: defaultCurrency,
         cycle: draft.cycle,
         contractHoursPerWeek: Number(draft.contractHoursPerWeek) || 0,
         bankName: draft.bankName.trim(),
@@ -969,9 +967,9 @@ function StaffAdminPageInner() {
 
               <div>
                 <span className="text-xs font-semibold text-neutral-700">Currency</span>
-                <div className="mt-1">
-                  <Select2 ariaLabel="Currency" value={draft.currency || defaultCurrency} onChange={(v) => setDraft({ ...draft, currency: v })} options={CURRENCY_OPTIONS} />
-                </div>
+                {/* Not chosen per person: pay is in the gym's currency. */}
+                <p className="mt-1 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm text-neutral-700">{defaultCurrency || "…"}</p>
+                <p className="mt-1 text-[11px] text-neutral-500">The gym&apos;s currency, set in Settings → General → Money.</p>
               </div>
 
               <div>

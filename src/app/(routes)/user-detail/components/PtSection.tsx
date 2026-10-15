@@ -7,6 +7,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { getPtTrainers, getPtAvailability, bookPtSession, getMyPtSessions, cancelPtSession, type PtTrainer, type PtRules, type PtSlot, type PtSession, type PtPack } from "../../classes/services/ptService";
 import { localDateKey } from "@/helper/date";
+import { useSiteSettings } from "@/components/ThemeProvider";
 
 const dayLabel = (key: string) => {
   const [y, m, d] = key.split("-").map(Number);
@@ -27,6 +28,8 @@ const STATUS_STYLE: Record<PtSession["status"], string> = {
 };
 
 export const PtSection: React.FC = () => {
+  // A trainer's rate is in the gym's currency.
+  const { currency } = useSiteSettings();
   const params = useSearchParams();
   const [trainers, setTrainers] = useState<PtTrainer[]>([]);
   const [rules, setRules] = useState<PtRules | null>(null);
@@ -84,7 +87,7 @@ export const PtSection: React.FC = () => {
   const book = async (slot: PtSlot) => {
     const trainer = trainers.find((t) => t.id === trainerId);
     if (!trainer) return;
-    if (!confirm(`Book ${trainer.name} on ${dayLabel(slot.date)} at ${slot.start_time}?${pack ? " One session will be taken from your pack." : trainer.rate ? ` Pay ${trainer.rate} at reception.` : ""}`)) return;
+    if (!confirm(`Book ${trainer.name} on ${dayLabel(slot.date)} at ${slot.start_time}?${pack ? " One session will be taken from your pack." : trainer.rate ? ` Pay ${`${currency} ${trainer.rate}`.trim()} at reception.` : ""}`)) return;
     setBusy(`${slot.date}|${slot.start_time}`);
     setNotice(null);
     try {
@@ -187,7 +190,7 @@ export const PtSection: React.FC = () => {
                 {trainers.map((t) => (
                   <button key={t.id} type="button" onClick={() => setTrainerId(t.id)} className={`rounded-full border px-4 py-2 text-sm font-semibold ${trainerId === t.id ? "border-black bg-black text-white" : "border-gray-300 text-gray-700 hover:border-gray-500"}`}>
                     {t.name}
-                    {t.rate && !pack ? <span className="ml-1 font-normal opacity-70">· {t.rate}/session</span> : null}
+                    {t.rate && !pack ? <span className="ml-1 font-normal opacity-70">· {`${currency} ${t.rate}`.trim()}/session</span> : null}
                   </button>
                 ))}
               </div>

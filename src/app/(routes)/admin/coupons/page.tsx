@@ -98,7 +98,7 @@ function describe(c: Coupon) {
 export default function CouponsAdminPage() {
   const { can } = usePermissions();
   const { ask, dialog: confirmDialog } = useConfirm();
-  const { ianaTimezone } = useSiteSettings();
+  const { ianaTimezone, currency } = useSiteSettings();
   const editable = can("coupons", "manage");
 
   const [coupons, setCoupons] = useState<Coupon[]>([]);
@@ -166,7 +166,6 @@ export default function CouponsAdminPage() {
       description: draft.description,
       type: draft.type,
       value: Number(draft.value) || 0,
-      currency: draft.currency,
       packageIds: draft.packageIds,
       validFrom: draft.validFrom || null,
       validUntil: draft.validUntil || null,
@@ -285,7 +284,12 @@ export default function CouponsAdminPage() {
           />
           <TextField label={draft.type === "percent" ? "Percent (1–100)" : "Amount"} type="number" value={draft.value} onChange={(v) => setDraft({ ...draft, value: v })} />
           {draft.type === "amount" && (
-            <TextField label="Currency (blank = any)" value={draft.currency} onChange={(v) => setDraft({ ...draft, currency: v.toUpperCase() })} placeholder="PKR" />
+            // Not chosen per coupon: an amount off is in the gym's currency.
+            <div className="block">
+              <span className="text-xs font-medium text-neutral-600">Currency</span>
+              <p className="mt-1 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm text-neutral-700">{currency || "…"}</p>
+              <p className="mt-1 text-[11px] text-neutral-500">The gym&apos;s currency, set in Settings → General → Money.</p>
+            </div>
           )}
           <TextField label="Valid from" type="date" value={draft.validFrom} onChange={(v) => setDraft({ ...draft, validFrom: v })} />
           <TextField label="Valid until" type="date" value={draft.validUntil} onChange={(v) => setDraft({ ...draft, validUntil: v })} />

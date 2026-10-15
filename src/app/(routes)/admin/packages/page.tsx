@@ -18,12 +18,9 @@ import {
   useConfirm,
 } from "../_shared/ui";
 import { API_BASE, GYMFOLIO_API, ApiError, apiGet, apiJson } from "../_shared/api";
-import { currencyOptions } from "@/data/countries";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
 import { LoadError } from "../_ops/lists";
 import { PACKAGE_TERMS, TERM_IN_DAYS, daysLabel, isDaysLabel, termOptions } from "./terms";
-
-const CURRENCY_OPTIONS = currencyOptions();
 
 type Kind = "membership" | "session_pack" | "day_pass" | "trial" | "pt_pack";
 type BillingMode = "one_time" | "recurring";
@@ -94,8 +91,8 @@ export default function PackagesAdminPage() {
   const [error, setError] = useState<string | null>(null);
   // A delete the backend refused because members still hold the package.
   const [refusal, setRefusal] = useState<{ message: string; pkg: Package } | null>(null);
-  // The gym's currency (Settings → General); new packages start on it.
-  const [defaultCurrency, setDefaultCurrency] = useState("USD");
+  // The gym's currency (Settings → General): every package is priced in it.
+  const [defaultCurrency, setDefaultCurrency] = useState("");
 
   useEffect(() => {
     apiGet<{ data?: { currency?: string } }>(`${API_BASE}/settings`)
@@ -307,7 +304,12 @@ export default function PackagesAdminPage() {
             options={(Object.keys(KIND_LABELS) as Kind[]).map((k) => ({ value: k, label: KIND_LABELS[k] }))}
           />
           <TextField label="Price" required value={form.price} onChange={(v) => setForm({ ...form, price: v })} placeholder="e.g. 49 or 49.99" />
-          <SelectField label="Currency" value={form.currency} allowClear={false} onChange={(v) => setForm({ ...form, currency: v })} options={CURRENCY_OPTIONS} />
+          {/* Not chosen per package: every price is in the gym's currency. */}
+          <div className="block">
+            <span className="text-xs font-medium text-neutral-600">Currency</span>
+            <p className="mt-1 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm text-neutral-700">{defaultCurrency || "…"}</p>
+            <p className="mt-1 text-[11px] text-neutral-500">The gym&apos;s currency, set in Settings → General → Money.</p>
+          </div>
 
           <div className="md:col-span-2 rounded-lg border border-neutral-200 bg-neutral-50/60 p-4">
             <p className="text-xs font-semibold text-neutral-700">Billing</p>

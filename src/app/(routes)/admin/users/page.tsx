@@ -27,6 +27,7 @@ import MemberProfileModal from "./MemberProfileModal";
 import UsernameModal, { type UsernameTarget } from "./UsernameModal";
 import AddMemberModal, { type RegisterResult } from "./AddMemberModal";
 import { DESK_METHOD_OPTIONS, type MembershipSummary } from "./membershipDesk";
+import { useSiteSettings } from "@/components/ThemeProvider";
 import {
   BalanceCell,
   DiscountCell,
@@ -207,6 +208,7 @@ interface PackageOption {
 
 function UsersAdminPageInner() {
   const { can } = usePermissions();
+  const { currency: gymCurrency } = useSiteSettings();
   const { ask, dialog: confirmDialog } = useConfirm();
   // Every write on this page is gated on users:manage by the backend; the
   // package assignment is a package-orders write.
@@ -956,7 +958,7 @@ function UsersAdminPageInner() {
               options={[
                 ...packages.map((p) => ({
                   value: p._id,
-                  label: `${p.name} — ${(p.currency || "GBP").toUpperCase()} ${p.price}/${p.period || "month"}`,
+                  label: `${p.name} — ${(p.currency || gymCurrency).toUpperCase()} ${p.price}/${p.period || "month"}`,
                 })),
               ]}
             />

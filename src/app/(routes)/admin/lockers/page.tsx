@@ -8,6 +8,7 @@ import { FiPlus } from "react-icons/fi";
 import { PageHeader, Card, PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, useConfirm, ErrorState, Spinner } from "../_shared/ui";
 import { API_BASE, apiGet, apiJson } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
+import { useSiteSettings } from "@/components/ThemeProvider";
 import { MemberPicker, type MemberOption } from "../_ops/MemberPicker";
 
 interface Locker {
@@ -26,6 +27,8 @@ interface Locker {
 
 export default function LockersPage() {
   const { can } = usePermissions();
+  // Locker fees are in the gym's currency.
+  const { currency } = useSiteSettings();
   const { ask, dialog: confirmDialog } = useConfirm();
   const editable = can("lockers", "manage");
   const [rows, setRows] = useState<Locker[]>([]);
@@ -186,7 +189,7 @@ export default function LockersPage() {
             <TextField label="To number" type="number" value={addDraft.to} onChange={(v) => setAddDraft({ ...addDraft, to: v })} />
           </div>
           <TextField label="Zone (optional)" value={addDraft.zone} onChange={(v) => setAddDraft({ ...addDraft, zone: v })} placeholder="A, Ladies, Ground floor…" />
-          <TextField label="Monthly fee (0 = free)" type="number" value={addDraft.fee} onChange={(v) => setAddDraft({ ...addDraft, fee: v })} />
+          <TextField label={`Monthly fee${currency ? ` (${currency})` : ""} (0 = free)`} type="number" value={addDraft.fee} onChange={(v) => setAddDraft({ ...addDraft, fee: v })} />
           <div className="flex justify-end gap-2">
             <SecondaryButton onClick={() => setAddOpen(false)} disabled={saving}>Cancel</SecondaryButton>
             <PrimaryButton onClick={() => run(async () => { const r = await apiJson<{ message: string }>(`${API_BASE}/admin/lockers`, "POST", { from: Number(addDraft.from), to: Number(addDraft.to), zone: addDraft.zone, fee: Number(addDraft.fee) || 0 }); setAddOpen(false); return r; })} disabled={saving}>Add</PrimaryButton>
@@ -214,7 +217,7 @@ export default function LockersPage() {
                     <MemberPicker label="Assign to member" type="member" value={member} onChange={setMember} placeholder="Name, email or code" />
                     <div className="grid grid-cols-2 gap-3">
                       <TextField label="Until (optional)" type="date" value={assign.until} onChange={(v) => setAssign({ ...assign, until: v })} />
-                      <TextField label="Fee" type="number" value={assign.fee} onChange={(v) => setAssign({ ...assign, fee: v })} />
+                      <TextField label={`Fee${currency ? ` (${currency})` : ""}`} type="number" value={assign.fee} onChange={(v) => setAssign({ ...assign, fee: v })} />
                     </div>
                     <PrimaryButton onClick={() => run(() => apiJson<{ message: string }>(`${API_BASE}/admin/lockers/${selected.id}/assign`, "POST", { memberId: member?.id, until: assign.until || null, fee: assign.fee === "" ? undefined : Number(assign.fee) }))} disabled={saving || !member}>Assign</PrimaryButton>
                   </>

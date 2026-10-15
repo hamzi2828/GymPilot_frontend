@@ -143,6 +143,12 @@ const CARD_OFF: Record<string, string> = {
 const COUNTRY_OPTIONS = countryOptions();
 const CURRENCY_OPTIONS = currencyOptions();
 
+// What changing the gym's currency does, said before it is saved: the API
+// relabels every price on save and converts none of them.
+function currencyChangeText(code: string) {
+  return `Every price — packages, classes, PT, shop and lockers — will be shown in ${code}. Amounts are not converted, so check your prices after saving.`;
+}
+
 /** Uploaded assets are stored as backend-relative /uploads paths (or absolute
  *  blob URLs); bundled /images assets are served by Next itself. */
 function absoluteAsset(url: string) {
@@ -298,6 +304,20 @@ function SettingsAdminPageInner() {
   const [banks, setBanks] = useState<Bank[]>([]);
   const { ask, dialog: confirmDialog } = useConfirm();
   const [banksLoading, setBanksLoading] = useState(false);
+
+  // Changing the currency relabels every price the gym sells (the API does
+  // it on save) without converting a single amount, so it is asked, not
+  // just set. Choosing the saved currency again needs no question.
+  const confirmCurrency = async (next: string) => {
+    if (!next || next === settings?.currency || next === saved?.currency) return true;
+    const answer = await ask({
+      title: `Change the gym's currency to ${next}?`,
+      body: currencyChangeText(next),
+      confirmLabel: `Use ${next}`,
+      danger: false,
+    });
+    return answer !== null;
+  };
   const [banksErr, setBanksErr] = useState<string | null>(null);
   const [bankModal, setBankModal] = useState(false);
   const [editingBank, setEditingBank] = useState<Bank | null>(null);
@@ -402,6 +422,7 @@ function SettingsAdminPageInner() {
       // (the API keeps what is saved for those).
       const body = settings.messaging ? { ...settings, messaging: messagingToSave(settings.messaging, saved?.messaging) } : settings;
       const res = await apiJson<{ warnings?: string[] }>(SETTINGS_API, "PUT", body);
+      const currencyChanged = !!saved && !!settings.currency && settings.currency !== saved.currency;
       await load();
       // The save can succeed while refusing part of it (a secret field whose
       // masked value was edited is kept as it was); say which part.
@@ -409,7 +430,12 @@ function SettingsAdminPageInner() {
       setNotice(
         warnings.length
           ? { tone: "warn", text: `Settings saved, with warnings: ${warnings.join(" ")}` }
-          : { tone: "ok", text: "Settings saved." }
+          : {
+              tone: "ok",
+              text: currencyChanged
+                ? `Settings saved. Every price is now shown in ${settings.currency}: check your packages, classes, PT, shop and locker prices.`
+                : "Settings saved.",
+            }
       );
     } catch (e) {
       setNotice({ tone: "error", text: e instanceof Error ? e.message : "Save failed" });
@@ -729,14 +755,20 @@ function SettingsAdminPageInner() {
                         <Select2
                           ariaLabel="Country"
                           value={settings.country || undefined}
-                          onChange={(code) => {
+                          onChange={async (code) => {
                             const c = countryByCode(code);
-                            setSettings({
-                              ...settings,
-                              country: code,
-                              currency: c ? c.currency : settings.currency,
-                              ianaTimezone: settings.ianaTimezone && settings.ianaTimezone !== "UTC" ? settings.ianaTimezone : c ? c.timezone : settings.ianaTimezone,
-                            });
+                            // The country's currency only with a yes: it relabels every price.
+                            const currency = c && (await confirmCurrency(c.currency)) ? c.currency : settings.currency;
+                            setSettings((s) =>
+                              s
+                                ? {
+                                    ...s,
+                                    country: code,
+                                    currency,
+                                    ianaTimezone: s.ianaTimezone && s.ianaTimezone !== "UTC" ? s.ianaTimezone : c ? c.timezone : s.ianaTimezone,
+                                  }
+                                : s
+                            );
                           }}
                           options={COUNTRY_OPTIONS}
                           placeholder="Choose your country"
@@ -748,9 +780,22 @@ function SettingsAdminPageInner() {
                     <label className="block">
                       <span className="text-xs font-medium text-neutral-600">Currency</span>
                       <div className="mt-1">
-                        <Select2 ariaLabel="Currency" value={settings.currency || undefined} onChange={(v) => setSettings({ ...settings, currency: v })} options={CURRENCY_OPTIONS} placeholder="Choose a currency" searchPlaceholder="Code or name…" />
+                        <Select2
+                          ariaLabel="Currency"
+                          value={settings.currency || undefined}
+                          onChange={async (v) => {
+                            if (await confirmCurrency(v)) setSettings((s) => (s ? { ...s, currency: v } : s));
+                          }}
+                          options={CURRENCY_OPTIONS}
+                          placeholder="Choose a currency"
+                          searchPlaceholder="Code or name…"
+                        />
                       </div>
-                      <p className="mt-1 text-[11px] text-neutral-500">Applies to every price in the gym.</p>
+                      {saved && settings.currency && settings.currency !== saved.currency ? (
+                        <p className="mt-1 text-[11px] font-medium text-amber-700">{currencyChangeText(settings.currency)}</p>
+                      ) : (
+                        <p className="mt-1 text-[11px] text-neutral-500">Applies to every price in the gym.</p>
+                      )}
                     </label>
                     <TextField label="Tax rate included in prices (%)" type="number" value={settings.taxRate} onChange={(v) => setSettings({ ...settings, taxRate: Number(v) || 0 })} />
                     <TextField label="Timezone (IANA)" value={settings.ianaTimezone} onChange={(v) => setSettings({ ...settings, ianaTimezone: v })} placeholder="Europe/London" />
