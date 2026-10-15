@@ -1,7 +1,7 @@
 "use client";
 
 // The office's corrections to a visit the front desk recorded, and the
-// attendance settings that live on this page (scanning out, the desk voice). Everything here writes through
+// attendance settings that live on this page (scanning out, who is refused entry, the desk voice). Everything here writes through
 // /api/attendance and needs 'manage' on the attendance tab; the page only
 // offers these to accounts that hold it.
 //
@@ -268,8 +268,16 @@ interface VoiceSettings {
   balance_due_message: string;
 }
 
+// Who the desk turns away instead of letting in with a warning
+// (attendance.refuseEntry). All off: warn only.
+interface RefuseEntry {
+  expired: boolean;
+  unpaid: boolean;
+  no_package: boolean;
+}
+
 interface AttendanceSettingsResponse {
-  settings: { member_scan_out: boolean; voice?: VoiceSettings; voice_defaults?: VoiceSettings };
+  settings: { member_scan_out: boolean; refuse_entry?: RefuseEntry; voice?: VoiceSettings; voice_defaults?: VoiceSettings };
   message?: string;
 }
 
@@ -277,6 +285,12 @@ const VOICE_FIELDS: { key: "expired_message" | "expiring_message" | "balance_due
   { key: "expired_message", body: "expiredMessage", label: "Fee expired", when: "Expired, no package, or the card payment failed" },
   { key: "expiring_message", body: "expiringMessage", label: "Expiring soon", when: "Within a week of the end date, or a few sessions left" },
   { key: "balance_due_message", body: "balanceDueMessage", label: "Balance due", when: "Money still owed on the current package" },
+];
+
+const REFUSE_FIELDS: { key: keyof RefuseEntry; body: string; label: string }[] = [
+  { key: "expired", body: "expired", label: "Membership has expired" },
+  { key: "unpaid", body: "unpaid", label: "Money is owed, or the card payment failed" },
+  { key: "no_package", body: "noPackage", label: "No package at all" },
 ];
 
 const voiceInputCls =
@@ -301,6 +315,9 @@ export function DeskSettingsModal({ onClose, onSaved }: { onClose: () => void; o
   const [savedVoice, setSavedVoice] = useState<VoiceSettings | null>(null);
   const [voice, setVoice] = useState<VoiceSettings | null>(null);
   const [defaults, setDefaults] = useState<VoiceSettings | null>(null);
+  // The entry rules as last saved, and as edited.
+  const [savedRefuse, setSavedRefuse] = useState<RefuseEntry | null>(null);
+  const [refuse, setRefuse] = useState<RefuseEntry | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -311,6 +328,11 @@ export function DeskSettingsModal({ onClose, onSaved }: { onClose: () => void; o
         if (!live) return;
         setSaved(res.settings.member_scan_out);
         setScanOut(res.settings.member_scan_out);
+        // Absent on a server from before the entry rules: not offered.
+        if (res.settings.refuse_entry) {
+          setSavedRefuse(res.settings.refuse_entry);
+          setRefuse(res.settings.refuse_entry);
+        }
         // Absent on a server from before the voice existed: the section is
         // then simply not offered.
         if (res.settings.voice) {
@@ -331,7 +353,8 @@ export function DeskSettingsModal({ onClose, onSaved }: { onClose: () => void; o
     !!savedVoice &&
     (voice.enabled !== savedVoice.enabled ||
       VOICE_FIELDS.some((field) => voice[field.key].trim() !== savedVoice[field.key]));
-  const changed = (saved !== null && saved !== scanOut) || voiceChanged;
+  const refuseChanged = !!refuse && !!savedRefuse && REFUSE_FIELDS.some((field) => refuse[field.key] !== savedRefuse[field.key]);
+  const changed = (saved !== null && saved !== scanOut) || voiceChanged || refuseChanged;
 
   const save = async () => {
     setSaving(true);
@@ -339,6 +362,11 @@ export function DeskSettingsModal({ onClose, onSaved }: { onClose: () => void; o
     try {
       const body: Record<string, unknown> = {};
       if (saved !== scanOut) body.memberScanOut = scanOut;
+      if (refuse && refuseChanged) {
+        const rules: Record<string, boolean> = {};
+        for (const field of REFUSE_FIELDS) rules[field.body] = refuse[field.key];
+        body.refuseEntry = rules;
+      }
       if (voice && voiceChanged) {
         const sent: Record<string, unknown> = { enabled: voice.enabled };
         for (const field of VOICE_FIELDS) sent[field.body] = voice[field.key].trim();
@@ -366,6 +394,26 @@ export function DeskSettingsModal({ onClose, onSaved }: { onClose: () => void; o
               : "Members only scan in. Every scan is a new visit, and the one before it is closed without a duration, so visits are counted correctly when nobody scans on the way out."}{" "}
             Staff always scan in and out.
           </p>
+
+          {refuse && (
+            <div className="space-y-3 border-t border-neutral-200 pt-4">
+              <p className="text-xs font-semibold text-neutral-700">Refuse entry when…</p>
+              {REFUSE_FIELDS.map((field) => (
+                <Toggle
+                  key={field.key}
+                  label={field.label}
+                  checked={refuse[field.key]}
+                  onChange={(on) => setRefuse({ ...refuse, [field.key]: on })}
+                />
+              ))}
+              <p className="text-[13px] text-neutral-600">
+                {REFUSE_FIELDS.some((field) => refuse[field.key])
+                  ? "These members are turned away: the desk and the kiosk show “Entry refused” in red with the reason, play the problem sound, and no visit is recorded. Anyone already inside can still scan out."
+                  : "Nobody is turned away. Members with a problem are checked in and the desk is shown a red warning, as now."}{" "}
+                When the desk PC is offline it cannot check payments, so it lets members in and the refusal shows once it reconnects.
+              </p>
+            </div>
+          )}
 
           {voice && (
             <div className="space-y-3 border-t border-neutral-200 pt-4">

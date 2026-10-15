@@ -27,6 +27,11 @@ const SCAN_COOLDOWN_MS = 4000;
 // on one unlock is longer; this is what keeps it from being left open.
 const STAFF_IDLE_MS = 60 * 1000;
 const STAFF_UNLOCK_REQUIRED = "STAFF_UNLOCK_REQUIRED";
+// A punch that got no answer may still have been recorded. The same person
+// trying again inside this window goes out under the same request_id, so the
+// server answers with the punch it already has instead of taking the retry
+// for a check-out (punchService.repeatedPunch in the backend).
+const PUNCH_REPEAT_MS = 2 * 60 * 1000;
 // How often the kiosk asks the server "are you there": every half minute
 // while all is well, so a dropped connection is noticed before the next
 // member walks up, and every few seconds while it is down, so it comes back
@@ -41,7 +46,9 @@ interface ReceiptRow { caption: string; value: string }
 // Null for staff and for a repeat scan.
 interface PunchAlert { level: "ok" | "warning" | "problem"; speech: string | null }
 interface Receipt {
-  action: "check_in" | "check_out";
+  // "refused": the gym's entry rules turned this member away; nothing was recorded.
+  action: "check_in" | "check_out" | "refused";
+  refused?: boolean;
   person_type: string;
   person_name: string;
   person_code: string;
@@ -69,7 +76,17 @@ function readToken(): string | null {
   }
 }
 
-type DeskAnswer<T> = T & { success: boolean; message?: string; code?: string; http_status?: number; offline?: boolean };
+type DeskAnswer<T> = T & { success: boolean; message?: string; code?: string; http_status?: number; offline?: boolean; refused?: boolean };
+
+// An id for one punch attempt: 8-100 letters, digits, hyphens or underscores.
+function newRequestId(): string {
+  try {
+    if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  } catch {
+    /* not a secure context: fall through */
+  }
+  return `k${Date.now().toString(36)}${Math.random().toString(36).slice(2, 12)}`;
+}
 
 // Never throws. A request that got no answer -- the network is down, or the
 // proxy in front of the API answered for it (502/503/504) -- comes back as
@@ -188,6 +205,8 @@ export default function KioskPage() {
   const lastScanRef = useRef<{ text: string; at: number }>({ text: "", at: 0 });
   const receiptTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const speechTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The last punch the server never answered: who it was for and its id.
+  const unansweredRef = useRef<{ who: string; id: string; since: number } | null>(null);
 
   // The server cannot be reached. While this is set nothing the kiosk is
   // shown gets recorded, so the screen says so in red until it is back.
@@ -335,7 +354,20 @@ export default function KioskPage() {
   const punch = useCallback(
     async (body: Record<string, unknown>) => {
       if (!token) return;
-      const res = await desk<{ detail: Receipt | null }>("punch", body, token);
+      // Whose punch this is, as the kiosk knows it: the scanned code, the
+      // typed number or the person picked. A retry for the same one inside
+      // the window reuses the unanswered punch's id; anything else is new.
+      const who = JSON.stringify([body.qr || "", body.code || "", body.person_id || ""]);
+      const last = unansweredRef.current;
+      const requestId = last && last.who === who && Date.now() - last.since < PUNCH_REPEAT_MS ? last.id : newRequestId();
+      const res = await desk<{ detail: Receipt | null }>("punch", { ...body, request_id: requestId }, token);
+      // No word on whether it was recorded: nothing came back, or the server
+      // itself failed. The window runs from the first unanswered attempt.
+      if (res.offline || (res.http_status ?? 0) >= 500) {
+        if (!(last && last.id === requestId)) unansweredRef.current = { who, id: requestId, since: Date.now() };
+      } else {
+        unansweredRef.current = null;
+      }
       if (res.offline) {
         // Said out loud and in red: the person at the door must not walk in
         // believing they were checked in. What they typed is kept, to send
@@ -360,7 +392,14 @@ export default function KioskPage() {
         showReceipt(null, { tone: "bad", text: "Staff unlock expired. Unlock again to check someone in by name." });
         return;
       }
-      if (res.success && res.detail) {
+      if (res.refused && res.detail) {
+        // Turned away under the gym's entry rules: nothing was recorded. Red,
+        // the problem tune, and the gym's words if it has any for this.
+        beep("bad");
+        const said = res.detail.alert?.speech;
+        if (said) speechTimer.current = setTimeout(() => speak(said), TONE_MS);
+        showReceipt(res.detail, { tone: "bad", text: res.message || "Entry refused. Please see the front desk." });
+      } else if (res.success && res.detail) {
         // A member's punch comes with the server's alert; a staff punch (or an
         // older server) is judged from the status here, as it always was.
         const alert = res.detail.alert;
@@ -724,7 +763,7 @@ export default function KioskPage() {
             {flash && <div className={`mb-4 rounded-lg px-4 py-2 text-sm font-semibold text-white ${flashCls}`}>{flash.text}</div>}
             {receipt ? (
               <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-500">{receipt.action === "check_in" ? "Checked in" : "Checked out"}</p>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-500">{receipt.action === "refused" ? "Entry refused" : receipt.action === "check_in" ? "Checked in" : "Checked out"}</p>
                 <h3 className="mt-1 text-3xl font-bold text-white">{receipt.person_name}</h3>
                 <p className="text-sm text-neutral-400">
                   {receipt.person_code} · {receipt.person_meta}
