@@ -159,6 +159,8 @@ interface ExpenseRow {
   paid_label: string | null;
   status: string;
   payment_method: string;
+  /** "JazzCash", "Bank transfer": how the API names the method. */
+  payment_method_label?: string;
   vendor: string;
   reference_no: string;
   notes: string;
@@ -177,6 +179,8 @@ interface ExpensesResponse {
   /** The gym's archived heads: still on old rows, so still in the filter. */
   archived_categories?: { key: string; label: string }[];
   methods: string[];
+  /** The same methods with the names to show ("JazzCash", "Bank transfer"). */
+  method_options?: { value: string; label: string }[];
   summary: {
     paid: Totals;
     pending: Totals;
@@ -269,6 +273,17 @@ function headFormOptions(active: { key: string; label: string }[] | undefined, a
   const options = (active || []).map((entry) => ({ value: entry.key, label: entry.label }));
   const kept = (archived || []).find((entry) => entry.key === current);
   if (kept) options.push({ value: kept.key, label: `${kept.label} (archived)` });
+  return options;
+}
+
+// How an expense can be paid, named as the API names them (JazzCash,
+// Easypaisa, Bank transfer...). An older row's retired method ("online") is
+// kept on the list while that row is being edited, so saving it changes nothing.
+function expenseMethodOptions(data: ExpensesResponse | null, current: string) {
+  const options = data?.method_options?.length
+    ? [...data.method_options]
+    : (data?.methods || ["cash"]).map((method) => ({ value: method, label: method.replace(/_/g, " ") }));
+  if (current && !options.some((option) => option.value === current)) options.push({ value: current, label: current.replace(/_/g, " ") });
   return options;
 }
 
@@ -588,7 +603,8 @@ function AccountsAdminPageInner() {
     try {
       const body = {
         ...expenseDraft,
-        amount: Number(expenseDraft.amount),
+        // As typed: the API reads "1,20,000" or "Rs 5,000" as a package price is read.
+        amount: expenseDraft.amount.trim(),
         recurring: { isRecurring: expenseDraft.isRecurring, cycle: expenseDraft.cycle },
       };
       const res = editingExpense
@@ -732,7 +748,7 @@ function AccountsAdminPageInner() {
       header = ["Reference", "Date", "Title", "Category", "Amount", "Currency", "Status", "Method", "Vendor"];
       lines = expenses.expenses.map((row) => [
         row.reference, row.incurred_label || "", row.title, row.category_label, String(row.amount),
-        row.currency, row.status, row.payment_method, row.vendor,
+        row.currency, row.status, row.payment_method_label || row.payment_method, row.vendor,
       ]);
     } else if (tab === "assets" && assets) {
       header = ["Tag", "Name", "Category", "Qty", "Cost", "Book value", "Currency", "Condition", "Status", "Location", "Bought", "Invoice", "Warranty until", "Next service"];
@@ -1056,7 +1072,7 @@ function AccountsAdminPageInner() {
                 />
               </div>
             </div>
-            <TextField label="Amount" type="number" value={expenseDraft.amount} onChange={(v) => setExpenseDraft({ ...expenseDraft, amount: v })} required />
+            <TextField label="Amount" value={expenseDraft.amount} onChange={(v) => setExpenseDraft({ ...expenseDraft, amount: v })} placeholder="e.g. 1,20,000" required />
             <TextField label="Currency" value={expenseDraft.currency} onChange={(v) => setExpenseDraft({ ...expenseDraft, currency: v })} />
             <TextField label="Date incurred" type="date" value={expenseDraft.incurredOn} onChange={(v) => setExpenseDraft({ ...expenseDraft, incurredOn: v })} />
             <div>
@@ -1081,9 +1097,9 @@ function AccountsAdminPageInner() {
                   ariaLabel="Payment method"
                   value={expenseDraft.paymentMethod}
                   onChange={(v) => setExpenseDraft({ ...expenseDraft, paymentMethod: v })}
-                  options={(expenses?.methods || ["cash"]).map((method) => ({
-                    value: method,
-                    label: method.replace(/_/g, " "),
+                  options={expenseMethodOptions(expenses, expenseDraft.paymentMethod).map((option) => ({
+                    value: option.value,
+                    label: option.label,
                   }))}
                 />
               </div>

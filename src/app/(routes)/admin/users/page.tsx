@@ -84,6 +84,18 @@ function isMember(user: User) {
   return (user.role || "user") === "user" && !user.employment?.isStaff;
 }
 
+// A phone number's own digits, without Pakistan's code (92) or the leading 0,
+// as the API compares them (services/phoneMatch.js): "0301-1234567",
+// "+92 301 1234567" and "03011234567" are all "3011234567".
+function phoneCore(raw: string): string {
+  const text = raw.trim();
+  let digits = text.replace(/\D/g, "");
+  const international = /^(\+|00)/.test(text);
+  if (international && digits.startsWith("00")) digits = digits.slice(2);
+  if ((international || digits.length >= 12) && digits.startsWith("92")) digits = digits.slice(2);
+  return digits.replace(/^0+/, "");
+}
+
 // Who a row is, in words: a member may have no email, so the name comes first.
 function displayName(user: Pick<User, "firstName" | "lastName" | "email" | "username">) {
   return [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email || user.username || "this member";
@@ -544,6 +556,9 @@ function UsersAdminPageInner() {
 
   const allTags = Array.from(new Set(list.flatMap((u) => u.tags || []))).sort();
   const q = query.trim().toLowerCase();
+  // A phone number is found however either side was typed: "+92 301…",
+  // "0301-…" and "0301…" are the same number.
+  const phoneQuery = /^[\d\s+().-]+$/.test(q) && q.replace(/\D/g, "").length >= 4 ? phoneCore(q) : "";
   const visible = list.filter((u) => {
     if (tagFilter && !(u.tags || []).includes(tagFilter)) return false;
     if (view === "members" && !isMember(u)) return false;
@@ -551,6 +566,7 @@ function UsersAdminPageInner() {
     if (activeFilter === "active" && u.isActive === false) return false;
     if (activeFilter === "inactive" && u.isActive !== false) return false;
     if (!q) return true;
+    if (phoneQuery && u.phone && phoneCore(u.phone).includes(phoneQuery)) return true;
     return `${u.firstName || ""} ${u.lastName || ""} ${u.email || ""} ${u.username || ""} ${u.phone || ""} ${u.memberCode || ""}`.toLowerCase().includes(q);
   });
   const pages = Math.max(1, Math.ceil(visible.length / PAGE_SIZE));
@@ -608,7 +624,17 @@ function UsersAdminPageInner() {
         }
       />
       <UsersImportModal open={importOpen} onClose={() => setImportOpen(false)} onImported={load} />
-      <AddMemberModal open={addOpen} onClose={() => setAddOpen(false)} onRegistered={registered} canSell={canAssign} />
+      <AddMemberModal
+        open={addOpen}
+        onClose={() => setAddOpen(false)}
+        onRegistered={registered}
+        canSell={canAssign}
+        // "Already registered": the desk opens the member on file instead.
+        onOpenMember={(id) => {
+          setAddOpen(false);
+          setProfileId(id);
+        }}
+      />
 
       {notice && (
         <div

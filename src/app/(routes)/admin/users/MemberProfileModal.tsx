@@ -106,10 +106,12 @@ export default function MemberProfileModal({ userId, onClose, onSaved }: { userI
     setSaving(true);
     setNotice(null);
     try {
-      await apiJson(`${API_BASE}/admin/users/${profile.id}/profile`, "PUT", {
+      const res = await apiJson<{ message?: string; data?: { email?: string | null } }>(`${API_BASE}/admin/users/${profile.id}/profile`, "PUT", {
         firstName: profile.firstName,
         lastName: profile.lastName,
         phone: profile.phone,
+        // Empty removes it; the API refuses one already on another account.
+        email: (profile.email || "").trim(),
         address: profile.address ?? "",
         dateOfBirth: profile.dateOfBirth || null,
         gender: profile.gender,
@@ -122,7 +124,10 @@ export default function MemberProfileModal({ userId, onClose, onSaved }: { userI
         medical: { conditions: profile.medical.conditions, medications: profile.medical.medications, injuries: profile.medical.injuries },
         medicalNotes: profile.medicalNotes,
       });
-      setNotice({ tone: "ok", text: "Profile saved." });
+      // The API says what it saved (an email change included), so that is what is shown.
+      setNotice({ tone: "ok", text: res.message || "Profile saved." });
+      // As stored: lowercased and trimmed, or gone.
+      if (res.data && "email" in res.data) set({ email: res.data.email || null });
       onSaved?.();
     } catch (e) {
       setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not save" });
@@ -247,6 +252,7 @@ export default function MemberProfileModal({ userId, onClose, onSaved }: { userI
               <TextField label="First name" value={profile.firstName} onChange={(v) => set({ firstName: v })} />
               <TextField label="Last name" value={profile.lastName} onChange={(v) => set({ lastName: v })} />
               <TextField label="Phone" value={profile.phone} onChange={(v) => set({ phone: v })} />
+              <TextField label="Email" type="email" value={profile.email || ""} onChange={(v) => set({ email: v })} placeholder="Leave empty if they have none" />
               <TextField label="Date of birth" type="date" value={dateInput(profile.dateOfBirth)} onChange={(v) => set({ dateOfBirth: v })} />
               <SelectField label="Gender" value={profile.gender} onChange={(v) => set({ gender: v })} options={[{ value: "male", label: "Male" }, { value: "female", label: "Female" }, { value: "other", label: "Other" }]} />
               <TextField label="How they found us" value={profile.source} onChange={(v) => set({ source: v })} placeholder="Instagram, referral, walk-in…" />

@@ -14,7 +14,7 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { Modal, PrimaryButton, SecondaryButton, SelectField, TextArea, TextField, Toggle, UpgradePlanLink, useRequestId } from "../_shared/ui";
-import { API_BASE, GYMFOLIO_API, apiGet, apiJson, isPlanLimitError } from "../_shared/api";
+import { API_BASE, GYMFOLIO_API, ApiError, apiGet, apiJson, isPlanLimitError } from "../_shared/api";
 import { EMPTY_RECEIPT_PROFILE, loadReceiptProfile, printReceipt, type ReceiptProfile, type ThermalReceiptProps } from "@/components/receipts";
 import { CopyButton, CredentialsChoice, MIN_PASSWORD_LENGTH, type CredentialMode } from "./PasswordDialogs";
 import { DESK_METHOD_OPTIONS, dateKey, methodLabel, money, readAmount, shortDate } from "./membershipDesk";
@@ -94,6 +94,31 @@ const EMPTY_MEMBER = {
   address: "",
   staffNotes: "",
 };
+
+// Someone already on file with the phone or email typed (the API's 409
+// POSSIBLE_DUPLICATE or EMAIL_IN_USE): who, and whether the desk may
+// register this person anyway -- a family can share a phone, never an email.
+interface DuplicateMatch {
+  id: string;
+  name: string;
+  memberCode: string | null;
+  phone: string;
+  email: string;
+  isActive?: boolean;
+  isMember?: boolean;
+}
+
+interface DuplicateWarning {
+  message: string;
+  matches: DuplicateMatch[];
+  canRegisterAnyway: boolean;
+}
+
+function duplicateOf(e: unknown): DuplicateWarning | null {
+  if (!(e instanceof ApiError) || (e.code !== "POSSIBLE_DUPLICATE" && e.code !== "EMAIL_IN_USE")) return null;
+  const matches = Array.isArray(e.details?.matches) ? (e.details.matches as DuplicateMatch[]) : [];
+  return { message: e.message, matches, canRegisterAnyway: e.details?.canRegisterAnyway === true };
+}
 
 type StartMode = "today" | "days" | "date";
 type AdmissionMode = "charge" | "waive" | "amount";
@@ -287,6 +312,7 @@ export default function AddMemberModal({
   onClose,
   onRegistered,
   canSell,
+  onOpenMember,
 }: {
   open: boolean;
   onClose: () => void;
@@ -294,6 +320,8 @@ export default function AddMemberModal({
   onRegistered: (result: RegisterResult) => void;
   /** package-orders · manage: without it the member is registered alone. */
   canSell: boolean;
+  /** Opens a member already on file, from the "already registered" warning. */
+  onOpenMember?: (id: string) => void;
 }) {
   const [member, setMember] = useState(EMPTY_MEMBER);
   const [credentials, setCredentials] = useState<CredentialMode>("show");
@@ -306,6 +334,7 @@ export default function AddMemberModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [limitHit, setLimitHit] = useState(false);
+  const [duplicate, setDuplicate] = useState<DuplicateWarning | null>(null);
   const [done, setDone] = useState<RegisterResult | null>(null);
   const [printing, setPrinting] = useState(false);
   // The sale carries this attempt's id, as every sale at the desk does.
@@ -327,6 +356,7 @@ export default function AddMemberModal({
     setSale(EMPTY_SALE);
     setError(null);
     setLimitHit(false);
+    setDuplicate(null);
     setDone(null);
     if (!canSell) return;
     // The full list with this account's Packages tab, else what is on sale.
@@ -359,16 +389,20 @@ export default function AddMemberModal({
     setSaleField({ trainerId, ...(trainerId ? commissionDefaults(t) : { commissionType: "percent", commissionValue: "", trainerFee: "" }) });
   };
 
-  const submit = async () => {
+  // `registerAnyway`: the desk has seen who is already on that phone and
+  // says this is somebody else.
+  const submit = async (registerAnyway = false) => {
     const problem = problemOf({ member, credentials, password, selling, sale, pkg });
     if (problem) {
       setError(problem);
       setLimitHit(false);
+      setDuplicate(null);
       return;
     }
     setSaving(true);
     setError(null);
     setLimitHit(false);
+    setDuplicate(null);
     const withTrainer = !!sale.trainerId;
     try {
       // Amounts go as typed: the API reads "5,000" as readily as 5000.
@@ -376,6 +410,7 @@ export default function AddMemberModal({
         ...member,
         credentials,
         ...(credentials === "set" ? { password } : {}),
+        ...(registerAnyway ? { confirmDuplicate: true } : {}),
         membership: selling
           ? {
               packageId: sale.packageId,
@@ -405,8 +440,13 @@ export default function AddMemberModal({
       setDone(res);
       onRegistered(res);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not register the member.");
-      setLimitHit(isPlanLimitError(e));
+      const warning = duplicateOf(e);
+      if (warning) {
+        setDuplicate(warning);
+      } else {
+        setError(e instanceof Error ? e.message : "Could not register the member.");
+        setLimitHit(isPlanLimitError(e));
+      }
     } finally {
       setSaving(false);
     }
@@ -622,9 +662,41 @@ export default function AddMemberModal({
             </p>
           )}
 
+          {duplicate && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              <p className="font-semibold">{duplicate.canRegisterAnyway ? "Already registered?" : "This email is already in use"}</p>
+              <p className="mt-0.5">{duplicate.message}</p>
+              <ul className="mt-2 space-y-1.5">
+                {duplicate.matches.map((m) => (
+                  <li key={m.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-white/70 px-3 py-2">
+                    <span>
+                      <span className="font-medium">{m.name}</span>
+                      {m.memberCode ? <span className="text-amber-800"> · {m.memberCode}</span> : null}
+                      <span className="text-amber-800"> · {[m.phone, m.email].filter(Boolean).join(" · ") || "no contact details"}</span>
+                      {m.isActive === false ? <span className="text-amber-800"> · disabled</span> : null}
+                    </span>
+                    {onOpenMember && (
+                      <SecondaryButton onClick={() => onOpenMember(m.id)} disabled={saving}>Open existing member</SecondaryButton>
+                    )}
+                  </li>
+                ))}
+              </ul>
+              {duplicate.canRegisterAnyway ? (
+                <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
+                  <span className="text-xs text-amber-800">Someone else on the same phone (a family member)?</span>
+                  <PrimaryButton onClick={() => submit(true)} disabled={saving}>
+                    {saving ? "Saving…" : "Register anyway"}
+                  </PrimaryButton>
+                </div>
+              ) : (
+                <p className="mt-2 text-xs text-amber-800">Each account needs its own email address: leave it empty or use another one to register someone new.</p>
+              )}
+            </div>
+          )}
+
           <div className="flex justify-end gap-2">
             <SecondaryButton onClick={onClose} disabled={saving}>Cancel</SecondaryButton>
-            <PrimaryButton onClick={submit} disabled={saving}>
+            <PrimaryButton onClick={() => submit()} disabled={saving}>
               {saving ? "Saving…" : canSell && selling ? `Register ${who || "member"} & take payment` : `Register ${who || "member"}`}
             </PrimaryButton>
           </div>
