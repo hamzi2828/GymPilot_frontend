@@ -1,9 +1,9 @@
 "use client";
 import React, { useState } from "react";
 import Image from "next/image";
-import Link from "next/link";
 import { GymClass, gymClassService } from "../../main/services/gymClassService";
 import { useSiteSettings } from "@/components/ThemeProvider";
+import ClassSessionsSection from "./ClassSessionsSection";
 
 interface GymClassDetailSectionProps {
   gymClass: GymClass;
@@ -211,6 +211,9 @@ const GymClassDetailSection: React.FC<GymClassDetailSectionProps> = ({ gymClass 
                 )}
               </div>
             </article>
+
+            {/* Upcoming sessions -- this class's timetable, booked here. */}
+            <ClassSessionsSection classId={gymClass._id} />
           </div>
 
           {/* Right Sidebar */}
@@ -219,10 +222,11 @@ const GymClassDetailSection: React.FC<GymClassDetailSectionProps> = ({ gymClass 
             role="complementary"
             aria-label="Gym information sidebar"
           >
-            {/* Book Card -- the booking flow is the timetable, filtered to
-                this class. Signing in happens there when needed. */}
+            {/* Book Card -- a shortcut to this class's sessions, listed
+                under the description. On a phone they are already next on
+                the page, so the card is for wide screens only. */}
             <section
-              className="info-card rounded-3xl border border-white border-opacity-30 p-6 w-full"
+              className="info-card hidden lg:block rounded-3xl border border-white border-opacity-30 p-6 w-full"
               aria-labelledby="book-class-title"
             >
               <h3
@@ -232,14 +236,14 @@ const GymClassDetailSection: React.FC<GymClassDetailSectionProps> = ({ gymClass 
                 Book this class
               </h3>
               <p className="poppins-regular text-sm leading-relaxed text-white/80 mb-5">
-                Pick a session on the timetable and reserve your place.
+                Pick one of the upcoming sessions and reserve your place.
               </p>
-              <Link
-                href={`/timetable?class=${gymClass._id}`}
+              <a
+                href="#sessions"
                 className="block w-full rounded-lg bg-white px-4 py-3 text-center text-sm font-bold text-black hover:bg-gray-100 transition-colors"
               >
                 See sessions &amp; book
-              </Link>
+              </a>
             </section>
 
             {/* Opening Hours Card -- the gym's hours from Settings. These were
@@ -293,78 +297,6 @@ const GymClassDetailSection: React.FC<GymClassDetailSectionProps> = ({ gymClass 
             )}
           </aside>
         </div>
-
-        {/* Class Schedule Table */}
-        {gymClass.schedule && gymClass.schedule.length > 0 && (
-          <section className="py-8 md:py-16">
-            <div className="bg-black rounded-3xl border border-white border-opacity-20 p-6 md:p-12 lg:p-16 backdrop-blur-xl hover:border-opacity-40 transition-all duration-300">
-              <div className="flex flex-col lg:flex-row gap-8 lg:gap-16 items-start justify-center">
-                {/* Day Column */}
-                <div className="flex flex-col gap-2 flex-1">
-                  <div className="flex flex-col gap-5 items-start justify-start w-full">
-                    <header className="flex flex-col gap-5 items-start justify-start w-full">
-                      <h3 className="montserrat-bold text-2xl lg:text-3xl leading-tight tracking-tight gym-green">
-                        Day
-                      </h3>
-                    </header>
-
-                    <div className="flex flex-col gap-6 items-start justify-start w-full">
-                      {gymClass.schedule.map((schedule, index) => (
-                        <div key={index} className="flex flex-col gap-4 items-start justify-start w-full">
-                          <div className="poppins-medium text-sm leading-6 text-white w-full hover:text-green-100 transition-colors duration-200 cursor-pointer hover:bg-white hover:bg-opacity-5 p-2 rounded">
-                            {schedule.day}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Time Column */}
-                <div className="flex flex-col gap-2 flex-1">
-                  <div className="flex flex-col gap-5 items-start justify-start w-full">
-                    <header className="flex flex-col gap-5 items-start justify-start w-full">
-                      <h3 className="montserrat-bold text-2xl lg:text-3xl leading-tight tracking-tight gym-green">
-                        Time
-                      </h3>
-                    </header>
-
-                    <div className="flex flex-col gap-6 items-start justify-start w-full">
-                      {gymClass.schedule.map((schedule, index) => (
-                        <div key={index} className="flex flex-col gap-4 items-start justify-start w-full">
-                          <div className="poppins-medium text-sm leading-6 text-white w-full hover:text-green-100 transition-colors duration-200 cursor-pointer hover:bg-white hover:bg-opacity-5 p-2 rounded">
-                            {schedule.startTime} to {schedule.endTime}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Instructor Column */}
-                <div className="flex flex-col gap-2 flex-1">
-                  <div className="flex flex-col gap-5 items-start justify-start w-full">
-                    <header className="flex flex-col gap-5 items-start justify-start w-full">
-                      <h3 className="montserrat-bold text-2xl lg:text-3xl leading-tight tracking-tight gym-green">
-                        Instructor
-                      </h3>
-                    </header>
-
-                    <div className="flex flex-col gap-6 items-start justify-start w-full">
-                      {gymClass.schedule.map((schedule, index) => (
-                        <div key={index} className="flex flex-col gap-4 items-start justify-start w-full">
-                          <div className="poppins-medium text-sm leading-6 text-white w-full hover:text-green-100 transition-colors duration-200 cursor-pointer hover:bg-white hover:bg-opacity-5 p-2 rounded">
-                            {schedule.instructorName || schedule.instructor || 'TBA'}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </section>
-        )}
       </section>
     </div>
   );

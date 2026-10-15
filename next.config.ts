@@ -63,6 +63,16 @@ const nextConfig: NextConfig = {
     return [
       { source: '/super-admin', destination: `${PLATFORM_ADMIN_URL}/super-admin`, permanent: false },
       { source: '/super-admin/:path*', destination: `${PLATFORM_ADMIN_URL}/super-admin/:path*`, permanent: false },
+      // There is no timetable page any more: a visitor picks a class and books
+      // from its own page. Old links (emails, bookmarks) land there instead.
+      // /embed/timetable, the iframe widget, is a different path and stays.
+      {
+        source: '/timetable',
+        has: [{ type: 'query', key: 'class', value: '(?<cls>[a-fA-F0-9]{24})' }],
+        destination: '/classdetail?id=:cls',
+        permanent: true,
+      },
+      { source: '/timetable', destination: '/classes', permanent: true },
     ];
   },
   images: {

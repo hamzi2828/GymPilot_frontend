@@ -109,7 +109,7 @@ export const BookingsSection: React.FC = () => {
           ))}
         </div>
         <Link
-          href="/timetable"
+          href="/classes"
           className="ml-auto text-sm font-semibold underline underline-offset-4 text-gray-700"
         >
           Book a class
@@ -146,15 +146,15 @@ export const BookingsSection: React.FC = () => {
           </p>
           <p className="mt-1 text-sm text-gray-500">
             {scope === "upcoming"
-              ? "Pick a session from the timetable to reserve your place."
+              ? "Choose a class and pick one of its upcoming sessions to reserve your place."
               : "Classes you have attended will show up here."}
           </p>
           {scope === "upcoming" && (
             <Link
-              href="/timetable"
+              href="/classes"
               className="mt-4 inline-block rounded-lg bg-gray-900 px-5 py-2.5 text-sm font-bold text-white"
             >
-              View the timetable
+              Browse classes
             </Link>
           )}
         </div>
