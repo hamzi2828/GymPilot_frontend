@@ -25,6 +25,8 @@ export interface AdminIdentity {
   job_title: string;
   /** False until the owner has completed the setup wizard. */
   setup_completed?: boolean;
+  /** May sign in to the front-desk app (Staff → "Can sign in to the attendance app"). */
+  allow_attendance_app?: boolean;
 }
 
 interface PermissionsState {

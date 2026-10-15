@@ -34,6 +34,7 @@ import {
   FiShoppingCart,
   FiArchive,
   FiCreditCard,
+  FiMonitor,
 } from "react-icons/fi";
 // Feather has no fingerprint; this is the one entry drawn from another set.
 import { MdFingerprint } from "react-icons/md";
@@ -46,6 +47,9 @@ interface MenuItem {
   // src/config/permissions.js on the backend -- the menu and the route guard
   // must be reading the same list or one will offer what the other refuses.
   tab: string;
+  // Also shown to an account that may use the front-desk app, whatever its
+  // tabs: the Desk app page is where it gets a code to link a desk.
+  forDeskAppUsers?: boolean;
 }
 
 interface MenuSection {
@@ -99,6 +103,8 @@ const sections: MenuSection[] = [
       // view, removing one needs it at manage (checked on the page and by
       // the API).
       { name: "Fingerprints", path: "/admin/fingerprints", icon: <MdFingerprint className={iconCls} />, tab: "attendance" },
+      // Download the Windows desk app and link a desk with a one-time code.
+      { name: "Desk app", path: "/admin/desk-app", icon: <FiMonitor className={iconCls} />, tab: "attendance", forDeskAppUsers: true },
       { name: "Accounts", path: "/admin/accounts", icon: <FiDollarSign className={iconCls} />, tab: "accounts" },
       { name: "Staff", path: "/admin/staff", icon: <FiBriefcase className={iconCls} />, tab: "staff" },
       { name: "Lockers", path: "/admin/lockers", icon: <FiArchive className={iconCls} />, tab: "lockers" },
@@ -143,7 +149,10 @@ export default function AdminSidebar({ isOpen, onClose }: AdminSidebarProps) {
   // A section disappears entirely once every item in it is out of reach, so
   // the menu never shows an empty heading.
   const visibleSections = sections
-    .map((section) => ({ ...section, items: section.items.filter((item) => can(item.tab)) }))
+    .map((section) => ({
+      ...section,
+      items: section.items.filter((item) => can(item.tab) || (item.forDeskAppUsers && !!me?.allow_attendance_app)),
+    }))
     .filter((section) => section.items.length > 0);
 
   return (
