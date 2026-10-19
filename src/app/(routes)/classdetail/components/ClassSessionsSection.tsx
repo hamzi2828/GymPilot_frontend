@@ -13,7 +13,7 @@ import {
   sessionKey,
   useSessionBooking,
 } from "../../classes/components/SessionBooking";
-import { localDateKey } from "@/helper/date";
+import { useGymToday } from "@/components/ThemeProvider";
 import { useLanguage } from "@/i18n/LanguageProvider";
 
 // Two weeks ahead. The server clamps this to the gym's booking horizon.
@@ -43,6 +43,10 @@ export default function ClassSessionsSection({ classId }: { classId: string }) {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const { t } = useLanguage();
+  // "Today" is the gym's day (its timezone in the public settings), which
+  // the server files sessions under: a visitor in another zone late in the
+  // evening used to get a list opening on the wrong day.
+  const gymToday = useGymToday();
 
   // Only the latest request may fill the list (a quick book-then-cancel
   // reloads twice).
@@ -50,7 +54,7 @@ export default function ClassSessionsSection({ classId }: { classId: string }) {
 
   const load = useCallback(async () => {
     const request = ++latestRequest.current;
-    const from = localDateKey();
+    const from = gymToday();
     try {
       // The timetable filtered to this class: it also carries the gym's
       // booking rules, which say when a cancellation is a late one.
@@ -65,11 +69,16 @@ export default function ClassSessionsSection({ classId }: { classId: string }) {
     } finally {
       if (request === latestRequest.current) setLoading(false);
     }
-  }, [classId]);
+  }, [classId, gymToday]);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  const retry = () => {
+    setLoading(true);
+    load();
+  };
 
   const booking = useSessionBooking({ reload: load, backTo: `/classdetail?id=${classId}`, rules });
 
@@ -85,7 +94,7 @@ export default function ClassSessionsSection({ classId }: { classId: string }) {
       .sort(byDateThenTime);
   }, [sessions]);
 
-  const today = localDateKey();
+  const today = gymToday();
 
   return (
     <section id="sessions" aria-labelledby="sessions-title" className="scroll-mt-28 space-y-4 md:px-6">
@@ -108,7 +117,16 @@ export default function ClassSessionsSection({ classId }: { classId: string }) {
       {loading ? (
         <p className="text-sm text-neutral-500">Loading sessions…</p>
       ) : loadError && upcoming.length === 0 ? (
-        <p className="text-sm text-neutral-500">Sessions could not be loaded right now. Please try again later.</p>
+        <div role="alert" className="flex flex-wrap items-center gap-3">
+          <p className="text-sm text-neutral-500">Sessions could not be loaded right now.</p>
+          <button
+            type="button"
+            onClick={retry}
+            className="rounded-lg border border-neutral-300 px-4 py-2 text-sm font-semibold text-neutral-800 hover:bg-neutral-50"
+          >
+            Try again
+          </button>
+        </div>
       ) : upcoming.length === 0 ? (
         <p className="text-sm text-neutral-500">No sessions scheduled yet.</p>
       ) : (
