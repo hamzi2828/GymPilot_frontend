@@ -70,6 +70,8 @@ interface LinkCode {
   expires_at: string;
   minutes: number;
   granted_app_access: boolean;
+  /** The server's clock when it made the code, if it says. */
+  server_time?: string;
 }
 
 function formatWhen(value: string | null): string {
@@ -77,6 +79,20 @@ function formatWhen(value: string | null): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "—";
   return date.toLocaleString(undefined, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
+}
+
+// When a code runs out, by this browser's clock. expires_at is on the
+// server's clock, and counted against a desk PC's clock that is a few minutes
+// out it ran out early or late. So the countdown runs from the server's own
+// "now" when it sends one (its expiry less its now, from when the answer
+// arrived), and otherwise for the minutes a code lasts from when it was asked
+// for -- which is never later than the server's expiry.
+function deadlineFor(code: LinkCode, askedAt: number, arrivedAt: number, fallbackMinutes?: number): number {
+  const expires = Date.parse(code.expires_at);
+  const serverNow = code.server_time ? Date.parse(code.server_time) : NaN;
+  if (Number.isFinite(expires) && Number.isFinite(serverNow)) return arrivedAt + (expires - serverNow);
+  const minutes = Number(code.minutes) || Number(fallbackMinutes) || 15;
+  return askedAt + minutes * 60_000;
 }
 
 function countdown(ms: number): string {
@@ -94,7 +110,8 @@ export default function DeskAppPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [code, setCode] = useState<LinkCode | null>(null);
+  // `deadline`: when it runs out by this browser's clock (deadlineFor).
+  const [code, setCode] = useState<(LinkCode & { deadline: number }) | null>(null);
   const makeAction = useAsyncAction();
   const making = makeAction.busy;
   const [codeError, setCodeError] = useState<string | null>(null);
@@ -128,7 +145,7 @@ export default function DeskAppPage() {
     load();
   }, [load]);
 
-  const expiresAt = code ? new Date(code.expires_at).getTime() : 0;
+  const expiresAt = code ? code.deadline : 0;
   const expired = !!code && now >= expiresAt;
   const watching = !!code && !expired && !linkedDevice;
 
@@ -156,14 +173,17 @@ export default function DeskAppPage() {
     setCopied(false);
     setLinkedDevice(null);
     try {
-      const res = await apiJson<{ data: LinkCode }>(
+      const askedAt = Date.now();
+      const res = await apiJson<{ data: LinkCode; server_time?: string }>(
         `${DESK_LINK_API}/codes`,
         "POST",
         grantDeskAccess ? { grant_desk_access: true } : undefined
       );
+      const arrivedAt = Date.now();
       knownDesks.current = new Set((overview?.desks || []).map((d) => d.id));
-      setCode(res.data);
-      setNow(Date.now());
+      const made = { ...res.data, server_time: res.data.server_time || res.server_time };
+      setCode({ ...made, deadline: deadlineFor(made, askedAt, arrivedAt, overview?.code_minutes) });
+      setNow(arrivedAt);
       // The grant may just have been switched on; the page's own flags follow.
       if (res.data.granted_app_access) load(true);
       return "made" as const;
