@@ -22,6 +22,7 @@ import {
   ErrorState,
   useLatestRequest,
   useRequestId,
+  useAsyncAction,
 } from "../_shared/ui";
 import { ApiError, GYMFOLIO_API, apiBlob, apiGet, apiJson, absoluteUrl, replaceParams } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
@@ -210,7 +211,11 @@ function PackageOrdersAdminPageInner() {
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loadErr, setLoadErr] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  // Every order action goes through run() below, keyed by its notice: the
+  // button that started it spins and the others wait.
+  const acting = useAsyncAction();
+  const busy = acting.busy;
+  const invoicing = useAsyncAction();
 
   const [selected, setSelected] = useState<PackageOrder | null>(null);
   const [action, setAction] = useState<PanelAction>("");
@@ -323,8 +328,7 @@ function PackageOrdersAdminPageInner() {
     await loadPickers();
   };
 
-  const run = async (label: string, fn: () => Promise<unknown>) => {
-    setBusy(true);
+  const run = (label: string, fn: () => Promise<unknown>) => acting.run(label, async () => {
     setError(null);
     setNotice(null);
     try {
@@ -341,10 +345,8 @@ function PackageOrdersAdminPageInner() {
       // The reason stays on screen, over the order and the list read again,
       // so what is offered next is what can still be done.
       if (e instanceof ApiError && ORDER_MOVED_ON.includes(e.code || "")) await refreshAfterRefusal();
-    } finally {
-      setBusy(false);
     }
-  };
+  });
 
   const refreshAfterRefusal = async () => {
     const open = selected;
@@ -509,7 +511,7 @@ function PackageOrdersAdminPageInner() {
     });
 
   const invoiceUrl = (o: PackageOrder) => `${GYMFOLIO_API}/package-orders/${o._id}/invoice.pdf?download=1`;
-  const openInvoice = async (o: PackageOrder) => {
+  const openInvoice = (o: PackageOrder) => invoicing.run(async () => {
     try {
       const { blob } = await apiBlob(invoiceUrl(o));
       const url = URL.createObjectURL(blob);
@@ -518,7 +520,7 @@ function PackageOrdersAdminPageInner() {
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load the invoice");
     }
-  };
+  });
 
   const select = "h-9 rounded-lg border border-neutral-200 bg-white px-3 text-sm text-neutral-700";
   const isPack = (o: PackageOrder) => !!(o.sessions && o.sessions.total > 0);
@@ -664,7 +666,7 @@ function PackageOrdersAdminPageInner() {
       <Pager page={page} pages={pages} total={total} onChange={setPage} disabled={loading} />
 
       {/* ---- Assign ---- */}
-      <Modal open={assignOpen} onClose={() => setAssignOpen(false)} title="Assign Package to Member" size="lg">
+      <Modal open={assignOpen} onClose={() => setAssignOpen(false)} title="Assign Package to Member" size="lg" busy={busy}>
         <div className="space-y-4">
           <p className="text-sm text-neutral-500">Creates a membership without going through checkout — for payments taken in person or a comped package.</p>
           <MemberPicker label="Member" value={assignMember} onChange={setAssignMember} />
@@ -775,8 +777,8 @@ function PackageOrdersAdminPageInner() {
           {error && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>}
           <div className="flex justify-end gap-2 pt-2">
             <SecondaryButton onClick={() => setAssignOpen(false)}>Cancel</SecondaryButton>
-            <PrimaryButton onClick={assignPackage} disabled={busy}>
-              {busy ? "Assigning..." : "Assign Package"}
+            <PrimaryButton onClick={assignPackage} loading={acting.isBusy("Package assigned.")} disabled={busy}>
+              Assign Package
             </PrimaryButton>
           </div>
         </div>
@@ -884,7 +886,7 @@ function PackageOrdersAdminPageInner() {
                 )}
                 {manage && (
                   <div className="mt-3 flex gap-2">
-                    <PrimaryButton disabled={busy} onClick={() => run("Payment confirmed.", () => post(selected, "approve"))}>
+                    <PrimaryButton disabled={busy} loading={acting.isBusy("Payment confirmed.")} onClick={() => run("Payment confirmed.", () => post(selected, "approve"))}>
                       Confirm payment received
                     </PrimaryButton>
                     <DangerButton disabled={busy} onClick={() => setAction("reject")}>
@@ -903,7 +905,7 @@ function PackageOrdersAdminPageInner() {
                       value={draft.reason}
                       onChange={(v) => setDraft({ ...draft, reason: v })}
                     />
-                    <DangerButton disabled={busy || !String(draft.reason || "").trim()} onClick={() => run("Payment rejected.", () => post(selected, "reject", { reason: draft.reason }))}>
+                    <DangerButton disabled={busy || !String(draft.reason || "").trim()} loading={acting.isBusy("Payment rejected.")} onClick={() => run("Payment rejected.", () => post(selected, "reject", { reason: draft.reason }))}>
                       Confirm rejection
                     </DangerButton>
                   </div>
@@ -915,7 +917,7 @@ function PackageOrdersAdminPageInner() {
             {manage && (
               <div className="flex flex-wrap gap-2 border-t border-neutral-100 pt-4">
                 {selected.payment.status === "paid" && (
-                  <SecondaryButton onClick={() => openInvoice(selected)}>Invoice PDF</SecondaryButton>
+                  <SecondaryButton onClick={() => openInvoice(selected)} loading={invoicing.busy}>Invoice PDF</SecondaryButton>
                 )}
                 {selected.payment.status === "paid" && (selected.payment.balanceDue || 0) > 0 && (
                   <PrimaryButton
@@ -929,7 +931,7 @@ function PackageOrdersAdminPageInner() {
                 )}
                 {live(selected) && selected.status !== "frozen" && <SecondaryButton onClick={() => setAction("freeze")}>Freeze</SecondaryButton>}
                 {selected.status === "frozen" && (
-                  <SecondaryButton disabled={busy} onClick={() => run("Membership resumed.", () => post(selected, "unfreeze"))}>
+                  <SecondaryButton disabled={busy} loading={acting.isBusy("Membership resumed.")} onClick={() => run("Membership resumed.", () => post(selected, "unfreeze"))}>
                     Resume now
                   </SecondaryButton>
                 )}
@@ -966,12 +968,12 @@ function PackageOrdersAdminPageInner() {
                   </SecondaryButton>
                 )}
                 {live(selected) && isPack(selected) && (
-                  <SecondaryButton disabled={busy} onClick={() => run("Session used.", () => post(selected, "use-session"))}>
+                  <SecondaryButton disabled={busy} loading={acting.isBusy("Session used.")} onClick={() => run("Session used.", () => post(selected, "use-session"))}>
                     Use a session
                   </SecondaryButton>
                 )}
                 {selected.subscription?.cancelAtPeriodEnd && selected.status !== "cancelled" && (
-                  <SecondaryButton disabled={busy} onClick={() => run("Membership will renew again.", () => post(selected, "resume"))}>
+                  <SecondaryButton disabled={busy} loading={acting.isBusy("Membership will renew again.")} onClick={() => run("Membership will renew again.", () => post(selected, "resume"))}>
                     Undo cancellation
                   </SecondaryButton>
                 )}
@@ -997,8 +999,8 @@ function PackageOrdersAdminPageInner() {
                   The membership is cancelled straight away.
                 </p>
                 <div className="sm:col-span-2 flex justify-end">
-                  <DangerButton disabled={busy} onClick={() => refund(selected)}>
-                    {busy ? "Refunding…" : "Refund"}
+                  <DangerButton disabled={busy} loading={acting.isBusy("Refunded.")} onClick={() => refund(selected)}>
+                    Refund
                   </DangerButton>
                 </div>
               </div>
@@ -1023,6 +1025,7 @@ function PackageOrdersAdminPageInner() {
                 <div className="sm:col-span-2 flex justify-end">
                   <PrimaryButton
                     disabled={busy}
+                    loading={acting.isBusy("Terms updated.")}
                     onClick={() => {
                       // Only what was changed: a date sent again as it was
                       // would still be read as the whole of that day.
@@ -1035,7 +1038,7 @@ function PackageOrdersAdminPageInner() {
                       run("Terms updated.", () => apiJson<{ message: string }>(`${GYMFOLIO_API}/package-orders/${selected._id}/terms`, "PATCH", body));
                     }}
                   >
-                    {busy ? "Saving…" : "Save terms"}
+                    Save terms
                   </PrimaryButton>
                 </div>
               </div>
@@ -1071,9 +1074,10 @@ function PackageOrdersAdminPageInner() {
                 <div className="sm:col-span-2 flex justify-end">
                   <PrimaryButton
                     disabled={busy || !draft.payAmount}
+                    loading={acting.isBusy("Payment recorded.")}
                     onClick={() => run("Payment recorded.", () => postOnce(selected, "payments", { amount: draft.payAmount, method: draft.payMethod, note: draft.payNote || undefined }))}
                   >
-                    {busy ? "Recording…" : "Record payment"}
+                    Record payment
                   </PrimaryButton>
                 </div>
               </div>
@@ -1084,7 +1088,7 @@ function PackageOrdersAdminPageInner() {
                 <TextField label="Freeze for (days)" type="number" value={draft.days} onChange={(v) => setDraft({ ...draft, days: v })} />
                 <TextField label="Reason" value={draft.reason} onChange={(v) => setDraft({ ...draft, reason: v })} placeholder="Travel, injury…" />
                 <div className="sm:col-span-2 flex justify-end">
-                  <PrimaryButton disabled={busy} onClick={() => run("Membership frozen.", () => post(selected, "freeze", { days: Number(draft.days), reason: draft.reason }))}>
+                  <PrimaryButton disabled={busy} loading={acting.isBusy("Membership frozen.")} onClick={() => run("Membership frozen.", () => post(selected, "freeze", { days: Number(draft.days), reason: draft.reason }))}>
                     Freeze membership
                   </PrimaryButton>
                 </div>
@@ -1105,7 +1109,7 @@ function PackageOrdersAdminPageInner() {
                   ]}
                 />
                 <div className="sm:col-span-2 flex justify-end">
-                  <DangerButton disabled={busy} onClick={() => run("Membership cancelled.", () => post(selected, "cancel", { reason: draft.reason, immediate: draft.immediate === "yes" }))}>
+                  <DangerButton disabled={busy} loading={acting.isBusy("Membership cancelled.")} onClick={() => run("Membership cancelled.", () => post(selected, "cancel", { reason: draft.reason, immediate: draft.immediate === "yes" }))}>
                     Confirm cancellation
                   </DangerButton>
                 </div>
@@ -1141,6 +1145,7 @@ function PackageOrdersAdminPageInner() {
                 <div className="sm:col-span-2 flex items-end justify-end">
                   <PrimaryButton
                     disabled={busy}
+                    loading={acting.isBusy("Renewed.")}
                     onClick={() =>
                       run("Renewed.", () =>
                         postOnce(selected, "renew", {
@@ -1182,7 +1187,7 @@ function PackageOrdersAdminPageInner() {
                   options={DESK_METHOD_OPTIONS}
                 />
                 <div className="flex items-end justify-end">
-                  <PrimaryButton disabled={busy || !draft.packageId} onClick={() => changePackage(selected)}>
+                  <PrimaryButton disabled={busy || !draft.packageId} loading={acting.isBusy("Package changed.")} onClick={() => changePackage(selected)}>
                     Change package
                   </PrimaryButton>
                 </div>
@@ -1203,7 +1208,7 @@ function PackageOrdersAdminPageInner() {
                       options={["pending", "active", "frozen", "past_due", "expired", "cancelled", "suspended"].map((s) => ({ value: s, label: s.replace("_", " ") }))}
                     />
                   </div>
-                  <SecondaryButton disabled={busy} onClick={() => run("Status updated.", () => apiJson(`${GYMFOLIO_API}/package-orders/${selected._id}/status`, "PUT", { status: draft.status }))}>
+                  <SecondaryButton disabled={busy} loading={acting.isBusy("Status updated.")} onClick={() => run("Status updated.", () => apiJson(`${GYMFOLIO_API}/package-orders/${selected._id}/status`, "PUT", { status: draft.status }))}>
                     Set status
                   </SecondaryButton>
                 </div>

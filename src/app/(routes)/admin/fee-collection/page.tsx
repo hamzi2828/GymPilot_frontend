@@ -14,7 +14,7 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { PageHeader, Card, Badge, Spinner, useRequestId } from "../_shared/ui";
+import { PageHeader, Card, Badge, Spinner, BusyLabel, useRequestId, useAsyncAction, untilPageLeaves } from "../_shared/ui";
 import { API_BASE, GYMFOLIO_API, apiGet, apiJson, absoluteUrl, replaceParams } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
 import { useSiteSettings } from "@/components/ThemeProvider";
@@ -98,6 +98,9 @@ const primaryCls =
   "inline-flex items-center gap-2 h-9 px-4 text-sm font-semibold rounded-lg bg-[var(--accent)] text-[var(--on-accent)] hover:bg-[var(--accent-dark)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2";
 const secondaryCls =
   "inline-flex items-center gap-2 h-9 px-3 text-sm font-medium text-neutral-700 bg-white border border-neutral-200 rounded-lg hover:bg-neutral-50 hover:border-neutral-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400";
+// Added to a button that can be busy, as the kit's buttons have it: room for
+// the spinner, and a busy button drawn at full strength rather than faded.
+const busyCls = "relative aria-busy:disabled:opacity-100 aria-busy:disabled:cursor-wait";
 
 function Key({ k }: { k: string }) {
   return (
@@ -240,7 +243,8 @@ function FeeCollectionInner() {
   const primaryRef = useRef<HTMLButtonElement>(null);
 
   const [mode, setMode] = useState<Mode>("");
-  const [busy, setBusy] = useState(false);
+  const acting = useAsyncAction();
+  const busy = acting.busy;
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<{ message: string; receipt: DeskReceipt } | null>(null);
   const printRef = useRef<HTMLButtonElement>(null);
@@ -425,6 +429,11 @@ function FeeCollectionInner() {
     [view, canRenew, canDues, manage, m, collectableDues, packages, loadPackages, pkg, requestId]
   );
 
+  // From the card's buttons and keys: the button stays busy while a form
+  // that needs the packages first waits for them.
+  const { run: runOpen, isBusy: isOpening, busy: opening } = useAsyncAction();
+  const startMode = useCallback((next: Mode) => runOpen(next, () => openMode(next)), [runOpen, openMode]);
+
   // Once a member is on screen: open what the address asked for, or hand
   // the keyboard to the card's first action.
   useEffect(() => {
@@ -494,9 +503,8 @@ function FeeCollectionInner() {
 
   // Sends one desk action; the banner says what was recorded, read from the
   // order the API answered with.
-  const act = async (describe: (order: OrderResult) => string, send: () => Promise<{ data: OrderResult }>, receipt: (order: OrderResult) => DeskReceipt) => {
-    if (!view || busy) return;
-    setBusy(true);
+  const act = (describe: (order: OrderResult) => string, send: () => Promise<{ data: OrderResult }>, receipt: (order: OrderResult) => DeskReceipt) => acting.run(async () => {
+    if (!view) return;
     setError(null);
     try {
       const res = await send();
@@ -507,10 +515,8 @@ function FeeCollectionInner() {
       await loadView(view.member.id);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Request failed");
-    } finally {
-      setBusy(false);
     }
-  };
+  });
 
   const submitRenew = (e: React.FormEvent) => {
     e.preventDefault();
@@ -598,20 +604,31 @@ function FeeCollectionInner() {
     }
   }, [siteName]);
 
-  const print = useCallback(async () => {
+  const { run: runPrint, busy: printing } = useAsyncAction();
+  const refocusPrint = useRef(false);
+  const print = useCallback(() => runPrint(async () => {
     if (!done) return;
     try {
       const profile = await receiptProfile();
       await printReceipt({ ...profile, ...done.receipt });
       // The print frame took the focus; the desk's keys answer on the page.
-      printRef.current?.focus();
+      // The button takes it back once it is no longer busy (below): a
+      // disabled button cannot be focused.
+      refocusPrint.current = true;
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not print the receipt");
     }
-  }, [done, receiptProfile]);
+  }), [done, receiptProfile, runPrint]);
+
+  useEffect(() => {
+    if (printing || !refocusPrint.current) return;
+    refocusPrint.current = false;
+    printRef.current?.focus();
+  }, [printing]);
 
   // A card subscription's own page at Stripe, where the member changes the card.
-  const openPortal = async (orderId: string) => {
+  const portalAction = useAsyncAction();
+  const openPortal = (orderId: string) => portalAction.run(async () => {
     // Opened now, while the click still counts, and pointed at Stripe once
     // the address arrives; a window opened after the wait would be blocked.
     const tab = window.open("", "_blank");
@@ -623,12 +640,13 @@ function FeeCollectionInner() {
         tab.location.href = r.url;
       } else {
         window.location.href = r.url;
+        await untilPageLeaves();
       }
     } catch (e) {
       tab?.close();
       setError(e instanceof Error ? e.message : "Could not open the billing portal");
     }
-  };
+  });
 
   /* ---------------------------- keyboard ---------------------------- */
 
@@ -656,13 +674,13 @@ function FeeCollectionInner() {
         searchRef.current?.select();
       } else if (key === KEYS.renew && canRenew) {
         e.preventDefault();
-        void openMode("renew");
+        void startMode("renew");
       } else if (key === KEYS.dues && canDues) {
         e.preventDefault();
-        void openMode("dues");
+        void startMode("dues");
       } else if (key === KEYS.new && manage && view) {
         e.preventDefault();
-        void openMode("new");
+        void startMode("new");
       } else if (key === KEYS.print && done) {
         e.preventDefault();
         void print();
@@ -670,7 +688,7 @@ function FeeCollectionInner() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [mode, busy, canRenew, canDues, manage, view, done, openMode, print]);
+  }, [mode, busy, canRenew, canDues, manage, view, done, startMode, print]);
 
   /* ---------------------------- render ---------------------------- */
 
@@ -679,16 +697,20 @@ function FeeCollectionInner() {
 
   const actionButton = (target: Mode, label: string, key: string, enabled: boolean) => {
     const primary = target === primaryAction;
+    const starting = isOpening(target);
     return (
       <button
         ref={primary ? primaryRef : undefined}
         type="button"
-        disabled={!enabled || busy}
-        onClick={() => void openMode(target)}
-        className={primary ? primaryCls : secondaryCls}
+        disabled={!enabled || busy || opening}
+        aria-busy={starting || undefined}
+        onClick={() => void startMode(target)}
+        className={`${busyCls} ${primary ? primaryCls : secondaryCls}`}
         aria-keyshortcuts={key.toUpperCase()}
       >
-        {label} <Key k={key} />
+        <BusyLabel busy={starting} className="inline-flex items-center gap-2">
+          {label} <Key k={key} />
+        </BusyLabel>
       </button>
     );
   };
@@ -797,8 +819,10 @@ function FeeCollectionInner() {
             {(done.receipt.balanceDue || 0) > 0 ? ` · ${money(done.receipt.balanceDue, done.receipt.currency)} still due.` : " · paid in full."}
           </span>
           <span className="flex gap-2">
-            <button ref={printRef} type="button" onClick={() => void print()} className={primaryCls}>
-              Print receipt <Key k={KEYS.print} />
+            <button ref={printRef} type="button" onClick={() => void print()} disabled={printing} aria-busy={printing || undefined} className={`${busyCls} ${primaryCls}`}>
+              <BusyLabel busy={printing} className="inline-flex items-center gap-2">
+                Print receipt <Key k={KEYS.print} />
+              </BusyLabel>
             </button>
             <button
               type="button"
@@ -872,8 +896,17 @@ function FeeCollectionInner() {
               <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
                 {renewBlock}
                 {(m.autoRenews || m.cardPaymentFailed) && (
-                  <button type="button" onClick={() => void openPortal(m.orderId)} className="ml-1 font-semibold underline">
-                    Open the billing portal
+                  <button
+                    type="button"
+                    onClick={() => void openPortal(m.orderId)}
+                    disabled={portalAction.busy}
+                    aria-busy={portalAction.busy || undefined}
+                    className="relative ml-1 font-semibold underline disabled:cursor-wait"
+                  >
+                    {/* Inline, so the underline reaches the words. */}
+                    <BusyLabel busy={portalAction.busy} className="">
+                      Open the billing portal
+                    </BusyLabel>
                   </button>
                 )}
                 {awaitingPayment && (
@@ -1252,8 +1285,10 @@ function FormFooter({ busy, error, label }: { busy: boolean; error: string | nul
     <div className="space-y-3">
       {error && <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
       <div className="flex justify-end">
-        <button type="submit" disabled={busy} className={primaryCls}>
-          {busy ? "Saving…" : label} {!busy && <Key k="↵" />}
+        <button type="submit" disabled={busy} aria-busy={busy || undefined} className={`${busyCls} ${primaryCls}`}>
+          <BusyLabel busy={busy} className="inline-flex items-center gap-2">
+            {label} <Key k="↵" />
+          </BusyLabel>
         </button>
       </div>
     </div>

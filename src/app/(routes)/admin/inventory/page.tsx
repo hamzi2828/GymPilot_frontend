@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { FiPlus } from "react-icons/fi";
-import { PageHeader, PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, SelectField, Toggle, Badge, Spinner, Table, ErrorState } from "../_shared/ui";
+import { PageHeader, PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, SelectField, Toggle, Badge, Spinner, Table, ErrorState, useAsyncAction } from "../_shared/ui";
 import { API_BASE, apiGet, apiJson } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
 
@@ -65,7 +65,9 @@ export default function InventoryPage() {
   const [draft, setDraft] = useState<Draft>(emptyDraft);
   const [stockFor, setStockFor] = useState<Product | null>(null);
   const [stockDraft, setStockDraft] = useState<StockDraft>(emptyStockDraft);
-  const [saving, setSaving] = useState(false);
+  const saveAction = useAsyncAction();
+  const saving = saveAction.busy;
+  const removing = useAsyncAction();
   const [notice, setNotice] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
   // A failed load is not an empty shop, and a failed save belongs in the
   // dialog that was being filled in, not on the page behind it.
@@ -109,8 +111,7 @@ export default function InventoryPage() {
     setModalError("");
   };
 
-  const save = async () => {
-    setSaving(true);
+  const save = () => saveAction.run(async () => {
     setNotice(null);
     setModalError("");
     const body = { name: draft.name, sku: draft.sku, category: draft.category, price: Number(draft.price) || 0, cost: Number(draft.cost) || 0, lowStockAt: Number(draft.lowStockAt) || 0, trackStock: draft.trackStock, taxable: draft.taxable, isActive: draft.isActive, ...(editing ? {} : { stock: Number(draft.stock) || 0 }) };
@@ -121,14 +122,11 @@ export default function InventoryPage() {
       await load();
     } catch (e) {
       setModalError(e instanceof Error ? e.message : "Could not save");
-    } finally {
-      setSaving(false);
     }
-  };
+  });
 
-  const adjust = async () => {
+  const adjust = () => saveAction.run(async () => {
     if (!stockFor) return;
-    setSaving(true);
     setNotice(null);
     setModalError("");
     try {
@@ -139,20 +137,20 @@ export default function InventoryPage() {
       await load();
     } catch (e) {
       setModalError(e instanceof Error ? e.message : "Could not adjust stock");
-    } finally {
-      setSaving(false);
     }
-  };
+  });
 
   const remove = async (p: Product) => {
     if (!confirm(`Delete ${p.name}?`)) return;
-    try {
-      const r = await apiJson<{ message: string }>(`${POS_API}/products/${p.id}`, "DELETE");
-      setNotice({ tone: "ok", text: r.message });
-      await load();
-    } catch (e) {
-      setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not delete" });
-    }
+    await removing.run(p.id, async () => {
+      try {
+        const r = await apiJson<{ message: string }>(`${POS_API}/products/${p.id}`, "DELETE");
+        setNotice({ tone: "ok", text: r.message });
+        await load();
+      } catch (e) {
+        setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not delete" });
+      }
+    });
   };
 
   return (
@@ -203,7 +201,7 @@ export default function InventoryPage() {
                 <div key="x" className="flex flex-wrap gap-1.5">
                   <SecondaryButton onClick={() => openStock(p)}>Stock</SecondaryButton>
                   <SecondaryButton onClick={() => openEdit(p)}>Edit</SecondaryButton>
-                  <DangerButton onClick={() => remove(p)}>Delete</DangerButton>
+                  <DangerButton onClick={() => remove(p)} loading={removing.isBusy(p.id)}>Delete</DangerButton>
                 </div>
               ) : (
                 <span key="x" />
@@ -230,7 +228,7 @@ export default function InventoryPage() {
         </>
       )}
 
-      <Modal open={open} onClose={() => setOpen(false)} title={editing ? `Edit ${editing.name}` : "New product"} size="md">
+      <Modal open={open} onClose={() => setOpen(false)} title={editing ? `Edit ${editing.name}` : "New product"} size="md" busy={saving}>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <TextField label="Name" required value={draft.name} onChange={(v) => setDraft({ ...draft, name: v })} />
           <TextField label="SKU / barcode" value={draft.sku} onChange={(v) => setDraft({ ...draft, sku: v })} />
@@ -246,11 +244,11 @@ export default function InventoryPage() {
         {modalError && <p role="alert" className="mt-4 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{modalError}</p>}
         <div className="mt-6 flex justify-end gap-2">
           <SecondaryButton onClick={() => setOpen(false)} disabled={saving}>Cancel</SecondaryButton>
-          <PrimaryButton onClick={save} disabled={saving || !draft.name.trim() || draft.price === ""}>{saving ? "Saving…" : "Save"}</PrimaryButton>
+          <PrimaryButton onClick={save} loading={saving} disabled={!draft.name.trim() || draft.price === ""}>Save</PrimaryButton>
         </div>
       </Modal>
 
-      <Modal open={!!stockFor} onClose={() => setStockFor(null)} title={stockFor ? `Stock · ${stockFor.name} (now ${stockFor.stock})` : ""} size="sm">
+      <Modal open={!!stockFor} onClose={() => setStockFor(null)} title={stockFor ? `Stock · ${stockFor.name} (now ${stockFor.stock})` : ""} size="sm" busy={saving}>
         <div className="space-y-4">
           <SelectField label="What happened" value={stockDraft.mode === "set" ? "set" : stockDraft.reason} allowClear={false} onChange={(v) => setStockDraft({ ...stockDraft, mode: v === "set" ? "set" : "delta", reason: v === "set" ? "count" : v })} options={[{ value: "restock", label: "Delivery / restock (add)" }, { value: "waste", label: "Damaged or expired (remove)" }, { value: "adjust", label: "Other adjustment (+/−)" }, { value: "set", label: "Stock count (set the total)" }]} />
           <TextField label={stockDraft.mode === "set" ? "Counted total" : stockDraft.reason === "waste" ? "Quantity removed" : stockDraft.reason === "restock" ? "Quantity added" : "Quantity (negative to remove)"} type="number" value={stockDraft.value} onChange={(v) => setStockDraft({ ...stockDraft, value: v })} />
@@ -258,7 +256,7 @@ export default function InventoryPage() {
           {modalError && <p role="alert" className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{modalError}</p>}
           <div className="flex justify-end gap-2">
             <SecondaryButton onClick={() => setStockFor(null)} disabled={saving}>Cancel</SecondaryButton>
-            <PrimaryButton onClick={adjust} disabled={saving || stockDraft.value === ""}>{saving ? "Saving…" : "Apply"}</PrimaryButton>
+            <PrimaryButton onClick={adjust} loading={saving} disabled={stockDraft.value === ""}>Apply</PrimaryButton>
           </div>
         </div>
       </Modal>

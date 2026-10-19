@@ -7,7 +7,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { PageHeader, Card, PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, TextArea, SelectField, Toggle, Badge, Spinner, useConfirm, ErrorState, useLatestRequest } from "../_shared/ui";
+import { PageHeader, Card, PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, TextArea, SelectField, Toggle, Badge, Spinner, useConfirm, ErrorState, useLatestRequest, useAsyncAction } from "../_shared/ui";
 import { API_BASE, apiGet, apiJson } from "../_shared/api";
 import { downloadExport } from "../reports/download";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
@@ -184,7 +184,8 @@ export default function PosPage() {
   const [tendered, setTendered] = useState("");
   const [member, setMember] = useState<MemberOption | null>(null);
   const [category, setCategory] = useState("");
-  const [busy, setBusy] = useState(false);
+  const checkingOut = useAsyncAction();
+  const busy = checkingOut.busy;
   const [receipt, setReceipt] = useState<Sale | null>(null);
   const [notice, setNotice] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
   const [sales, setSales] = useState<SalesResponse | null>(null);
@@ -194,11 +195,15 @@ export default function PosPage() {
   const [salesLoading, setSalesLoading] = useState(true);
   const [visible, setVisible] = useState(SALES_PAGE);
   const [opened, setOpened] = useState<string | null>(null);
-  const [exporting, setExporting] = useState(false);
+  const exportAction = useAsyncAction();
+  const exporting = exportAction.busy;
   const [profile, setProfile] = useState<ReceiptProfile>(EMPTY_RECEIPT_PROFILE);
-  const [printing, setPrinting] = useState(false);
+  const printAction = useAsyncAction();
+  const printing = printAction.busy;
   const [setup, setSetup] = useState<ReceiptSettings | null>(null);
-  const [savingSetup, setSavingSetup] = useState(false);
+  const setupAction = useAsyncAction();
+  const savingSetup = setupAction.busy;
+  const refunding = useAsyncAction();
   const [setupError, setSetupError] = useState<string | null>(null);
   // A shelf or a sales list that could not be read says so where it would
   // have been, rather than reading as "no products" or "no sales".
@@ -257,16 +262,13 @@ export default function PosPage() {
     setTo(t);
   };
 
-  const exportSales = async () => {
-    setExporting(true);
+  const exportSales = () => exportAction.run(async () => {
     try {
       await downloadExport(`${POS_API}/sales/export?from=${from}&to=${to}`, `sales_${from}_${to}.csv`);
     } catch (e) {
       setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not export the sales" });
-    } finally {
-      setExporting(false);
     }
-  };
+  });
 
   // The gym's details and print settings, once. Without them a receipt still
   // prints, just without the letterhead, so a failure here does not hold up
@@ -277,20 +279,16 @@ export default function PosPage() {
       .catch(() => undefined);
   }, []);
 
-  const print = async (s: Sale) => {
-    setPrinting(true);
+  const print = (s: Sale) => printAction.run(async () => {
     try {
       await printReceipt(receiptFor(s, profile));
     } catch (e) {
       setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not print the receipt" });
-    } finally {
-      setPrinting(false);
     }
-  };
+  });
 
-  const saveSetup = async () => {
+  const saveSetup = () => setupAction.run(async () => {
     if (!setup) return;
-    setSavingSetup(true);
     setSetupError(null);
     try {
       const res = await apiJson<{ data: ReceiptSettingsResponse }>(RECEIPT_SETTINGS_URL, "PUT", setup);
@@ -299,10 +297,8 @@ export default function PosPage() {
       setNotice({ tone: "ok", text: "Receipt settings saved." });
     } catch (e) {
       setSetupError(e instanceof Error ? e.message : "Could not save the receipt settings");
-    } finally {
-      setSavingSetup(false);
     }
-  };
+  });
 
   const categories = useMemo(() => Array.from(new Set(products.map((p) => p.category))).sort(), [products]);
   const shown = products.filter((p) => !category || p.category === category);
@@ -321,8 +317,7 @@ export default function PosPage() {
   const cashShort = cashGiven !== null && (!Number.isFinite(cashGiven) || round2(cashGiven) < totals.total);
   const change = cashGiven !== null && !cashShort ? round2(cashGiven - totals.total) : null;
 
-  const checkout = async () => {
-    setBusy(true);
+  const checkout = () => checkingOut.run(async () => {
     setNotice(null);
     setCheckoutErr(null);
     try {
@@ -341,10 +336,8 @@ export default function PosPage() {
       await Promise.all([load(), loadSales()]);
     } catch (e) {
       setCheckoutErr(e instanceof Error ? e.message : "Could not record the sale");
-    } finally {
-      setBusy(false);
     }
-  };
+  });
 
   const refund = async (s: Sale) => {
     const reason = await ask({
@@ -354,12 +347,14 @@ export default function PosPage() {
       reason: { label: "Reason (optional)", placeholder: "Wrong item, faulty, changed their mind…" },
     });
     if (reason === null) return;
-    try {
-      await apiJson(`${POS_API}/sales/${s.id}/refund`, "POST", { reason });
-      await Promise.all([load(), loadSales()]);
-    } catch (e) {
-      setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not refund" });
-    }
+    await refunding.run(s.id, async () => {
+      try {
+        await apiJson(`${POS_API}/sales/${s.id}/refund`, "POST", { reason });
+        await Promise.all([load(), loadSales()]);
+      } catch (e) {
+        setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not refund" });
+      }
+    });
   };
 
   return (
@@ -427,8 +422,8 @@ export default function PosPage() {
             <Card className="p-5">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                 <h2 className="text-sm font-semibold text-neutral-900">Sales{sales ? ` · ${sales.range.label}` : ""}</h2>
-                <SecondaryButton onClick={exportSales} disabled={exporting}>
-                  {exporting ? "Exporting…" : "Export CSV"}
+                <SecondaryButton onClick={exportSales} loading={exporting}>
+                  Export CSV
                 </SecondaryButton>
               </div>
               <div className="mb-3 flex flex-wrap items-end gap-2">
@@ -439,9 +434,9 @@ export default function PosPage() {
                   <TextField label="To" type="date" value={to} onChange={setTo} />
                 </div>
                 <div className="flex flex-wrap gap-1.5">
-                  <SecondaryButton onClick={() => setRange(today(), today())}>Today</SecondaryButton>
-                  <SecondaryButton onClick={() => setRange(monthStart(today()), today())}>This month</SecondaryButton>
-                  <SecondaryButton onClick={() => setRange(shiftDays(today(), -29), today())}>Last 30 days</SecondaryButton>
+                  <SecondaryButton onClick={() => setRange(today(), today())} disabled={salesLoading}>Today</SecondaryButton>
+                  <SecondaryButton onClick={() => setRange(monthStart(today()), today())} disabled={salesLoading}>This month</SecondaryButton>
+                  <SecondaryButton onClick={() => setRange(shiftDays(today(), -29), today())} disabled={salesLoading}>Last 30 days</SecondaryButton>
                 </div>
               </div>
               {salesLoading && !sales ? (
@@ -487,7 +482,7 @@ export default function PosPage() {
                               <span className="font-semibold">{fmt(s.total, s.currency)}</span>
                               <Badge color={s.status === "paid" ? "green" : "neutral"}>{s.status}</Badge>
                               <SecondaryButton onClick={() => setReceipt(s)}>Receipt</SecondaryButton>
-                              {editable && s.status === "paid" && <DangerButton onClick={() => refund(s)}>Refund</DangerButton>}
+                              {editable && s.status === "paid" && <DangerButton onClick={() => refund(s)} loading={refunding.isBusy(s.id)}>Refund</DangerButton>}
                             </div>
                           </div>
                           {opened === s.id && s.profit !== undefined && (
@@ -613,8 +608,8 @@ export default function PosPage() {
                   {checkoutErr}
                 </p>
               )}
-              <PrimaryButton onClick={checkout} disabled={!editable || busy || basket.length === 0 || cashShort}>
-                {busy ? "Recording…" : "Take payment"}
+              <PrimaryButton onClick={checkout} loading={busy} disabled={!editable || basket.length === 0 || cashShort}>
+                Take payment
               </PrimaryButton>
             </div>
           </Card>
@@ -639,8 +634,8 @@ export default function PosPage() {
               </span>
             </button>
             <div className="shrink-0">
-              <PrimaryButton onClick={checkout} disabled={busy || cashShort}>
-                {busy ? "Recording…" : "Take payment"}
+              <PrimaryButton onClick={checkout} loading={busy} disabled={cashShort}>
+                Take payment
               </PrimaryButton>
             </div>
           </div>
@@ -656,8 +651,8 @@ export default function PosPage() {
               </div>
             </div>
             <div className="mt-5 flex justify-end gap-2">
-              <SecondaryButton onClick={() => print(receipt)} disabled={printing}>
-                {printing ? "Printing…" : "Print"}
+              <SecondaryButton onClick={() => print(receipt)} loading={printing}>
+                Print
               </SecondaryButton>
               <PrimaryButton onClick={() => setReceipt(null)}>Done</PrimaryButton>
             </div>
@@ -665,7 +660,7 @@ export default function PosPage() {
         )}
       </Modal>
 
-      <Modal open={!!setup} onClose={() => setSetup(null)} title="Receipt settings">
+      <Modal open={!!setup} onClose={() => setSetup(null)} title="Receipt settings" busy={savingSetup}>
         {setup && (
           <div className="space-y-4">
             <SelectField
@@ -700,8 +695,8 @@ export default function PosPage() {
             {setupError && <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{setupError}</p>}
             <div className="flex justify-end gap-2">
               <SecondaryButton onClick={() => setSetup(null)}>Cancel</SecondaryButton>
-              <PrimaryButton onClick={saveSetup} disabled={savingSetup}>
-                {savingSetup ? "Saving…" : "Save"}
+              <PrimaryButton onClick={saveSetup} loading={savingSetup}>
+                Save
               </PrimaryButton>
             </div>
           </div>

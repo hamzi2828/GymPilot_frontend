@@ -16,6 +16,7 @@ import {
   Spinner,
   Table,
   useConfirm,
+  useAsyncAction,
   ErrorState,
 } from "../_shared/ui";
 import { GYMFOLIO_API, apiGet, apiJson } from "../_shared/api";
@@ -107,7 +108,9 @@ export default function CouponsAdminPage() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Coupon | null>(null);
   const [draft, setDraft] = useState<Draft>(emptyDraft);
-  const [saving, setSaving] = useState(false);
+  const saveAction = useAsyncAction();
+  const saving = saveAction.busy;
+  const removing = useAsyncAction();
   const [error, setError] = useState<string | null>(null);
   const [loadErr, setLoadErr] = useState<string | null>(null);
 
@@ -158,8 +161,7 @@ export default function CouponsAdminPage() {
     setOpen(true);
   };
 
-  const save = async () => {
-    setSaving(true);
+  const save = () => saveAction.run(async () => {
     setError(null);
     const body = {
       code: draft.code,
@@ -180,20 +182,20 @@ export default function CouponsAdminPage() {
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not save the coupon");
-    } finally {
-      setSaving(false);
     }
-  };
+  });
 
   const remove = async (c: Coupon) => {
     const answer = await ask({ title: `Delete coupon ${c.code}?`, body: "Nobody can use the code after this. This cannot be undone.", confirmLabel: "Delete coupon" });
     if (answer === null) return;
-    try {
-      await apiJson(`${GYMFOLIO_API}/coupons/${c._id}`, "DELETE");
-      await load();
-    } catch (e) {
-      alert(e instanceof Error ? e.message : "Delete failed");
-    }
+    await removing.run(c._id, async () => {
+      try {
+        await apiJson(`${GYMFOLIO_API}/coupons/${c._id}`, "DELETE");
+        await load();
+      } catch (e) {
+        alert(e instanceof Error ? e.message : "Delete failed");
+      }
+    });
   };
 
   const togglePackage = (id: string) =>
@@ -257,7 +259,7 @@ export default function CouponsAdminPage() {
               editable ? (
                 <div key="a" className="flex gap-2">
                   <SecondaryButton onClick={() => openEdit(c)}>Edit</SecondaryButton>
-                  <DangerButton onClick={() => remove(c)}>Delete</DangerButton>
+                  <DangerButton onClick={() => remove(c)} loading={removing.isBusy(c._id)}>Delete</DangerButton>
                 </div>
               ) : (
                 <span key="a" />
@@ -268,7 +270,7 @@ export default function CouponsAdminPage() {
         />
       )}
 
-      <Modal open={open} onClose={() => setOpen(false)} title={editing ? `Edit ${editing.code}` : "New coupon"} size="lg">
+      <Modal open={open} onClose={() => setOpen(false)} title={editing ? `Edit ${editing.code}` : "New coupon"} size="lg" busy={saving}>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <TextField label="Code" required value={draft.code} onChange={(v) => setDraft({ ...draft, code: v.toUpperCase() })} placeholder="SUMMER20" />
           <TextField label="Description" value={draft.description} onChange={(v) => setDraft({ ...draft, description: v })} />
@@ -325,8 +327,8 @@ export default function CouponsAdminPage() {
           <SecondaryButton onClick={() => setOpen(false)} disabled={saving}>
             Cancel
           </SecondaryButton>
-          <PrimaryButton onClick={save} disabled={saving || !draft.code.trim()}>
-            {saving ? "Saving…" : "Save coupon"}
+          <PrimaryButton onClick={save} loading={saving} disabled={!draft.code.trim()}>
+            Save coupon
           </PrimaryButton>
         </div>
       </Modal>
