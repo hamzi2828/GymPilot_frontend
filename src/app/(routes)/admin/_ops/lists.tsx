@@ -1,5 +1,7 @@
 "use client";
 
+import { BusyLabel, useAsyncAction } from "../_shared/ui";
+
 // Small pieces the operations and content lists share: the Previous / Next
 // pager the audit log and attendance screens draw inline, and an error line
 // with a retry for a list that failed to load (rather than an empty state
@@ -56,17 +58,23 @@ export function pageCount(pagination?: { pages?: number; total?: number; limit?:
   return 1;
 }
 
-/** A shared error line with a way to try again, for lists that failed to load. */
-export function LoadError({ message, onRetry }: { message: string; onRetry: () => void }) {
+/**
+ * A shared error line with a way to try again, for lists that failed to load.
+ * A retry that hands back its load's promise keeps the button busy until it settles.
+ */
+export function LoadError({ message, onRetry }: { message: string; onRetry: () => unknown }) {
+  const retrying = useAsyncAction();
   return (
     <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
       <span>{message}</span>
       <button
         type="button"
-        onClick={onRetry}
-        className="shrink-0 rounded-lg border border-rose-200 bg-white px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-50"
+        onClick={() => retrying.run(async () => onRetry())}
+        disabled={retrying.busy}
+        aria-busy={retrying.busy || undefined}
+        className="relative shrink-0 rounded-lg border border-rose-200 bg-white px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:cursor-wait"
       >
-        Try again
+        <BusyLabel busy={retrying.busy}>Try again</BusyLabel>
       </button>
     </div>
   );

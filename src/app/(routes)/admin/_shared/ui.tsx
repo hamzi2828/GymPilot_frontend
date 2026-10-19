@@ -40,25 +40,87 @@ export function Card({ children, className = "" }: { children: React.ReactNode; 
   );
 }
 
+// ---------------------------------------------------------------------------
+// Busy buttons
+//
+// A button that starts something slow (a save, a delete, a download) shows it
+// is working: `loading` disables it, marks it aria-busy and draws a spinner
+// over its label. The label stays where it was, only unseen, so the button
+// keeps its width and the buttons beside it do not jump. A busy button is not
+// faded the way a disabled one is: it is working, not unavailable.
+//
+// useAsyncAction (below) is what tells a button it is busy, and what stops a
+// fast second click from running the action twice.
+//
+// A plain <button> gets the same with `relative`, `disabled`, `aria-busy` and
+// its label inside <BusyLabel busy={…}>, or by showing <ButtonSpinner /> in
+// place of its icon.
+// ---------------------------------------------------------------------------
+
+/** The turning ring a busy button shows. It holds still for anyone who has asked for less motion. */
+export function ButtonSpinner({ className = "h-4 w-4" }: { className?: string }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={`inline-block shrink-0 rounded-full border-2 border-current border-r-transparent motion-safe:animate-spin ${className}`}
+    />
+  );
+}
+
+/**
+ * A button's label, hidden under a spinner while `busy` without giving up its
+ * space. The button around it needs `relative`. `className` lays the label out
+ * (the button's own gap, say), since the label's parts sit inside it.
+ */
+export function BusyLabel({
+  busy,
+  children,
+  className = "inline-flex items-center",
+}: {
+  busy?: boolean;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <>
+      {/* Transparent rather than hidden, so the button keeps its name for a screen reader. */}
+      <span className={`${className} ${busy ? "opacity-0" : ""}`}>{children}</span>
+      {busy && (
+        <span className="absolute inset-0 flex items-center justify-center">
+          <ButtonSpinner />
+        </span>
+      )}
+    </>
+  );
+}
+
+// Added to each button: room for the spinner, and a busy button drawn at full
+// strength over the faded look of a disabled one.
+const BUSY_BUTTON = "relative aria-busy:disabled:opacity-100 aria-busy:disabled:cursor-wait";
+
 export function PrimaryButton({
   children,
   onClick,
   type = "button",
   disabled,
+  loading = false,
 }: {
   children: React.ReactNode;
   onClick?: () => void;
   type?: "button" | "submit";
   disabled?: boolean;
+  /** The action it started is running: spinner, disabled, aria-busy. */
+  loading?: boolean;
 }) {
   return (
     <button
       type={type}
       onClick={onClick}
-      disabled={disabled}
-      className="inline-flex items-center h-9 px-4 text-sm font-semibold rounded-lg bg-[var(--accent)] text-[var(--on-accent)] hover:bg-[var(--accent-dark)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2"
+      disabled={disabled || loading}
+      aria-busy={loading || undefined}
+      className={`${BUSY_BUTTON} inline-flex items-center h-9 px-4 text-sm font-semibold rounded-lg bg-[var(--accent)] text-[var(--on-accent)] hover:bg-[var(--accent-dark)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2`}
     >
-      {children}
+      <BusyLabel busy={loading}>{children}</BusyLabel>
     </button>
   );
 }
@@ -69,6 +131,7 @@ export function SecondaryButton({
   type = "button",
   disabled,
   label,
+  loading = false,
 }: {
   children: React.ReactNode;
   onClick?: () => void;
@@ -76,17 +139,20 @@ export function SecondaryButton({
   disabled?: boolean;
   /** For a button that is only an icon: what it does, read out and shown on hover. */
   label?: string;
+  /** The action it started is running: spinner, disabled, aria-busy. */
+  loading?: boolean;
 }) {
   return (
     <button
       type={type}
       onClick={onClick}
-      disabled={disabled}
+      disabled={disabled || loading}
+      aria-busy={loading || undefined}
       aria-label={label}
       title={label}
-      className="inline-flex items-center h-9 px-3 text-sm font-medium text-neutral-700 bg-white border border-neutral-200 rounded-lg hover:bg-neutral-50 hover:border-neutral-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-neutral-300"
+      className={`${BUSY_BUTTON} inline-flex items-center h-9 px-3 text-sm font-medium text-neutral-700 bg-white border border-neutral-200 rounded-lg hover:bg-neutral-50 hover:border-neutral-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-neutral-300`}
     >
-      {children}
+      <BusyLabel busy={loading}>{children}</BusyLabel>
     </button>
   );
 }
@@ -96,23 +162,27 @@ export function DangerButton({
   onClick,
   disabled,
   label,
+  loading = false,
 }: {
   children: React.ReactNode;
   onClick?: () => void;
   disabled?: boolean;
   /** For a button that is only an icon: what it does, read out and shown on hover. */
   label?: string;
+  /** The action it started is running: spinner, disabled, aria-busy. */
+  loading?: boolean;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      disabled={disabled}
+      disabled={disabled || loading}
+      aria-busy={loading || undefined}
       aria-label={label}
       title={label}
-      className="inline-flex items-center h-9 px-3 text-sm font-medium text-rose-600 bg-white border border-rose-200 rounded-lg hover:bg-rose-50 hover:border-rose-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-200"
+      className={`${BUSY_BUTTON} inline-flex items-center h-9 px-3 text-sm font-medium text-rose-600 bg-white border border-rose-200 rounded-lg hover:bg-rose-50 hover:border-rose-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-200`}
     >
-      {children}
+      <BusyLabel busy={loading}>{children}</BusyLabel>
     </button>
   );
 }
@@ -583,13 +653,17 @@ export function EmptyState({ title, hint }: { title: string; hint?: string }) {
 
 // What a list shows when it could not be loaded. Kept apart from EmptyState on
 // purpose: "No users yet" over a failed request tells the gym its data is gone.
-export function ErrorState({ message, onRetry }: { message: string; onRetry?: () => void }) {
+// A retry that hands back its load's promise keeps the button busy until it settles.
+export function ErrorState({ message, onRetry }: { message: string; onRetry?: () => unknown }) {
+  const retrying = useAsyncAction();
   return (
     <div role="alert" className="border border-rose-200 bg-rose-50/40 rounded-lg p-10 text-center">
       <p className="text-sm font-medium text-rose-800">{message}</p>
       {onRetry && (
         <div className="mt-4 flex justify-center">
-          <SecondaryButton onClick={onRetry}>Try again</SecondaryButton>
+          <SecondaryButton onClick={() => retrying.run(async () => onRetry())} loading={retrying.busy}>
+            Try again
+          </SecondaryButton>
         </div>
       )}
     </div>
@@ -1016,6 +1090,90 @@ export function useRequestId(): { for: (scope: string, body: unknown) => string;
 }
 
 // ---------------------------------------------------------------------------
+// useAsyncAction
+//
+// What a button that starts something slow is wired to. `run` starts the
+// action unless the same one is still running: the guard is checked and set
+// in the click itself, so a fast double click is one save, not two, even
+// before React has redrawn the button disabled. `busy` stays true until the
+// action has finished or failed.
+//
+//   const saving = useAsyncAction();
+//
+//   const save = () =>
+//     saving.run(async () => {
+//       try { await apiJson(...); } catch (e) { setError(...); }
+//     });
+//
+//   <Modal busy={saving.busy} ...>
+//   <PrimaryButton onClick={save} loading={saving.busy}>Save</PrimaryButton>
+//
+// A key tells apart actions that may run side by side, such as one per table
+// row; each key is guarded on its own:
+//
+//   const rows = useAsyncAction();
+//   rows.run(member._id, () => remove(member));
+//   <DangerButton loading={rows.isBusy(member._id)} ...>
+//
+// `run` hands back what the action returned, or undefined when it was
+// dropped as a repeat. An error the action throws is thrown on, not eaten.
+// An action that ends by leaving the page (off to Stripe) awaits
+// untilPageLeaves() last, so its button stays busy until the page has gone;
+// back on the page from the browser's back-forward cache, nothing is busy.
+// ---------------------------------------------------------------------------
+
+export interface AsyncAction {
+  /** Something started here is still running. */
+  busy: boolean;
+  /** The action started under this key (none: the unkeyed one) is still running. */
+  isBusy: (key?: string) => boolean;
+  run: {
+    <T>(task: () => Promise<T> | T): Promise<T | undefined>;
+    <T>(key: string, task: () => Promise<T> | T): Promise<T | undefined>;
+  };
+}
+
+export function useAsyncAction(): AsyncAction {
+  // The guard itself: read and written within the click, unlike state.
+  const running = useRef(new Set<string>());
+  const [pending, setPending] = useState<readonly string[]>([]);
+
+  const run = useCallback(async <T,>(first: string | (() => Promise<T> | T), second?: () => Promise<T> | T) => {
+    const key = typeof first === "string" ? first : "";
+    const task = typeof first === "string" ? second : first;
+    if (!task || running.current.has(key)) return undefined;
+    running.current.add(key);
+    setPending(Array.from(running.current));
+    try {
+      return await task();
+    } finally {
+      running.current.delete(key);
+      setPending(Array.from(running.current));
+    }
+  }, []) as AsyncAction["run"];
+
+  useEffect(() => {
+    const onShow = (event: PageTransitionEvent) => {
+      if (!event.persisted) return;
+      running.current.clear();
+      setPending([]);
+    };
+    window.addEventListener("pageshow", onShow);
+    return () => window.removeEventListener("pageshow", onShow);
+  }, []);
+
+  return useMemo(
+    () => ({ busy: pending.length > 0, isBusy: (key = "") => pending.includes(key), run }),
+    [pending, run]
+  );
+}
+
+/** Awaited last by an action that leaves the page: it never settles, so the button stays busy. */
+export function untilPageLeaves(): Promise<never> {
+  return new Promise<never>(() => {});
+}
+
+// ---------------------------------------------------------------------------
 // ActionMenu
 //
 // The lesser actions on a table row, behind one "More" button, so a row is
@@ -1037,11 +1195,14 @@ export function ActionMenu({
   actions,
   label = "More",
   ariaLabel,
+  busy = false,
 }: {
   actions: MenuAction[];
   label?: string;
   /** Names whose actions these are, for a screen reader: "More for Sara Khan". */
   ariaLabel?: string;
+  /** One of its actions is running: the button shows a spinner and does not open. */
+  busy?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [coords, setCoords] = useState<{ top: number; left: number; flipped: boolean } | null>(null);
@@ -1124,13 +1285,17 @@ export function ActionMenu({
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
         aria-label={ariaLabel}
+        disabled={busy}
+        aria-busy={busy || undefined}
         onClick={() => setOpen((v) => !v)}
-        className="inline-flex items-center h-9 gap-1 px-3 text-sm font-medium whitespace-nowrap text-neutral-700 bg-white border border-neutral-200 rounded-lg hover:bg-neutral-50 hover:border-neutral-300 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-neutral-300"
+        className={`${BUSY_BUTTON} inline-flex items-center h-9 px-3 text-sm font-medium whitespace-nowrap text-neutral-700 bg-white border border-neutral-200 rounded-lg hover:bg-neutral-50 hover:border-neutral-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-neutral-300`}
       >
-        {label}
-        <svg aria-hidden="true" viewBox="0 0 20 20" className={`h-4 w-4 text-neutral-400 transition-transform ${open ? "rotate-180" : ""}`} fill="none" stroke="currentColor" strokeWidth="1.6">
-          <path d="M6 8l4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
+        <BusyLabel busy={busy} className="inline-flex items-center gap-1">
+          {label}
+          <svg aria-hidden="true" viewBox="0 0 20 20" className={`h-4 w-4 text-neutral-400 transition-transform ${open ? "rotate-180" : ""}`} fill="none" stroke="currentColor" strokeWidth="1.6">
+            <path d="M6 8l4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </BusyLabel>
       </button>
 
       {open &&
