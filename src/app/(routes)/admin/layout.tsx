@@ -56,6 +56,43 @@ function tabForPath(pathname: string | null): string {
   return match ? match.tab : "dashboard";
 }
 
+// Each tab's own page, in the order the sidebar lists them
+// (components/admin/AdminSidebar.tsx). The panel opens on the Dashboard; a
+// role without it starts on the first of these it holds instead, rather than
+// on a dashboard that can only answer "not allowed".
+const TAB_HOMES: { tab: string; path: string; name: string }[] = [
+  { tab: "dashboard", path: "/admin", name: "Dashboard" },
+  { tab: "reports", path: "/admin/reports", name: "Reports" },
+  { tab: "classes", path: "/admin/classes", name: "Classes" },
+  { tab: "bookings", path: "/admin/bookings", name: "Bookings" },
+  { tab: "pt", path: "/admin/pt", name: "Personal Training" },
+  { tab: "trainers", path: "/admin/trainers", name: "Trainers" },
+  { tab: "packages", path: "/admin/packages", name: "Packages" },
+  { tab: "package-orders", path: "/admin/package-orders", name: "Package Orders" },
+  { tab: "registrations", path: "/admin/package-registrations", name: "Registrations" },
+  { tab: "coupons", path: "/admin/coupons", name: "Coupons" },
+  { tab: "pos", path: "/admin/pos", name: "Shop / POS" },
+  { tab: "attendance", path: "/admin/attendance", name: "Attendance" },
+  { tab: "accounts", path: "/admin/accounts", name: "Accounts" },
+  { tab: "staff", path: "/admin/staff", name: "Staff" },
+  { tab: "lockers", path: "/admin/lockers", name: "Lockers" },
+  { tab: "roles", path: "/admin/roles", name: "Roles & Access" },
+  { tab: "users", path: "/admin/users", name: "Users" },
+  { tab: "contact-queries", path: "/admin/contact-queries", name: "Contact Queries" },
+  { tab: "leads", path: "/admin/leads", name: "Leads" },
+  { tab: "messaging", path: "/admin/messaging", name: "Messaging" },
+  { tab: "homepage", path: "/admin/homepage", name: "Homepage" },
+  { tab: "hero-slides", path: "/admin/hero-slides", name: "Hero Slides" },
+  { tab: "testimonials", path: "/admin/testimonials", name: "Testimonials" },
+  { tab: "blogs", path: "/admin/blogs", name: "Blogs" },
+  { tab: "blog-settings", path: "/admin/blog-settings", name: "Blog Settings" },
+  { tab: "pages", path: "/admin/pages", name: "Pages" },
+  { tab: "settings", path: "/admin/settings", name: "Settings" },
+  { tab: "audit", path: "/admin/audit-log", name: "Audit log" },
+];
+
+const isDashboardPath = (pathname: string | null) => pathname === "/admin" || pathname === "/admin/";
+
 // A trial with this many days or fewer left gets the banner.
 const TRIAL_BANNER_DAYS = 14;
 
@@ -91,8 +128,16 @@ function AdminShell({ children }: { children: React.ReactNode }) {
   const [subscription, setSubscription] = useState<BillingSubscription | null>(null);
 
   const tab = tabForPath(pathname);
-  const allowedHere = tab === "dashboard" ? tabs.length > 0 : can(tab);
+  const onDashboard = isDashboardPath(pathname);
+  // The Dashboard itself needs its own tab; the other pages without a tab of
+  // their own (the Desk app page) are open to anyone in the panel.
+  const allowedHere = onDashboard ? can("dashboard") : tab === "dashboard" ? tabs.length > 0 : can(tab);
   const canViewSettings = can("settings");
+  // Where this role starts: the Dashboard, or the first page it holds.
+  const home = TAB_HOMES.find((entry) => can(entry.tab)) || null;
+  // Sent on from the Dashboard (the sign-in page sends every staff account
+  // to /admin) when the role does not include it.
+  const leavingDashboard = !loading && onDashboard && !can("dashboard") && !!home;
 
   useEffect(() => {
     if (loading) return;
@@ -102,6 +147,10 @@ function AdminShell({ children }: { children: React.ReactNode }) {
     // rather than bounced to the homepage as if the panel were not theirs.
     if (!tabs.length && !error) router.replace("/");
   }, [loading, tabs, error, router]);
+
+  useEffect(() => {
+    if (leavingDashboard && home) router.replace(home.path);
+  }, [leavingDashboard, home, router]);
 
   // Fetched once for whoever can see Settings; any failure just means no banner.
   useEffect(() => {
@@ -212,7 +261,11 @@ function AdminShell({ children }: { children: React.ReactNode }) {
                 </button>
               </div>
             )}
-            {allowedHere ? (
+            {leavingDashboard ? (
+              <div className="flex h-64 items-center justify-center">
+                <div className="h-8 w-8 animate-spin rounded-full border-2 border-neutral-200 border-t-[var(--accent)]" />
+              </div>
+            ) : allowedHere ? (
               children
             ) : (
               // Told plainly rather than redirected: a page that silently
@@ -226,13 +279,15 @@ function AdminShell({ children }: { children: React.ReactNode }) {
                   <span className="font-medium text-neutral-700">{tab}</span> section. Ask an administrator
                   to grant it under Roles &amp; Access.
                 </p>
-                <button
-                  type="button"
-                  onClick={() => router.push("/admin")}
-                  className="mt-5 inline-flex h-9 items-center rounded-lg bg-neutral-900 px-4 text-sm font-semibold text-white"
-                >
-                  Back to dashboard
-                </button>
+                {home && (
+                  <button
+                    type="button"
+                    onClick={() => router.push(home.path)}
+                    className="mt-5 inline-flex h-9 items-center rounded-lg bg-neutral-900 px-4 text-sm font-semibold text-white"
+                  >
+                    {home.tab === "dashboard" ? "Back to dashboard" : `Go to ${home.name}`}
+                  </button>
+                )}
               </div>
             )}
           </div>
