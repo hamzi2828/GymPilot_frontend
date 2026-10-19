@@ -549,7 +549,7 @@ export default function PaymentsSettings<T extends PaymentFields>({
             )}
           </div>
           <div className="flex items-end pb-1">
-            <Toggle label="Remind on the due date" checked={billing.dueDayReminder ?? BILLING_DEFAULTS.dueDayReminder} onChange={(v) => setBilling({ dueDayReminder: v })} />
+            <Toggle label="Remind on the day the membership expires (e.g. expires on the 16th → reminder on the 16th)" checked={billing.dueDayReminder ?? BILLING_DEFAULTS.dueDayReminder} onChange={(v) => setBilling({ dueDayReminder: v })} />
           </div>
         </div>
         <div className="mt-5 border-t border-neutral-100 pt-5">

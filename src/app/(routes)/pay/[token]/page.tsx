@@ -430,7 +430,7 @@ function PayContent() {
               <dd className="text-right text-2xl font-bold text-gray-900">{amount}</dd>
             </div>
             <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 py-3">
-              <dt className="text-gray-500">Due date</dt>
+              <dt className="text-gray-500">Membership expires</dt>
               <dd className="text-right font-medium text-gray-900">{dayLabel(link.due_date, ianaTimezone)}</dd>
             </div>
             {link.last_day && (
