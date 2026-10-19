@@ -12,6 +12,7 @@ import { PageHeader, Card, PrimaryButton, SecondaryButton, TextField, TextArea, 
 import { API_BASE, GYMFOLIO_API, apiGet, apiJson, apiForm, isPlanLimitError } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
 import { PACKAGE_TERMS } from "../packages/terms";
+import { setGymCurrency } from "../_shared/gymCurrency";
 
 const STEPS = ["Your gym", "Money & time", "First package", "Getting paid", "Your team", "Done"] as const;
 
@@ -126,7 +127,9 @@ export default function SetupWizardPage() {
 
   const saveMoney = () =>
     run(async () => {
-      await apiJson(`${API_BASE}/settings`, "PUT", { currency: settings.currency || "USD", taxRate: Number(settings.taxRate) || 0, ianaTimezone: settings.ianaTimezone || "UTC" });
+      const res = await apiJson<{ data?: { currency?: string } }>(`${API_BASE}/settings`, "PUT", { currency: settings.currency || "USD", taxRate: Number(settings.taxRate) || 0, ianaTimezone: settings.ianaTimezone || "UTC" });
+      // The other admin pages label their fees with it from now on.
+      setGymCurrency(res.data?.currency);
     });
 
   const savePackage = () =>

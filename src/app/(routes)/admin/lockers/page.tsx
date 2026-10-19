@@ -8,7 +8,7 @@ import { FiPlus } from "react-icons/fi";
 import { PageHeader, Card, PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, useConfirm, ErrorState, Spinner, useAsyncAction } from "../_shared/ui";
 import { API_BASE, apiGet, apiJson } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
-import { useSiteSettings } from "@/components/ThemeProvider";
+import { useGymCurrency } from "../_shared/gymCurrency";
 import { MemberPicker, type MemberOption } from "../_ops/MemberPicker";
 
 interface Locker {
@@ -28,7 +28,7 @@ interface Locker {
 export default function LockersPage() {
   const { can } = usePermissions();
   // Locker fees are in the gym's currency.
-  const { currency } = useSiteSettings();
+  const currency = useGymCurrency();
   const { ask, dialog: confirmDialog } = useConfirm();
   const editable = can("lockers", "manage");
   const [rows, setRows] = useState<Locker[]>([]);

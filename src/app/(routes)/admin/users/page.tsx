@@ -29,7 +29,7 @@ import MemberProfileModal from "./MemberProfileModal";
 import UsernameModal, { type UsernameTarget } from "./UsernameModal";
 import AddMemberModal, { type RegisterResult } from "./AddMemberModal";
 import { DESK_METHOD_OPTIONS, type MembershipSummary } from "./membershipDesk";
-import { useSiteSettings } from "@/components/ThemeProvider";
+import { useGymCurrency } from "../_shared/gymCurrency";
 import {
   BalanceCell,
   DiscountCell,
@@ -211,7 +211,7 @@ interface PackageOption {
 
 function UsersAdminPageInner() {
   const { can } = usePermissions();
-  const { currency: gymCurrency } = useSiteSettings();
+  const gymCurrency = useGymCurrency();
   const { ask, dialog: confirmDialog } = useConfirm();
   // Every write on this page is gated on users:manage by the backend; the
   // package assignment is a package-orders write.

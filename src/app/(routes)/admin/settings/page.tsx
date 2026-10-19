@@ -26,6 +26,7 @@ import { countryOptions, currencyOptions, countryByCode } from "@/data/countries
 import { API_BASE, ApiError, GYMFOLIO_API, apiForm, apiGet, apiJson, isMaskedSecret } from "../_shared/api";
 import { THEMES, DEFAULT_THEME_KEY } from "@/theme/themes";
 import { setActiveTheme } from "@/components/ThemeProvider";
+import { setGymCurrency } from "../_shared/gymCurrency";
 import MessagingSettings, { messagingToSave, type MessagingConfig } from "./MessagingSettings";
 import WebsiteSettings from "./WebsiteSettings";
 import BillingSettings from "./BillingSettings";
@@ -145,9 +146,10 @@ const COUNTRY_OPTIONS = countryOptions();
 const CURRENCY_OPTIONS = currencyOptions();
 
 // What changing the gym's currency does, said before it is saved: the API
-// relabels every price on save and converts none of them.
+// relabels every price on save and converts none of them, and what was
+// already sold or spent keeps the currency it was recorded in.
 function currencyChangeText(code: string) {
-  return `Every price — packages, classes, PT, shop and lockers — will be shown in ${code}. Amounts are not converted, so check your prices after saving.`;
+  return `Every price — packages, classes, PT, shop and lockers — will be shown in ${code}. Amounts are not converted, so check your prices after saving. Past orders, sales and expenses keep the currency they were recorded in, and reports show them apart from the ${code} totals.`;
 }
 
 /** Uploaded assets are stored as backend-relative /uploads paths (or absolute
@@ -384,6 +386,9 @@ function SettingsAdminPageInner() {
       setSettings(next);
       setSaved(next);
       setLoadError(null);
+      // Read again after every save: the other admin pages label their fees
+      // with it, and the site's own copy is only read when the site loads.
+      setGymCurrency(next.currency);
     } catch (e) {
       setLoadError(e instanceof Error ? e.message : "Could not load the settings");
     } finally {

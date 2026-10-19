@@ -22,6 +22,7 @@ import {
 import { GYMFOLIO_API, apiGet, apiJson } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
 import { useSiteSettings } from "@/components/ThemeProvider";
+import { useGymCurrency } from "../_shared/gymCurrency";
 import { gymDateKey } from "@/helper/date";
 
 interface Coupon {
@@ -99,7 +100,8 @@ function describe(c: Coupon) {
 export default function CouponsAdminPage() {
   const { can } = usePermissions();
   const { ask, dialog: confirmDialog } = useConfirm();
-  const { ianaTimezone, currency } = useSiteSettings();
+  const { ianaTimezone } = useSiteSettings();
+  const currency = useGymCurrency();
   const editable = can("coupons", "manage");
 
   const [coupons, setCoupons] = useState<Coupon[]>([]);
