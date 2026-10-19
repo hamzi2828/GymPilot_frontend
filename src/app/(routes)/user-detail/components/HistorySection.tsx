@@ -78,9 +78,12 @@ function startsLater(entry: MembershipOrder, now: number) {
 // Ways of paying online, through whichever gateway the gym uses.
 const ONLINE_METHODS = ["stripe", "online", "safepay"];
 
-/** A renewal the member can still pay through its payment link. */
+/**
+ * A renewal the member can still pay through its payment link: not paid, and
+ * not a transfer receipt the gym is checking right now.
+ */
 function payableByLink(entry: MembershipOrder) {
-  return !!entry.payLinkUrl && entry.status !== "cancelled" && !["paid", "refunded"].includes(entry.paymentStatus);
+  return !!entry.payLinkUrl && entry.status !== "cancelled" && !["paid", "refunded", "processing"].includes(entry.paymentStatus);
 }
 
 /**
@@ -216,6 +219,8 @@ export const HistorySection: React.FC<HistorySectionProps> = ({
   const rejected = memberships.filter(
     (entry) =>
       entry.paymentRejected &&
+      // One sent from a payment link is answered there, with the link.
+      !payableByLink(entry) &&
       !!entry.purchasedAt &&
       now - new Date(entry.purchasedAt).getTime() < 30 * DAY_MS &&
       !memberships.some(
@@ -296,11 +301,13 @@ export const HistorySection: React.FC<HistorySectionProps> = ({
                   <p className="text-base font-bold text-black">{entry.packageName}</p>
                   <p className="text-sm text-amber-900">
                     {payableByLink(entry)
-                      ? entry.paymentStatus === "failed"
+                      ? entry.paymentRejected
+                        ? `${rejectionMessage(entry).replace(/ Please contact the gym.*$/, "")} Upload a new receipt from the payment page.`
+                        : entry.paymentStatus === "failed"
                         ? `We could not charge your saved card. Pay ${money(entry.amount, entry.currency)}${entry.lastDay ? ` by ${dateLabel(entry.lastDay)}` : ""} to keep your membership.`
                         : `Your renewal of ${money(entry.amount, entry.currency)} is due${entry.dueDate ? ` on ${dateLabel(entry.dueDate)}` : ""}${
                             entry.lastDay ? `; the last day to pay is ${dateLabel(entry.lastDay)}` : ""
-                          }. Pay online, or by bank transfer from the payment page.`
+                          }.`
                       : entry.paymentMethod === "bank_transfer"
                       ? entry.paymentStatus === "processing"
                         ? "We have your transfer details and are confirming the payment."
