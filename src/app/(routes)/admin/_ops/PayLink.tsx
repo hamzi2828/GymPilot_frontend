@@ -1,8 +1,8 @@
 "use client";
 
 // A payment link for one unpaid order: the address the member opens to pay
-// it online (no sign-in; it opens that order only), to copy into a message,
-// or sent to them now by the gym's reminder channels.
+// it (no sign-in; it opens that order only), to copy into a message, or sent
+// to them now by the gym's reminder channels.
 //
 // POST /package-orders/:id/pay-link { send? } -> { url, expires_at, sent? }
 
@@ -104,7 +104,8 @@ export function PayLinkPanel({ orderId, canSend = true }: { orderId: string; can
       <div>
         <p className="text-sm font-semibold text-neutral-900">Payment link</p>
         <p className="mt-0.5 text-xs text-neutral-500">
-          The member opens it to pay this order online, without signing in. It opens this order only{expires ? ` and works until ${expires}` : ""}.
+          The member opens it to pay this order, online or by bank transfer with a receipt, without signing in. It opens this order only
+          {expires ? ` and works until ${expires}` : ""}.
         </p>
       </div>
 

@@ -256,11 +256,27 @@ function PackageOrdersAdminPageInner() {
   };
   const [assignDraft, setAssignDraft] = useState(emptyAssign);
 
+  // Bank transfer receipts waiting for staff -- from the checkout and from
+  // payment links alike -- counted on their own, so they are seen whatever
+  // the list is showing. Read again with every reload of the list.
+  const [toVerify, setToVerify] = useState<number | null>(null);
+  const loadToVerify = useCallback(async () => {
+    try {
+      const r = await apiGet<{ data?: PackageOrder[]; pagination?: { total?: number } }>(
+        `${GYMFOLIO_API}/package-orders?paymentStatus=processing&paymentMethod=bank_transfer&limit=1`
+      );
+      setToVerify(r.pagination?.total ?? (r.data || []).length);
+    } catch {
+      setToVerify(null);
+    }
+  }, []);
+
   // Paged: a fixed limit of 200 used to cut the list off without saying so
   // beyond a small "showing N of M".
   const begin = useLatestRequest();
   const load = useCallback(async () => {
     const isLatest = begin();
+    loadToVerify();
     setLoading(true);
     try {
       const params = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE) });
@@ -283,7 +299,7 @@ function PackageOrdersAdminPageInner() {
     } finally {
       if (isLatest()) setLoading(false);
     }
-  }, [filters, page, begin]);
+  }, [filters, page, begin, loadToVerify]);
 
   useEffect(() => {
     const t = setTimeout(load, filters.search ? 250 : 0);
@@ -593,6 +609,30 @@ function PackageOrdersAdminPageInner() {
       {error && !selected && !assignOpen && <p className="mb-4 rounded-lg bg-rose-50 px-4 py-2 text-sm text-rose-700">{error}</p>}
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
+        {(() => {
+          const verifying = filters.paymentStatus === "processing" && filters.paymentMethod === "bank_transfer";
+          return (
+            <button
+              type="button"
+              aria-pressed={verifying}
+              onClick={() => filterBy(verifying ? { paymentStatus: "", paymentMethod: "" } : { paymentStatus: "processing", paymentMethod: "bank_transfer", status: "", hasDues: "" })}
+              className={`inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-sm font-medium transition-colors ${
+                verifying
+                  ? "border-neutral-900 bg-neutral-900 text-white"
+                  : toVerify
+                  ? "border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100"
+                  : "border-neutral-200 bg-white text-neutral-700 hover:bg-neutral-50"
+              }`}
+            >
+              Payments to verify
+              {toVerify !== null && (
+                <span className={`rounded-full px-1.5 text-xs font-semibold ${verifying ? "bg-white text-neutral-900" : toVerify ? "bg-amber-500 text-white" : "bg-neutral-100 text-neutral-600"}`}>
+                  {toVerify}
+                </span>
+              )}
+            </button>
+          );
+        })()}
         <input
           value={filters.search}
           onChange={(e) => filterBy({ search: e.target.value })}
@@ -690,7 +730,7 @@ function PackageOrdersAdminPageInner() {
                       {fmtDate(o.subscription?.startDate)} → {fmtDate(o.subscription?.endDate)}
                     </td>
                     <td className="px-4 py-3 align-top">
-                      <div className="flex flex-wrap justify-end gap-2">
+                      <div className="flex justify-end gap-2 whitespace-nowrap">
                         {manage && payLinkAllowed(o) && <SecondaryButton onClick={() => openAction(o, "paylink")}>Payment link</SecondaryButton>}
                         <SecondaryButton onClick={() => openAction(o, "status")}>{manage ? "Manage" : "View"}</SecondaryButton>
                       </div>
