@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import "@fortawesome/fontawesome-free/css/all.css";
 import { useSiteSettings } from "@/components/ThemeProvider";
+import { startNavigationProgress } from "@/components/NavigationProgress";
 
 export default function CheckoutCancelPage() {
   const router = useRouter();
@@ -61,7 +62,10 @@ export default function CheckoutCancelPage() {
                 View All Packages
               </Link>
               <button
-                onClick={() => router.push("/")}
+                onClick={() => {
+                  startNavigationProgress();
+                  router.push("/");
+                }}
                 className="w-full bg-gray-200 text-gray-800 text-center rounded-lg px-4 py-3 hover:bg-gray-300 transition-colors"
               >
                 Return to Home

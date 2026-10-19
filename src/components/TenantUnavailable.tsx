@@ -15,6 +15,8 @@ import { login, verifyTwoFactor, type LoginResponse } from "@/app/(routes)/authe
 import { getCurrentUser, removeToken, setRole, setToken } from "@/helper/helper";
 import { API_BASE } from "@/app/(routes)/admin/_shared/api";
 import { openPortal, startCheckout } from "@/app/(routes)/admin/settings/billingApi";
+import Spinner from "@/components/ui/Spinner";
+import useAsyncAction from "@/components/ui/useAsyncAction";
 
 const COPY: Record<string, { title: string; body: string }> = {
   TENANT_NOT_FOUND: {
@@ -43,7 +45,7 @@ type Phase = "idle" | "signin" | "code" | "reactivating" | "slow";
 const inputClass =
   "mt-1 w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 focus:border-neutral-900 focus:outline-none";
 const primaryClass =
-  "inline-flex h-10 w-full items-center justify-center rounded-lg bg-neutral-900 px-4 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50";
+  "inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-neutral-900 px-4 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50";
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -54,7 +56,9 @@ function RenewPanel() {
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
   const [challenge, setChallenge] = useState<{ id: string; message: string } | null>(null);
-  const [busy, setBusy] = useState(false);
+  // One step at a time; on the way to Stripe it stays busy until the page
+  // goes, and is usable again if Back brings the page back.
+  const { busy, run, leave } = useAsyncAction();
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
 
@@ -111,8 +115,7 @@ function RenewPanel() {
 
   // Signed in: straight to Stripe. A gym Stripe already bills (a card that
   // kept failing) goes to the portal to fix the card instead.
-  const renew = async () => {
-    setBusy(true);
+  const startRenewal = async () => {
     setError(null);
     try {
       let res = await startCheckout();
@@ -122,11 +125,11 @@ function RenewPanel() {
         setSignedIn(false);
         setPhase("signin");
         setError("Your session has ended. Please sign in again.");
-        setBusy(false);
         return;
       }
       if (res.code === "ALREADY_SUBSCRIBED") res = await openPortal();
       if (res.ok && res.data?.url) {
+        leave();
         window.location.assign(res.data.url);
         return;
       }
@@ -136,47 +139,46 @@ function RenewPanel() {
     } catch {
       setError("Could not reach the server. Please try again.");
     }
-    setBusy(false);
   };
+  const renew = () => run(startRenewal);
 
-  const signIn = async (e: React.FormEvent) => {
+  const signIn = (e: React.FormEvent) => {
     e.preventDefault();
     if (!email.trim() || !password) {
       setError("Enter your email or username, and your password.");
       return;
     }
-    setBusy(true);
-    setError(null);
-    try {
-      const res = await login({ email: email.trim(), password });
-      if (res.requires2fa && res.challengeId) {
-        // Password accepted; the emailed code comes next.
-        setChallenge({ id: res.challengeId, message: res.message });
-        setPhase("code");
-        setBusy(false);
-        return;
+    run(async () => {
+      setError(null);
+      try {
+        const res = await login({ email: email.trim(), password });
+        if (res.requires2fa && res.challengeId) {
+          // Password accepted; the emailed code comes next.
+          setChallenge({ id: res.challengeId, message: res.message });
+          setPhase("code");
+          return;
+        }
+        keepSession(res);
+        await startRenewal();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Could not sign in");
       }
-      keepSession(res);
-      await renew();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not sign in");
-      setBusy(false);
-    }
+    });
   };
 
-  const verify = async (e: React.FormEvent) => {
+  const verify = (e: React.FormEvent) => {
     e.preventDefault();
     const digits = code.replace(/\D/g, "");
     if (!challenge || digits.length !== 6) return;
-    setBusy(true);
-    setError(null);
-    try {
-      keepSession(await verifyTwoFactor({ challengeId: challenge.id, code: digits }));
-      await renew();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not verify the code");
-      setBusy(false);
-    }
+    run(async () => {
+      setError(null);
+      try {
+        keepSession(await verifyTwoFactor({ challengeId: challenge.id, code: digits }));
+        await startRenewal();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Could not verify the code");
+      }
+    });
   };
 
   if (phase === "reactivating") {
@@ -192,7 +194,19 @@ function RenewPanel() {
     return (
       <div className="mt-8 rounded-xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-900">
         <p>Payment received, but switching your gym back on is taking longer than usual.</p>
-        <button type="button" onClick={() => window.location.reload()} className="mt-3 text-sm font-semibold underline underline-offset-2">
+        <button
+          type="button"
+          disabled={busy}
+          aria-busy={busy || undefined}
+          onClick={() =>
+            run(() => {
+              leave();
+              window.location.reload();
+            })
+          }
+          className="mt-3 inline-flex items-center gap-2 text-sm font-semibold underline underline-offset-2 disabled:opacity-60"
+        >
+          {busy && <Spinner />}
           Check again
         </button>
         <p className="mt-2 text-xs">Still showing this in a few minutes? Contact GymsPilotPro support.</p>
@@ -225,7 +239,8 @@ function RenewPanel() {
           />
         </label>
         {messages}
-        <button type="submit" disabled={busy || code.replace(/\D/g, "").length !== 6} className={`mt-4 ${primaryClass}`}>
+        <button type="submit" disabled={busy || code.replace(/\D/g, "").length !== 6} aria-busy={busy || undefined} className={`mt-4 ${primaryClass}`}>
+          {busy && <Spinner />}
           {busy ? "Working…" : "Continue to payment"}
         </button>
         <button
@@ -258,7 +273,8 @@ function RenewPanel() {
           <input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} className={inputClass} />
         </label>
         {messages}
-        <button type="submit" disabled={busy} className={`mt-4 ${primaryClass}`}>
+        <button type="submit" disabled={busy} aria-busy={busy || undefined} className={`mt-4 ${primaryClass}`}>
+          {busy && <Spinner />}
           {busy ? "Working…" : "Sign in and pay"}
         </button>
       </form>
@@ -269,7 +285,8 @@ function RenewPanel() {
   return (
     <div className="mt-8">
       {messages}
-      <button type="button" disabled={busy} onClick={() => (signedIn ? renew() : setPhase("signin"))} className={`mt-4 ${primaryClass}`}>
+      <button type="button" disabled={busy} aria-busy={busy || undefined} onClick={() => (signedIn ? renew() : setPhase("signin"))} className={`mt-4 ${primaryClass}`}>
+        {busy && <Spinner />}
         {busy ? "Working…" : signedIn ? "Renew now" : "Sign in to renew"}
       </button>
       {signedIn && (

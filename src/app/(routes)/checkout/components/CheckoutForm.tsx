@@ -7,6 +7,7 @@ import { checkoutService, type PaymentMethodKey, type ShippingAddress } from "..
 import { getCurrentUser } from "../../../../helper/helper";
 import { type Package } from "../../packages/services/packageService";
 import { COUNTRIES } from "@/data/countries";
+import { startNavigationProgress } from "@/components/NavigationProgress";
 
 // Every country, alphabetically, stored by name as before. Four hardcoded
 // options meant most gyms' members could not pick their own.
@@ -129,6 +130,7 @@ const CheckoutForm: React.FC<CheckoutFormProps> = ({ packageData, onSubmitChange
             // payment once it lands.
             const { order } = await checkoutService.createBankTransferOrder(packageData._id, shippingData, couponCode);
             leaving = true;
+            startNavigationProgress();
             router.push(`/checkout/bank-transfer?order=${order._id}`);
             return;
           }

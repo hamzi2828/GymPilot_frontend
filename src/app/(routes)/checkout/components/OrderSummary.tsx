@@ -7,6 +7,8 @@ import { type Package } from "../../packages/services/packageService";
 import { checkoutService, type CouponPreview, type PaymentMethodKey, type PaymentMethods } from "../services/checkoutService";
 import { parseAmount } from "@/helper/money";
 import { signInUrl } from "@/helper/helper";
+import Spinner from "@/components/ui/Spinner";
+import useAsyncAction from "@/components/ui/useAsyncAction";
 
 interface OrderSummaryProps {
   packageData?: Package | null;
@@ -65,7 +67,7 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
   joiningFeeDue = null,
 }) => {
   const [code, setCode] = useState("");
-  const [checking, setChecking] = useState(false);
+  const { busy: checking, run } = useAsyncAction();
   const [couponError, setCouponError] = useState<string | null>(null);
 
   if (!packageData) {
@@ -97,19 +99,18 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
   const total = Math.max(0, listPrice + joiningFee - discount);
   const recurring = packageData.billing?.mode === "recurring";
 
-  const applyCoupon = async () => {
+  const applyCoupon = () => {
     if (!code.trim()) return;
-    setChecking(true);
-    setCouponError(null);
-    try {
-      const preview = await checkoutService.validateCoupon(code.trim(), packageData._id);
-      onCouponChange(preview);
-    } catch (e) {
-      onCouponChange(null);
-      setCouponError(e instanceof Error ? e.message : "That code is not valid");
-    } finally {
-      setChecking(false);
-    }
+    run(async () => {
+      setCouponError(null);
+      try {
+        const preview = await checkoutService.validateCoupon(code.trim(), packageData._id);
+        onCouponChange(preview);
+      } catch (e) {
+        onCouponChange(null);
+        setCouponError(e instanceof Error ? e.message : "That code is not valid");
+      }
+    });
   };
 
   const noMethods = methods && !methods.card && !methods.bankTransfer;
@@ -185,7 +186,14 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
               placeholder="Enter a code"
               className="checkout-input flex-1 px-4 py-2.5 bg-white border border-gray-300 rounded-lg shadow-sm"
             />
-            <button type="button" onClick={applyCoupon} disabled={checking || !code.trim()} className="rounded-lg border border-gray-300 px-4 text-sm font-semibold hover:bg-gray-50 disabled:opacity-50">
+            <button
+              type="button"
+              onClick={applyCoupon}
+              disabled={checking || isSubmitting || !code.trim()}
+              aria-busy={checking || undefined}
+              className="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-4 text-sm font-semibold hover:bg-gray-50 disabled:opacity-50"
+            >
+              {checking && <Spinner />}
               {checking ? "Checking…" : "Apply"}
             </button>
           </div>
@@ -309,13 +317,14 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
         <button
           type="button"
           onClick={onSubmit}
-          disabled={isSubmitting || !canPay}
+          disabled={isSubmitting || checking || !canPay}
+          aria-busy={isSubmitting || undefined}
           className="checkout-green-bg w-full px-6 py-3 rounded-lg flex items-center justify-center space-x-2 text-black font-semibold hover:opacity-90 transition-opacity duration-200 bg-green-400 shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
           aria-label={paymentMethod === "stripe" ? "Pay now" : "Continue to bank details"}
         >
           {isSubmitting ? (
             <>
-              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-black"></div>
+              <Spinner />
               <span className="font-semibold">Processing...</span>
             </>
           ) : (

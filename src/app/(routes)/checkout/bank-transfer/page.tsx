@@ -9,6 +9,8 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { isAuthenticated } from "../../../../helper/helper";
 import { checkoutService, type BankAccount, type BankOrder } from "../services/checkoutService";
+import Spinner from "@/components/ui/Spinner";
+import useAsyncAction from "@/components/ui/useAsyncAction";
 
 const API_BASE = process.env.NEXT_PUBLIC_BACKEND_URL || "";
 
@@ -38,7 +40,7 @@ function BankTransferContent() {
   const [file, setFile] = useState<File | null>(null);
   const [reference, setReference] = useState("");
   const [note, setNote] = useState("");
-  const [sending, setSending] = useState(false);
+  const { busy: sending, run } = useAsyncAction();
   const [sent, setSent] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -67,20 +69,19 @@ function BankTransferContent() {
     load();
   }, [load, router, orderId]);
 
-  const submit = async (e: React.FormEvent) => {
+  const submit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!order) return;
-    setSending(true);
-    setError(null);
-    try {
-      const message = await checkoutService.submitTransferProof(order._id, { file, reference, note });
-      setSent(message);
-      await load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not send the receipt");
-    } finally {
-      setSending(false);
-    }
+    run(async () => {
+      setError(null);
+      try {
+        const message = await checkoutService.submitTransferProof(order._id, { file, reference, note });
+        setSent(message);
+        await load();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Could not send the receipt");
+      }
+    });
   };
 
   if (loading) {
@@ -200,7 +201,13 @@ function BankTransferContent() {
               {error && <p className="text-sm text-red-600">{error}</p>}
               {sent && <p className="text-sm text-green-700">{sent}</p>}
               <div className="flex flex-wrap gap-3">
-                <button type="submit" disabled={sending || (!file && !reference.trim())} className="rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-black hover:opacity-90 disabled:opacity-50">
+                <button
+                  type="submit"
+                  disabled={sending || (!file && !reference.trim())}
+                  aria-busy={sending || undefined}
+                  className="inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-black hover:opacity-90 disabled:opacity-50"
+                >
+                  {sending && <Spinner />}
                   {sending ? "Sending…" : awaiting ? "Update receipt" : "Send receipt"}
                 </button>
                 <Link href="/user-detail?tab=history" className="rounded-lg border border-gray-300 px-5 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50">

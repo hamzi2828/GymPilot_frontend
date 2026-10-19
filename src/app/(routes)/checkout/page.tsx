@@ -9,6 +9,8 @@ import OrderSummary from "./components/OrderSummary";
 import { isAuthenticated } from "../../../helper/helper";
 import { packageService, type Package } from "../packages/services/packageService";
 import { checkoutService, type CouponPreview, type PaymentMethodKey, type PaymentMethods } from "./services/checkoutService";
+import Spinner from "@/components/ui/Spinner";
+import useAsyncAction from "@/components/ui/useAsyncAction";
 
 const CheckoutPageContent = () => {
   const router = useRouter();
@@ -36,14 +38,17 @@ const CheckoutPageContent = () => {
   // Whether the joining fee will be charged: only with a member's first
   // membership. null when it is not known (the summary then says so).
   const [joiningFeeDue, setJoiningFeeDue] = useState<boolean | null>(null);
+  const retry = useAsyncAction();
+  const reload = useAsyncAction();
 
-  const retryMethods = async () => {
-    setMethodsError(false);
-    const available = await checkoutService.getPaymentMethods().catch(() => null);
-    setMethods(available);
-    setMethodsError(!available);
-    if (available) setPaymentMethod(available.card ? "stripe" : "bank_transfer");
-  };
+  const retryMethods = () =>
+    retry.run(async () => {
+      setMethodsError(false);
+      const available = await checkoutService.getPaymentMethods().catch(() => null);
+      setMethods(available);
+      setMethodsError(!available);
+      if (available) setPaymentMethod(available.card ? "stripe" : "bank_transfer");
+    });
 
   const handleSubmitChange = (handler: () => void, submitting: boolean) => {
     setSubmitHandler(() => handler);
@@ -114,7 +119,19 @@ const CheckoutPageContent = () => {
             <h1 className="text-lg font-bold text-gray-900">Checkout could not open</h1>
             <p className="mt-1 text-sm text-gray-700">{loadError} Nothing has been charged.</p>
             <div className="mt-5 flex flex-wrap justify-center gap-3">
-              <button type="button" onClick={() => window.location.reload()} className="rounded-lg bg-gray-900 px-5 py-2.5 text-sm font-semibold text-white">
+              <button
+                type="button"
+                disabled={reload.busy}
+                aria-busy={reload.busy || undefined}
+                onClick={() =>
+                  reload.run(() => {
+                    reload.leave();
+                    window.location.reload();
+                  })
+                }
+                className="inline-flex items-center gap-2 rounded-lg bg-gray-900 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
+              >
+                {reload.busy && <Spinner />}
                 Try again
               </button>
               <Link href="/packages" className="rounded-lg border border-gray-300 bg-white px-5 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50">
