@@ -24,6 +24,7 @@ import {
 import { ACCOUNTS_API, apiGet, apiJson, csvField, replaceParams } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
 import { useGymToday } from "@/components/ThemeProvider";
+import { useGymCurrency } from "../_shared/gymCurrency";
 import { TrendChart, CategoryBars, useMoneyFormatter, SERIES_IN, SERIES_OUT, TrendPoint } from "./_charts";
 import { ManageHeadsModal } from "./_heads";
 
@@ -361,6 +362,25 @@ function Stat({
   );
 }
 
+// The currency an expense or asset is in, shown and never typed: free text
+// let "Rs" and "pkr " into the books beside "PKR". A new one is in the gym's
+// currency; one already recorded keeps the currency it was recorded in, as
+// past orders and expenses do when the gym's currency changes.
+function RecordCurrency({ code, gymCurrency }: { code: string; gymCurrency: string }) {
+  const kept = !!code && !!gymCurrency && code.toUpperCase() !== gymCurrency.toUpperCase();
+  return (
+    <div>
+      <span className="text-xs font-semibold text-neutral-700">Currency</span>
+      <p className="mt-1 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm text-neutral-700">{code || "…"}</p>
+      <p className="mt-1 text-[11px] text-neutral-500">
+        {kept
+          ? `Recorded in ${code}, and kept in it. The gym's currency is now ${gymCurrency}.`
+          : "The gym's currency, set in Settings → General → Money."}
+      </p>
+    </div>
+  );
+}
+
 // Shown wherever a figure hides money in another currency, rather than letting
 // a headline quietly under-report.
 function MixedNote({ totals, format }: { totals: Totals; format: (v: number, c?: string) => string }) {
@@ -489,9 +509,13 @@ function AccountsAdminPageInner() {
   const base = overview?.base_currency || sales?.base_currency || expenses?.base_currency || assets?.base_currency || "USD";
   const currencyNotice =
     overview?.currency_notice || sales?.currency_notice || expenses?.currency_notice || assets?.currency_notice || null;
-  // New records start in the gym's Settings currency -- what the server
+  // New records are in the gym's Settings currency -- what the server
   // stamps them with -- not whichever currency most of the history is in.
-  const recordCurrency = expenses?.record_currency || assets?.record_currency || base;
+  // Until a list has said which, the gym's public settings stand in for it
+  // on screen, and the save leaves it to the server.
+  const gymCurrency = useGymCurrency();
+  const serverRecordCurrency = expenses?.record_currency || assets?.record_currency || "";
+  const recordCurrency = serverRecordCurrency || gymCurrency;
   const format = useMoneyFormatter(base);
 
   useEffect(() => {
@@ -609,6 +633,7 @@ function AccountsAdminPageInner() {
     try {
       const body = {
         ...expenseDraft,
+        currency: editingExpense ? expenseDraft.currency : serverRecordCurrency || undefined,
         // As typed: the API reads "1,20,000" or "Rs 5,000" as a package price is read.
         amount: expenseDraft.amount.trim(),
         recurring: { isRecurring: expenseDraft.isRecurring, cycle: expenseDraft.cycle },
@@ -699,9 +724,10 @@ function AccountsAdminPageInner() {
     }
     setFormErr(null);
     try {
+      const body = { ...assetDraft, currency: editingAsset ? assetDraft.currency : serverRecordCurrency || undefined };
       const res = editingAsset
-        ? await apiJson<{ message: string }>(`${ACCOUNTS_API}/assets/${editingAsset.id}`, "PUT", assetDraft)
-        : await apiJson<{ message: string }>(`${ACCOUNTS_API}/assets`, "POST", assetDraft);
+        ? await apiJson<{ message: string }>(`${ACCOUNTS_API}/assets/${editingAsset.id}`, "PUT", body)
+        : await apiJson<{ message: string }>(`${ACCOUNTS_API}/assets`, "POST", body);
       setNotice(res.message);
       setAssetOpen(false);
       await load();
@@ -1087,7 +1113,7 @@ function AccountsAdminPageInner() {
               </div>
             </div>
             <TextField label="Amount" value={expenseDraft.amount} onChange={(v) => setExpenseDraft({ ...expenseDraft, amount: v })} placeholder="e.g. 1,20,000" required />
-            <TextField label="Currency" value={expenseDraft.currency} onChange={(v) => setExpenseDraft({ ...expenseDraft, currency: v })} />
+            <RecordCurrency code={editingExpense ? expenseDraft.currency : recordCurrency} gymCurrency={recordCurrency} />
             <TextField label="Date incurred" type="date" value={expenseDraft.incurredOn} onChange={(v) => setExpenseDraft({ ...expenseDraft, incurredOn: v })} />
             <div>
               <span className="text-xs font-semibold text-neutral-700">Status</span>
@@ -1180,7 +1206,7 @@ function AccountsAdminPageInner() {
             </div>
             <TextField label="How many" type="number" value={assetDraft.quantity} onChange={(v) => setAssetDraft({ ...assetDraft, quantity: v })} />
             <TextField label="Cost each" type="number" value={assetDraft.unitCost} onChange={(v) => setAssetDraft({ ...assetDraft, unitCost: v })} />
-            <TextField label="Currency" value={assetDraft.currency} onChange={(v) => setAssetDraft({ ...assetDraft, currency: v })} />
+            <RecordCurrency code={editingAsset ? assetDraft.currency : recordCurrency} gymCurrency={recordCurrency} />
             <TextField label="Bought on" type="date" value={assetDraft.purchasedOn} onChange={(v) => setAssetDraft({ ...assetDraft, purchasedOn: v })} />
             <TextField label="Supplier" value={assetDraft.supplier} onChange={(v) => setAssetDraft({ ...assetDraft, supplier: v })} />
             <TextField label="Invoice no." value={assetDraft.invoiceNo} onChange={(v) => setAssetDraft({ ...assetDraft, invoiceNo: v })} />
