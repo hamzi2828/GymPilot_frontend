@@ -19,7 +19,7 @@ import { CopyButton } from "../users/PasswordDialogs";
 export interface GatewayField {
   name: string;
   label: string;
-  type?: "text" | "password" | "select";
+  type?: "text" | "password" | "secret" | "select" | "boolean";
   /** Stored sealed, read back masked; the masked preview sent back keeps it. */
   secret?: boolean;
   required?: boolean;
@@ -439,6 +439,18 @@ export default function PaymentsSettings<T extends PaymentFields>({
               const cfg = configOf(selected.id);
               const value = cfg[field.name];
               const secretSaved = isMaskedSecret(value) || cfg[`${field.name}Set`] === true;
+              if (field.type === "boolean") {
+                // Choosing the gateway above already switches it on, so its own
+                // "enabled" switch is not shown again; any other yes/no setting
+                // is a toggle, never a text box.
+                if (field.name === "enabled") return null;
+                return (
+                  <div key={field.name} className="md:col-span-2">
+                    <Toggle label={field.label} checked={value === true || value === "true"} onChange={(v) => setField(selected.id, field.name, v)} />
+                    {field.help ? <p className="mt-1 text-xs text-neutral-500">{field.help}</p> : null}
+                  </div>
+                );
+              }
               if (field.type === "select") {
                 return (
                   <SelectField
@@ -452,7 +464,7 @@ export default function PaymentsSettings<T extends PaymentFields>({
                   />
                 );
               }
-              const secret = field.secret || field.type === "password";
+              const secret = field.secret || field.type === "password" || field.type === "secret";
               return (
                 <div key={field.name}>
                   <TextField
