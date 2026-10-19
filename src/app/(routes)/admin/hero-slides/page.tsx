@@ -15,6 +15,8 @@ import {
   Badge,
   Spinner,
   useConfirm,
+  useAsyncAction,
+  BusyLabel,
 } from "../_shared/ui";
 import { API_BASE, apiGet, apiJson, apiForm, absoluteUrl } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
@@ -46,7 +48,10 @@ export default function HeroSlidesAdminPage() {
   const [editing, setEditing] = useState<HeroSlide | null>(null);
   const [form, setForm] = useState<Partial<HeroSlide>>({});
   const [img, setImg] = useState<File | null>(null);
-  const [saving, setSaving] = useState(false);
+  const saveAction = useAsyncAction();
+  const saving = saveAction.busy;
+  const removing = useAsyncAction();
+  const toggling = useAsyncAction();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -78,8 +83,7 @@ export default function HeroSlidesAdminPage() {
     setOpen(true);
   };
 
-  const save = async () => {
-    setSaving(true);
+  const save = () => saveAction.run(async () => {
     try {
       const fd = new FormData();
       Object.entries(form).forEach(([k, v]) => {
@@ -102,10 +106,8 @@ export default function HeroSlidesAdminPage() {
       await load();
     } catch (e) {
       alert(e instanceof Error ? e.message : "Save failed");
-    } finally {
-      setSaving(false);
     }
-  };
+  });
 
   const remove = async (slide: HeroSlide) => {
     const answer = await ask({
@@ -114,12 +116,14 @@ export default function HeroSlidesAdminPage() {
       confirmLabel: "Delete slide",
     });
     if (answer === null) return;
-    try {
-      await apiJson(`${SLIDES_API}/${slide._id}`, "DELETE");
-      await load();
-    } catch (e) {
-      alert(e instanceof Error ? e.message : "Delete failed");
-    }
+    await removing.run(slide._id, async () => {
+      try {
+        await apiJson(`${SLIDES_API}/${slide._id}`, "DELETE");
+        await load();
+      } catch (e) {
+        alert(e instanceof Error ? e.message : "Delete failed");
+      }
+    });
   };
 
   // --- Drag-and-drop ordering -------------------------------------------
@@ -159,14 +163,14 @@ export default function HeroSlidesAdminPage() {
     persistOrder(next);
   };
 
-  const toggleActive = async (s: HeroSlide) => {
+  const toggleActive = (s: HeroSlide) => toggling.run(s._id, async () => {
     try {
       await apiJson(`${SLIDES_API}/${s._id}/status`, "PATCH");
       await load();
     } catch (e) {
       alert(e instanceof Error ? e.message : "Toggle failed");
     }
-  };
+  });
 
   return (
     <div>
@@ -264,14 +268,22 @@ export default function HeroSlidesAdminPage() {
                     )}
                   </div>
 
-                  <button type="button" onClick={() => toggleActive(s)} disabled={!editable} className="shrink-0 disabled:cursor-default">
-                    <Badge color={s.isActive ? "green" : "neutral"}>{s.isActive ? "Active" : "Inactive"}</Badge>
+                  <button
+                    type="button"
+                    onClick={() => toggleActive(s)}
+                    disabled={!editable || toggling.isBusy(s._id)}
+                    aria-busy={toggling.isBusy(s._id) || undefined}
+                    className="relative shrink-0 disabled:cursor-default aria-busy:disabled:cursor-wait"
+                  >
+                    <BusyLabel busy={toggling.isBusy(s._id)}>
+                      <Badge color={s.isActive ? "green" : "neutral"}>{s.isActive ? "Active" : "Inactive"}</Badge>
+                    </BusyLabel>
                   </button>
 
                   {editable && (
                     <div className="flex shrink-0 gap-2">
                       <SecondaryButton onClick={() => openEdit(s)}><FiEdit2 className="h-3.5 w-3.5" /></SecondaryButton>
-                      <DangerButton onClick={() => remove(s)} label={`Delete ${s.title || "this slide"}`}><FiTrash2 className="h-3.5 w-3.5" /></DangerButton>
+                      <DangerButton onClick={() => remove(s)} label={`Delete ${s.title || "this slide"}`} loading={removing.isBusy(s._id)}><FiTrash2 className="h-3.5 w-3.5" /></DangerButton>
                     </div>
                   )}
                 </li>
@@ -281,7 +293,7 @@ export default function HeroSlidesAdminPage() {
         </div>
       )}
 
-      <Modal open={open} onClose={() => setOpen(false)} title={editing ? "Edit Slide" : "New Slide"} size="lg">
+      <Modal open={open} onClose={() => setOpen(false)} title={editing ? "Edit Slide" : "New Slide"} size="lg" busy={saving}>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <TextField label="Title" value={form.title} onChange={(v) => setForm({ ...form, title: v })} />
           <TextField label="Subtitle" value={form.subtitle} onChange={(v) => setForm({ ...form, subtitle: v })} />
@@ -297,8 +309,8 @@ export default function HeroSlidesAdminPage() {
           <Toggle label="Active" checked={!!form.isActive} onChange={(v) => setForm({ ...form, isActive: v })} />
         </div>
         <div className="flex justify-end gap-2 mt-6">
-          <SecondaryButton onClick={() => setOpen(false)}>Cancel</SecondaryButton>
-          <PrimaryButton onClick={save} disabled={saving}>{saving ? "Saving..." : editing ? "Update" : "Create"}</PrimaryButton>
+          <SecondaryButton onClick={() => setOpen(false)} disabled={saving}>Cancel</SecondaryButton>
+          <PrimaryButton onClick={save} loading={saving}>{editing ? "Update" : "Create"}</PrimaryButton>
         </div>
       </Modal>
     </div>

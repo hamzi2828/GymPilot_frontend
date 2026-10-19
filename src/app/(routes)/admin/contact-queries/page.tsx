@@ -16,6 +16,7 @@ import {
   ErrorState,
   Pager,
   useConfirm,
+  useAsyncAction,
 } from "../_shared/ui";
 import { API_BASE, apiGet, apiJson, replaceParams } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
@@ -68,6 +69,9 @@ function ContactQueriesAdminPageInner() {
   const [status, setStatus] = useState("");
   const [priority, setPriority] = useState("");
   const [note, setNote] = useState("");
+  const saveAction = useAsyncAction();
+  const saving = saveAction.busy;
+  const removing = useAsyncAction();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -120,7 +124,7 @@ function ContactQueriesAdminPageInner() {
       .catch((e) => alert(e instanceof Error ? e.message : "Could not open that query"));
   }, [urlId]);
 
-  const save = async () => {
+  const save = () => saveAction.run(async () => {
     if (!selected) return;
     try {
       if (status !== selected.status) {
@@ -137,7 +141,7 @@ function ContactQueriesAdminPageInner() {
     } catch (e) {
       alert(e instanceof Error ? e.message : "Update failed");
     }
-  };
+  });
 
   const remove = async (c: Contact) => {
     const answer = await ask({
@@ -146,12 +150,14 @@ function ContactQueriesAdminPageInner() {
       confirmLabel: "Delete message",
     });
     if (answer === null) return;
-    try {
-      await apiJson(`${API_BASE}/api/contact/${c._id}`, "DELETE");
-      await load();
-    } catch (e) {
-      alert(e instanceof Error ? e.message : "Delete failed");
-    }
+    await removing.run(c._id, async () => {
+      try {
+        await apiJson(`${API_BASE}/api/contact/${c._id}`, "DELETE");
+        await load();
+      } catch (e) {
+        alert(e instanceof Error ? e.message : "Delete failed");
+      }
+    });
   };
 
   return (
@@ -189,7 +195,11 @@ function ContactQueriesAdminPageInner() {
             c.createdAt ? new Date(c.createdAt).toLocaleDateString() : "—",
             <div key="a" className="flex gap-2">
               <SecondaryButton onClick={() => open(c)}>View</SecondaryButton>
-              {editable && <DangerButton onClick={() => remove(c)}>Delete</DangerButton>}
+              {editable && (
+                <DangerButton onClick={() => remove(c)} loading={removing.isBusy(c._id)}>
+                  Delete
+                </DangerButton>
+              )}
             </div>,
           ])}
           empty={statusFilter ? "No contact queries with this status." : "No contact queries yet."}
@@ -197,7 +207,7 @@ function ContactQueriesAdminPageInner() {
       )}
       {!loading && !loadErr && <Pager page={page} pages={pages} total={total} onChange={setPage} />}
 
-      <Modal open={!!selected} onClose={() => setSelected(null)} title="Contact Query" size="md">
+      <Modal open={!!selected} onClose={() => setSelected(null)} title="Contact Query" size="md" busy={saving}>
         {selected && (
           <div className="space-y-4">
             <div className="text-sm space-y-1">
@@ -216,8 +226,14 @@ function ContactQueriesAdminPageInner() {
               </>
             )}
             <div className="flex justify-end gap-2 pt-2">
-              <SecondaryButton onClick={() => setSelected(null)}>Close</SecondaryButton>
-              {editable && <PrimaryButton onClick={save}>Save</PrimaryButton>}
+              <SecondaryButton onClick={() => setSelected(null)} disabled={saving}>
+                Close
+              </SecondaryButton>
+              {editable && (
+                <PrimaryButton onClick={save} loading={saving}>
+                  Save
+                </PrimaryButton>
+              )}
             </div>
           </div>
         )}

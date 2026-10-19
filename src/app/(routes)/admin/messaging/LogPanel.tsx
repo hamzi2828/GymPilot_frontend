@@ -4,7 +4,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { FiSend } from "react-icons/fi";
-import { PrimaryButton, SecondaryButton, Modal, TextField, TextArea, SelectField, Badge, Spinner, Table } from "../_shared/ui";
+import { PrimaryButton, SecondaryButton, Modal, TextField, TextArea, SelectField, Badge, Spinner, Table, useAsyncAction } from "../_shared/ui";
 import { apiGet, apiJson } from "../_shared/api";
 import { MESSAGING_API, CHANNEL_LABEL, when, type LogRow, type Channel, type ChannelsInfo } from "./shared";
 import { MemberPicker, type MemberOption } from "../_ops/MemberPicker";
@@ -17,7 +17,8 @@ export default function LogPanel({ editable, channels }: { editable: boolean; ch
   const [open, setOpen] = useState(false);
   const [chosen, setChosen] = useState<MemberOption | null>(null);
   const [draft, setDraft] = useState<{ channel: Channel; subject: string; body: string }>({ channel: "email", subject: "", body: "" });
-  const [sending, setSending] = useState(false);
+  const sendAction = useAsyncAction();
+  const sending = sendAction.busy;
   const [sendErr, setSendErr] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
 
@@ -46,8 +47,7 @@ export default function LogPanel({ editable, channels }: { editable: boolean; ch
     setSendErr(null);
   };
 
-  const send = async () => {
-    setSending(true);
+  const send = () => sendAction.run(async () => {
     setNotice(null);
     setSendErr(null);
     try {
@@ -59,10 +59,8 @@ export default function LogPanel({ editable, channels }: { editable: boolean; ch
       await load();
     } catch (e) {
       setSendErr(e instanceof Error ? e.message : "Could not send");
-    } finally {
-      setSending(false);
     }
-  };
+  });
 
   return (
     <div>
@@ -121,8 +119,8 @@ export default function LogPanel({ editable, channels }: { editable: boolean; ch
             <SecondaryButton onClick={() => setOpen(false)} disabled={sending}>
               Cancel
             </SecondaryButton>
-            <PrimaryButton onClick={send} disabled={sending || !chosen || !draft.body.trim()}>
-              {sending ? "Sending…" : "Send"}
+            <PrimaryButton onClick={send} loading={sending} disabled={!chosen || !draft.body.trim()}>
+              Send
             </PrimaryButton>
           </div>
         </div>

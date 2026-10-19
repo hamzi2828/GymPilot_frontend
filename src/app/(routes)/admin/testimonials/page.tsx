@@ -20,6 +20,8 @@ import {
   Badge,
   Spinner,
   useConfirm,
+  useAsyncAction,
+  BusyLabel,
 } from "../_shared/ui";
 import { API_BASE, apiGet, apiJson, apiForm, absoluteUrl } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
@@ -76,7 +78,10 @@ export default function TestimonialsAdminPage() {
   const [editing, setEditing] = useState<Testimonial | null>(null);
   const [form, setForm] = useState<Partial<Testimonial>>({});
   const [img, setImg] = useState<File | null>(null);
-  const [saving, setSaving] = useState(false);
+  const saveAction = useAsyncAction();
+  const saving = saveAction.busy;
+  const removing = useAsyncAction();
+  const toggling = useAsyncAction();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -110,8 +115,7 @@ export default function TestimonialsAdminPage() {
     setOpen(true);
   };
 
-  const save = async () => {
-    setSaving(true);
+  const save = () => saveAction.run(async () => {
     try {
       const fd = new FormData();
       (["name", "role", "quote"] as const).forEach((k) => {
@@ -134,10 +138,8 @@ export default function TestimonialsAdminPage() {
       await load();
     } catch (e) {
       alert(e instanceof Error ? e.message : "Save failed");
-    } finally {
-      setSaving(false);
     }
-  };
+  });
 
   const remove = async (t: Testimonial) => {
     const answer = await ask({
@@ -146,22 +148,24 @@ export default function TestimonialsAdminPage() {
       confirmLabel: "Delete testimonial",
     });
     if (answer === null) return;
-    try {
-      await apiJson(`${TESTIMONIALS_API}/${t._id}`, "DELETE");
-      await load();
-    } catch (e) {
-      alert(e instanceof Error ? e.message : "Delete failed");
-    }
+    await removing.run(t._id, async () => {
+      try {
+        await apiJson(`${TESTIMONIALS_API}/${t._id}`, "DELETE");
+        await load();
+      } catch (e) {
+        alert(e instanceof Error ? e.message : "Delete failed");
+      }
+    });
   };
 
-  const toggleActive = async (t: Testimonial) => {
+  const toggleActive = (t: Testimonial) => toggling.run(t._id, async () => {
     try {
       await apiJson(`${TESTIMONIALS_API}/${t._id}/status`, "PATCH");
       await load();
     } catch (e) {
       alert(e instanceof Error ? e.message : "Toggle failed");
     }
-  };
+  });
 
   // --- Drag-and-drop ordering -------------------------------------------
   const [dragIndex, setDragIndex] = useState<number | null>(null);
@@ -298,8 +302,16 @@ export default function TestimonialsAdminPage() {
                     <div className="truncate text-xs text-neutral-500">{t.quote}</div>
                   </div>
 
-                  <button type="button" onClick={() => toggleActive(t)} disabled={!editable} className="shrink-0 disabled:cursor-default">
-                    <Badge color={t.isActive ? "green" : "neutral"}>{t.isActive ? "Active" : "Inactive"}</Badge>
+                  <button
+                    type="button"
+                    onClick={() => toggleActive(t)}
+                    disabled={!editable || toggling.isBusy(t._id)}
+                    aria-busy={toggling.isBusy(t._id) || undefined}
+                    className="relative shrink-0 disabled:cursor-default aria-busy:disabled:cursor-wait"
+                  >
+                    <BusyLabel busy={toggling.isBusy(t._id)}>
+                      <Badge color={t.isActive ? "green" : "neutral"}>{t.isActive ? "Active" : "Inactive"}</Badge>
+                    </BusyLabel>
                   </button>
 
                   {editable && (
@@ -307,7 +319,7 @@ export default function TestimonialsAdminPage() {
                       <SecondaryButton onClick={() => openEdit(t)} label={`Edit ${t.name || "this testimonial"}`}>
                         <FiEdit2 className="h-3.5 w-3.5" />
                       </SecondaryButton>
-                      <DangerButton onClick={() => remove(t)} label={`Delete ${t.name || "this testimonial"}`}>
+                      <DangerButton onClick={() => remove(t)} label={`Delete ${t.name || "this testimonial"}`} loading={removing.isBusy(t._id)}>
                         <FiTrash2 className="h-3.5 w-3.5" />
                       </DangerButton>
                     </div>
@@ -319,7 +331,7 @@ export default function TestimonialsAdminPage() {
         </div>
       )}
 
-      <Modal open={open} onClose={() => setOpen(false)} title={editing ? "Edit Testimonial" : "New Testimonial"} size="md">
+      <Modal open={open} onClose={() => setOpen(false)} title={editing ? "Edit Testimonial" : "New Testimonial"} size="md" busy={saving}>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <TextField label="Name" value={form.name} onChange={(v) => setForm({ ...form, name: v })} required />
           <TextField
@@ -347,9 +359,9 @@ export default function TestimonialsAdminPage() {
           <Toggle label="Active" checked={!!form.isActive} onChange={(v) => setForm({ ...form, isActive: v })} />
         </div>
         <div className="flex justify-end gap-2 mt-6">
-          <SecondaryButton onClick={() => setOpen(false)}>Cancel</SecondaryButton>
-          <PrimaryButton onClick={save} disabled={saving || !form.name || !form.quote}>
-            {saving ? "Saving..." : editing ? "Update" : "Create"}
+          <SecondaryButton onClick={() => setOpen(false)} disabled={saving}>Cancel</SecondaryButton>
+          <PrimaryButton onClick={save} loading={saving} disabled={!form.name || !form.quote}>
+            {editing ? "Update" : "Create"}
           </PrimaryButton>
         </div>
       </Modal>

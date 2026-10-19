@@ -7,7 +7,7 @@
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { FiPlus } from "react-icons/fi";
-import { PageHeader, Card, PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, TextArea, SelectField, Badge, Spinner, ErrorState, Pager, useConfirm } from "../_shared/ui";
+import { PageHeader, Card, PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, TextArea, SelectField, Badge, Spinner, ErrorState, Pager, useConfirm, useAsyncAction } from "../_shared/ui";
 import { API_BASE, apiGet, apiJson, replaceParams } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
 
@@ -105,7 +105,11 @@ function LeadsAdminPageInner() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Lead | null>(null);
   const [draft, setDraft] = useState<Draft>(emptyDraft);
-  const [saving, setSaving] = useState(false);
+  const saveAction = useAsyncAction();
+  const saving = saveAction.busy;
+  const statusing = useAsyncAction();
+  const converting = useAsyncAction();
+  const removing = useAsyncAction();
   const [saveErr, setSaveErr] = useState<string | null>(null);
   const [note, setNote] = useState("");
   const [lostReason, setLostReason] = useState("");
@@ -237,8 +241,7 @@ function LeadsAdminPageInner() {
     lostReason,
   });
 
-  const save = async () => {
-    setSaving(true);
+  const save = () => saveAction.run(async () => {
     setSaveErr(null);
     try {
       if (editing) {
@@ -251,10 +254,8 @@ function LeadsAdminPageInner() {
       await load();
     } catch (e) {
       setSaveErr(e instanceof Error ? e.message : "Could not save");
-    } finally {
-      setSaving(false);
     }
-  };
+  });
 
   const setStatus = async (l: Lead, status: Status) => {
     let reason = "";
@@ -269,12 +270,14 @@ function LeadsAdminPageInner() {
       if (answer === null) return;
       reason = answer;
     }
-    try {
-      await apiJson(`${LEADS_API}/${l.id}/status`, "PATCH", { status, lostReason: reason });
-      await load();
-    } catch (e) {
-      setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not update" });
-    }
+    await statusing.run(l.id, async () => {
+      try {
+        await apiJson(`${LEADS_API}/${l.id}/status`, "PATCH", { status, lostReason: reason });
+        await load();
+      } catch (e) {
+        setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not update" });
+      }
+    });
   };
 
   const convert = async (l: Lead) => {
@@ -283,13 +286,15 @@ function LeadsAdminPageInner() {
       return;
     }
     if (!confirm(`Create a member account for ${l.name} (${l.email}) and email them a password?`)) return;
-    try {
-      const res = await apiJson<{ message: string }>(`${LEADS_API}/${l.id}/convert`, "POST", {});
-      setNotice({ tone: "ok", text: res.message });
-      await load();
-    } catch (e) {
-      setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not convert" });
-    }
+    await converting.run(l.id, async () => {
+      try {
+        const res = await apiJson<{ message: string }>(`${LEADS_API}/${l.id}/convert`, "POST", {});
+        setNotice({ tone: "ok", text: res.message });
+        await load();
+      } catch (e) {
+        setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not convert" });
+      }
+    });
   };
 
   const remove = async (l: Lead) => {
@@ -299,13 +304,18 @@ function LeadsAdminPageInner() {
       confirmLabel: "Delete lead",
     });
     if (answer === null) return;
-    try {
-      await apiJson(`${LEADS_API}/${l.id}`, "DELETE");
-      await load();
-    } catch (e) {
-      setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not delete" });
-    }
+    await removing.run(l.id, async () => {
+      try {
+        await apiJson(`${LEADS_API}/${l.id}`, "DELETE");
+        await load();
+      } catch (e) {
+        setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not delete" });
+      }
+    });
   };
+
+  // A card's own changes run one at a time.
+  const cardBusy = (id: string) => statusing.isBusy(id) || converting.isBusy(id) || removing.isBusy(id);
 
   const staffOptions = staff.map((s) => ({ value: s.id, label: s.name || s.email, hint: s.email }));
   // Keeps the current assignee visible (and the save from clearing it) when
@@ -361,12 +371,13 @@ function LeadsAdminPageInner() {
         <button
           type="button"
           aria-pressed={due}
+          disabled={loading}
           onClick={() => {
             setDue(!due);
             setPage(1);
             replaceParams({ due: due ? null : "1" });
           }}
-          className={`h-9 rounded-full border px-4 text-sm font-medium transition-colors ${due ? "border-neutral-900 bg-neutral-900 text-white" : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300"}`}
+          className={`h-9 rounded-full border px-4 text-sm font-medium transition-colors disabled:cursor-wait disabled:opacity-60 ${due ? "border-neutral-900 bg-neutral-900 text-white" : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300"}`}
         >
           Due for follow-up
         </button>
@@ -408,7 +419,13 @@ function LeadsAdminPageInner() {
                         {l.notes.length > 0 && <p className="mt-2 truncate text-[11px] text-neutral-500">“{l.notes[l.notes.length - 1].text}”</p>}
                         {editable && (
                           <div className="mt-3 flex flex-wrap gap-1.5">
-                            <select value={l.status} onChange={(e) => setStatus(l, e.target.value as Status)} className="h-7 rounded-md border border-neutral-200 bg-white px-1.5 text-xs">
+                            <select
+                              value={l.status}
+                              onChange={(e) => setStatus(l, e.target.value as Status)}
+                              disabled={cardBusy(l.id)}
+                              aria-busy={statusing.isBusy(l.id) || undefined}
+                              className="h-7 rounded-md border border-neutral-200 bg-white px-1.5 text-xs disabled:cursor-wait disabled:opacity-50"
+                            >
                               {STATUSES.map((s) => (
                                 <option key={s.key} value={s.key}>
                                   {s.label}
@@ -416,8 +433,14 @@ function LeadsAdminPageInner() {
                               ))}
                             </select>
                             <SecondaryButton onClick={() => openEdit(l)}>Open</SecondaryButton>
-                            {!l.converted_user_id && l.status !== "lost" && <SecondaryButton onClick={() => convert(l)}>Make member</SecondaryButton>}
-                            <DangerButton onClick={() => remove(l)} label={`Delete ${l.name}`}>×</DangerButton>
+                            {!l.converted_user_id && l.status !== "lost" && (
+                              <SecondaryButton onClick={() => convert(l)} loading={converting.isBusy(l.id)} disabled={cardBusy(l.id)}>
+                                Make member
+                              </SecondaryButton>
+                            )}
+                            <DangerButton onClick={() => remove(l)} label={`Delete ${l.name}`} loading={removing.isBusy(l.id)} disabled={cardBusy(l.id)}>
+                              ×
+                            </DangerButton>
                           </div>
                         )}
                       </Card>
@@ -463,8 +486,8 @@ function LeadsAdminPageInner() {
           <SecondaryButton onClick={() => setOpen(false)} disabled={saving}>
             Cancel
           </SecondaryButton>
-          <PrimaryButton onClick={save} disabled={saving || !draft.firstName.trim()}>
-            {saving ? "Saving…" : "Save"}
+          <PrimaryButton onClick={save} loading={saving} disabled={!draft.firstName.trim()}>
+            Save
           </PrimaryButton>
         </div>
       </Modal>

@@ -3,7 +3,7 @@
 // Wording: the gym's own text for each message the system sends.
 
 import { useCallback, useEffect, useState } from "react";
-import { PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, TextArea, Toggle, Badge, Spinner, Card, useConfirm } from "../_shared/ui";
+import { PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, TextArea, Toggle, Badge, Spinner, Card, useConfirm, useAsyncAction } from "../_shared/ui";
 import { apiGet, apiJson } from "../_shared/api";
 import { MESSAGING_API, type TemplateEvent } from "./shared";
 
@@ -15,7 +15,10 @@ export default function TemplatesPanel({ editable }: { editable: boolean }) {
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<TemplateEvent | null>(null);
   const [draft, setDraft] = useState<Draft>({ subject: "", body: "", text: "", enabled: true });
-  const [saving, setSaving] = useState(false);
+  const saveAction = useAsyncAction();
+  const saving = saveAction.busy;
+  const resetting = useAsyncAction();
+  const testing = useAsyncAction();
   const [saveErr, setSaveErr] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
 
@@ -47,9 +50,8 @@ export default function TemplatesPanel({ editable }: { editable: boolean }) {
     setSaveErr(null);
   };
 
-  const save = async () => {
+  const save = () => saveAction.run(async () => {
     if (!editing) return;
-    setSaving(true);
     setSaveErr(null);
     try {
       await apiJson(`${MESSAGING_API}/templates/${editing.key}`, "PUT", draft);
@@ -58,10 +60,8 @@ export default function TemplatesPanel({ editable }: { editable: boolean }) {
       await load();
     } catch (e) {
       setSaveErr(e instanceof Error ? e.message : "Could not save");
-    } finally {
-      setSaving(false);
     }
-  };
+  });
 
   const reset = async (ev: TemplateEvent) => {
     const answer = await ask({
@@ -70,23 +70,25 @@ export default function TemplatesPanel({ editable }: { editable: boolean }) {
       confirmLabel: "Use built-in wording",
     });
     if (answer === null) return;
-    try {
-      await apiJson(`${MESSAGING_API}/templates/${ev.key}`, "DELETE");
-      setEditing(null);
-      await load();
-    } catch (e) {
-      setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not reset" });
-    }
+    await resetting.run(ev.key, async () => {
+      try {
+        await apiJson(`${MESSAGING_API}/templates/${ev.key}`, "DELETE");
+        setEditing(null);
+        await load();
+      } catch (e) {
+        setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not reset" });
+      }
+    });
   };
 
-  const test = async (ev: TemplateEvent) => {
+  const test = (ev: TemplateEvent) => testing.run(ev.key, async () => {
     try {
       const res = await apiJson<{ message: string }>(`${MESSAGING_API}/templates/${ev.key}/test`, "POST", {});
       setNotice({ tone: "ok", text: res.message });
     } catch (e) {
       setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not send a sample" });
     }
-  };
+  });
 
   const groups = Array.from(new Set(events.map((e) => e.group)));
 
@@ -119,8 +121,16 @@ export default function TemplatesPanel({ editable }: { editable: boolean }) {
                       {editable && (
                         <div className="flex gap-2">
                           <SecondaryButton onClick={() => openEdit(ev)}>Edit</SecondaryButton>
-                          {ev.custom && <SecondaryButton onClick={() => test(ev)}>Email me a sample</SecondaryButton>}
-                          {ev.custom && <DangerButton onClick={() => reset(ev)}>Reset</DangerButton>}
+                          {ev.custom && (
+                            <SecondaryButton onClick={() => test(ev)} loading={testing.isBusy(ev.key)} disabled={resetting.isBusy(ev.key)}>
+                              Email me a sample
+                            </SecondaryButton>
+                          )}
+                          {ev.custom && (
+                            <DangerButton onClick={() => reset(ev)} loading={resetting.isBusy(ev.key)} disabled={testing.isBusy(ev.key)}>
+                              Reset
+                            </DangerButton>
+                          )}
                         </div>
                       )}
                     </div>
@@ -148,8 +158,8 @@ export default function TemplatesPanel({ editable }: { editable: boolean }) {
               <SecondaryButton onClick={() => setEditing(null)} disabled={saving}>
                 Cancel
               </SecondaryButton>
-              <PrimaryButton onClick={save} disabled={saving}>
-                {saving ? "Saving…" : "Save wording"}
+              <PrimaryButton onClick={save} loading={saving}>
+                Save wording
               </PrimaryButton>
             </div>
           </div>

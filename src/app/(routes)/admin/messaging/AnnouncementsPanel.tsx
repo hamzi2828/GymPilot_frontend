@@ -4,7 +4,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { FiPlus } from "react-icons/fi";
-import { PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, TextArea, SelectField, Toggle, Badge, Spinner, Table, useConfirm } from "../_shared/ui";
+import { PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, TextArea, SelectField, Toggle, Badge, Spinner, Table, useConfirm, useAsyncAction } from "../_shared/ui";
 import { apiGet, apiJson } from "../_shared/api";
 import { MESSAGING_API, when, dateInput, type Announcement } from "./shared";
 
@@ -18,7 +18,9 @@ export default function AnnouncementsPanel({ editable }: { editable: boolean }) 
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Announcement | null>(null);
   const [draft, setDraft] = useState<Draft>(emptyDraft);
-  const [saving, setSaving] = useState(false);
+  const saveAction = useAsyncAction();
+  const saving = saveAction.busy;
+  const removing = useAsyncAction();
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -50,8 +52,7 @@ export default function AnnouncementsPanel({ editable }: { editable: boolean }) 
     setOpen(true);
   };
 
-  const save = async () => {
-    setSaving(true);
+  const save = () => saveAction.run(async () => {
     setError(null);
     const body = { title: draft.title, body: draft.body, audience: draft.audience, tone: draft.tone, url: draft.url, urlLabel: draft.urlLabel, startsAt: draft.startsAt || null, endsAt: draft.endsAt || null, isActive: draft.isActive };
     try {
@@ -61,20 +62,20 @@ export default function AnnouncementsPanel({ editable }: { editable: boolean }) 
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not save the announcement");
-    } finally {
-      setSaving(false);
     }
-  };
+  });
 
   const remove = async (a: Announcement) => {
     const answer = await ask({ title: `Delete "${a.title}"?`, body: "The announcement stops showing straight away. This cannot be undone.", confirmLabel: "Delete announcement" });
     if (answer === null) return;
-    try {
-      await apiJson(`${MESSAGING_API}/announcements/${a.id}`, "DELETE");
-      await load();
-    } catch (e) {
-      alert(e instanceof Error ? e.message : "Delete failed");
-    }
+    await removing.run(a.id, async () => {
+      try {
+        await apiJson(`${MESSAGING_API}/announcements/${a.id}`, "DELETE");
+        await load();
+      } catch (e) {
+        alert(e instanceof Error ? e.message : "Delete failed");
+      }
+    });
   };
 
   const live = (a: Announcement) => {
@@ -119,7 +120,9 @@ export default function AnnouncementsPanel({ editable }: { editable: boolean }) 
             editable ? (
               <div key="x" className="flex gap-2">
                 <SecondaryButton onClick={() => openEdit(a)}>Edit</SecondaryButton>
-                <DangerButton onClick={() => remove(a)}>Delete</DangerButton>
+                <DangerButton onClick={() => remove(a)} loading={removing.isBusy(a.id)}>
+                  Delete
+                </DangerButton>
               </div>
             ) : (
               <span key="x" />
@@ -129,7 +132,7 @@ export default function AnnouncementsPanel({ editable }: { editable: boolean }) 
         />
       )}
 
-      <Modal open={open} onClose={() => setOpen(false)} title={editing ? "Edit announcement" : "New announcement"} size="lg">
+      <Modal open={open} onClose={() => setOpen(false)} title={editing ? "Edit announcement" : "New announcement"} size="lg" busy={saving}>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div className="md:col-span-2">
             <TextField label="Title" required value={draft.title} onChange={(v) => setDraft({ ...draft, title: v })} placeholder="Closed on Monday 14th" />
@@ -150,8 +153,8 @@ export default function AnnouncementsPanel({ editable }: { editable: boolean }) 
           <SecondaryButton onClick={() => setOpen(false)} disabled={saving}>
             Cancel
           </SecondaryButton>
-          <PrimaryButton onClick={save} disabled={saving || !draft.title.trim()}>
-            {saving ? "Saving…" : "Save"}
+          <PrimaryButton onClick={save} loading={saving} disabled={!draft.title.trim()}>
+            Save
           </PrimaryButton>
         </div>
       </Modal>

@@ -9,6 +9,7 @@ import {
   TextArea,
   Toggle,
   Spinner,
+  useAsyncAction,
 } from "../_shared/ui";
 import { API_BASE, apiGet, apiForm } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
@@ -32,7 +33,8 @@ export default function BlogSettingsAdminPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [bg, setBg] = useState<File | null>(null);
-  const [saving, setSaving] = useState(false);
+  const saveAction = useAsyncAction();
+  const saving = saveAction.busy;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -53,9 +55,8 @@ export default function BlogSettingsAdminPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  const save = async () => {
+  const save = () => saveAction.run(async () => {
     if (!hero) return;
-    setSaving(true);
     try {
       const fd = new FormData();
       Object.entries(hero).forEach(([k, v]) => {
@@ -73,10 +74,8 @@ export default function BlogSettingsAdminPage() {
       await load();
     } catch (e) {
       alert(e instanceof Error ? e.message : "Save failed");
-    } finally {
-      setSaving(false);
     }
-  };
+  });
 
   if (error && !hero) {
     return (
@@ -108,7 +107,7 @@ export default function BlogSettingsAdminPage() {
         </div>
         {editable && (
           <div className="flex justify-end mt-6">
-            <PrimaryButton onClick={save} disabled={saving}>{saving ? "Saving..." : "Save Changes"}</PrimaryButton>
+            <PrimaryButton onClick={save} loading={saving}>Save Changes</PrimaryButton>
           </div>
         )}
       </Card>

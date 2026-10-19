@@ -14,6 +14,7 @@ import {
   Spinner,
   Badge,
   useConfirm,
+  useAsyncAction,
 } from "../_shared/ui";
 import { API_BASE, apiGet, apiJson } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
@@ -60,7 +61,9 @@ export default function ContentPagesAdmin() {
   const [active, setActive] = useState<ContentPage["slug"]>("faqs");
   const [draft, setDraft] = useState<ContentPage | null>(null);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  // Saving and resetting the page: one at a time, either way.
+  const pageAction = useAsyncAction();
+  const saving = pageAction.busy;
   const [notice, setNotice] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -85,9 +88,8 @@ export default function ContentPagesAdmin() {
     load();
   }, [load]);
 
-  const save = async () => {
+  const save = () => pageAction.run("save", async () => {
     if (!draft) return;
-    setSaving(true);
     setNotice(null);
     try {
       await apiJson(`${API_BASE}/content/${draft.slug}`, "PUT", {
@@ -103,10 +105,8 @@ export default function ContentPagesAdmin() {
       await load();
     } catch (e) {
       setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not save" });
-    } finally {
-      setSaving(false);
     }
-  };
+  });
 
   const reset = async () => {
     if (!draft) return;
@@ -116,16 +116,15 @@ export default function ContentPagesAdmin() {
       confirmLabel: "Reset page",
     });
     if (answer === null) return;
-    setSaving(true);
-    try {
-      await apiJson(`${API_BASE}/content/${draft.slug}/reset`, "POST");
-      setNotice({ tone: "ok", text: "Reset to the default text." });
-      await load();
-    } catch (e) {
-      setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not reset" });
-    } finally {
-      setSaving(false);
-    }
+    await pageAction.run("reset", async () => {
+      try {
+        await apiJson(`${API_BASE}/content/${draft.slug}/reset`, "POST");
+        setNotice({ tone: "ok", text: "Reset to the default text." });
+        await load();
+      } catch (e) {
+        setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not reset" });
+      }
+    });
   };
 
   const patch = (change: Partial<ContentPage>) => draft && setDraft({ ...draft, ...change });
@@ -167,11 +166,11 @@ export default function ContentPagesAdmin() {
               </a>
               {editable && (
                 <>
-                  <SecondaryButton onClick={reset} disabled={saving}>
+                  <SecondaryButton onClick={reset} loading={pageAction.isBusy("reset")} disabled={saving}>
                     <FiRotateCcw className="h-3.5 w-3.5" /> Reset to default
                   </SecondaryButton>
-                  <PrimaryButton onClick={save} disabled={saving}>
-                    {saving ? "Saving…" : "Save"}
+                  <PrimaryButton onClick={save} loading={pageAction.isBusy("save")} disabled={saving}>
+                    Save
                   </PrimaryButton>
                 </>
               )}
@@ -198,7 +197,8 @@ export default function ContentPagesAdmin() {
             key={p.slug}
             type="button"
             onClick={() => setActive(p.slug)}
-            className={`rounded-lg border px-4 py-2 text-sm font-medium ${
+            disabled={loading}
+            className={`rounded-lg border px-4 py-2 text-sm font-medium disabled:cursor-wait disabled:opacity-60 ${
               active === p.slug
                 ? "border-neutral-900 bg-neutral-900 text-white"
                 : "border-neutral-300 text-neutral-700 hover:border-neutral-400"
@@ -378,8 +378,8 @@ export default function ContentPagesAdmin() {
               )}
             </p>
             {editable && (
-              <PrimaryButton onClick={save} disabled={saving}>
-                {saving ? "Saving…" : "Save"}
+              <PrimaryButton onClick={save} loading={pageAction.isBusy("save")} disabled={saving}>
+                Save
               </PrimaryButton>
             )}
           </div>

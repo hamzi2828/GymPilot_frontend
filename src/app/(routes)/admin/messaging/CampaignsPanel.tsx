@@ -6,7 +6,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { FiPlus, FiSend } from "react-icons/fi";
-import { PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, TextArea, SelectField, Badge, Spinner, Table, useConfirm } from "../_shared/ui";
+import { PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, TextArea, SelectField, Badge, Spinner, Table, useConfirm, useAsyncAction } from "../_shared/ui";
 import { apiGet, apiJson } from "../_shared/api";
 import { MESSAGING_API, CHANNEL_LABEL, AUDIENCE_LABEL, when, type Campaign, type Channel, type AudienceType, type ChannelsInfo } from "./shared";
 
@@ -22,10 +22,12 @@ export default function CampaignsPanel({ editable, channels }: { editable: boole
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Campaign | null>(null);
   const [draft, setDraft] = useState<Draft>(emptyDraft);
-  const [saving, setSaving] = useState(false);
+  const saveAction = useAsyncAction();
+  const saving = saveAction.busy;
+  const removing = useAsyncAction();
   const [error, setError] = useState<string | null>(null);
   const [audience, setAudience] = useState<{ total: number; reachable: number; preview: { name: string; address: string }[] } | null>(null);
-  const [sending, setSending] = useState<string | null>(null);
+  const sending = useAsyncAction();
   const [progress, setProgress] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -75,8 +77,7 @@ export default function CampaignsPanel({ editable, channels }: { editable: boole
     url: draft.url,
   });
 
-  const save = async () => {
-    setSaving(true);
+  const save = () => saveAction.run(async () => {
     setError(null);
     try {
       if (editing) await apiJson(`${MESSAGING_API}/campaigns/${editing.id}`, "PUT", payload());
@@ -85,20 +86,20 @@ export default function CampaignsPanel({ editable, channels }: { editable: boole
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not save the campaign");
-    } finally {
-      setSaving(false);
     }
-  };
+  });
 
   const remove = async (c: Campaign) => {
     const answer = await ask({ title: `Delete "${c.title}"?`, body: "This cannot be undone.", confirmLabel: "Delete campaign" });
     if (answer === null) return;
-    try {
-      await apiJson(`${MESSAGING_API}/campaigns/${c.id}`, "DELETE");
-      await load();
-    } catch (e) {
-      alert(e instanceof Error ? e.message : "Delete failed");
-    }
+    await removing.run(c.id, async () => {
+      try {
+        await apiJson(`${MESSAGING_API}/campaigns/${c.id}`, "DELETE");
+        await load();
+      } catch (e) {
+        alert(e instanceof Error ? e.message : "Delete failed");
+      }
+    });
   };
 
   const send = async (c: Campaign) => {
@@ -110,23 +111,23 @@ export default function CampaignsPanel({ editable, channels }: { editable: boole
       });
       if (answer === null) return;
     }
-    setSending(c.id);
-    setProgress("Sending…");
-    setError(null);
-    try {
-      // Loop until the server reports every recipient handled.
-      for (let i = 0; i < 400; i++) {
-        const res = await apiJson<{ done: boolean; remaining: number; data: Campaign }>(`${MESSAGING_API}/campaigns/${c.id}/send`, "POST", { limit: 50 });
-        setProgress(`${res.data.stats.sent} sent, ${res.data.stats.failed} failed, ${res.remaining} to go`);
-        if (res.done) break;
+    await sending.run(c.id, async () => {
+      setProgress("Sending…");
+      setError(null);
+      try {
+        // Loop until the server reports every recipient handled.
+        for (let i = 0; i < 400; i++) {
+          const res = await apiJson<{ done: boolean; remaining: number; data: Campaign }>(`${MESSAGING_API}/campaigns/${c.id}/send`, "POST", { limit: 50 });
+          setProgress(`${res.data.stats.sent} sent, ${res.data.stats.failed} failed, ${res.remaining} to go`);
+          if (res.done) break;
+        }
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Sending stopped");
+      } finally {
+        setProgress(null);
+        await load();
       }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Sending stopped");
-    } finally {
-      setSending(null);
-      setProgress(null);
-      await load();
-    }
+    });
   };
 
   const channelOptions = (["email", "sms", "whatsapp", "push"] as Channel[]).map((c) => ({
@@ -175,11 +176,15 @@ export default function CampaignsPanel({ editable, channels }: { editable: boole
               <div key="x" className="flex gap-2">
                 {c.status === "draft" && <SecondaryButton onClick={() => openEdit(c)}>Edit</SecondaryButton>}
                 {c.status !== "sent" && (
-                  <PrimaryButton onClick={() => send(c)} disabled={sending === c.id}>
+                  <PrimaryButton onClick={() => send(c)} loading={sending.isBusy(c.id)} disabled={removing.isBusy(c.id)}>
                     <FiSend className="mr-1 h-3.5 w-3.5" /> {c.status === "sending" ? "Continue" : c.status === "failed" ? "Retry" : "Send"}
                   </PrimaryButton>
                 )}
-                {c.status !== "sending" && <DangerButton onClick={() => remove(c)}>Delete</DangerButton>}
+                {c.status !== "sending" && (
+                  <DangerButton onClick={() => remove(c)} loading={removing.isBusy(c.id)} disabled={sending.isBusy(c.id)}>
+                    Delete
+                  </DangerButton>
+                )}
               </div>
             ) : (
               <span key="x" />
@@ -189,7 +194,7 @@ export default function CampaignsPanel({ editable, channels }: { editable: boole
         />
       )}
 
-      <Modal open={open} onClose={() => setOpen(false)} title={editing ? `Edit ${editing.title}` : "New campaign"} size="lg">
+      <Modal open={open} onClose={() => setOpen(false)} title={editing ? `Edit ${editing.title}` : "New campaign"} size="lg" busy={saving}>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <TextField label="Title (internal)" required value={draft.title} onChange={(v) => setDraft({ ...draft, title: v })} placeholder="September offer" />
           <SelectField label="Channel" value={draft.channel} allowClear={false} onChange={(v) => setDraft({ ...draft, channel: v as Channel })} options={channelOptions} />
@@ -226,8 +231,8 @@ export default function CampaignsPanel({ editable, channels }: { editable: boole
           <SecondaryButton onClick={() => setOpen(false)} disabled={saving}>
             Cancel
           </SecondaryButton>
-          <PrimaryButton onClick={save} disabled={saving || !draft.title.trim() || !draft.body.trim()}>
-            {saving ? "Saving…" : "Save draft"}
+          <PrimaryButton onClick={save} loading={saving} disabled={!draft.title.trim() || !draft.body.trim()}>
+            Save draft
           </PrimaryButton>
         </div>
       </Modal>

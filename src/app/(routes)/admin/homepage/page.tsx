@@ -33,6 +33,8 @@ import {
   Badge,
   Spinner,
   Card,
+  BusyLabel,
+  useAsyncAction,
 } from "../_shared/ui";
 import { API_BASE, apiGet, apiJson, apiForm, absoluteUrl } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
@@ -256,19 +258,17 @@ function setPath(obj: Record<string, unknown>, path: string, value: unknown): Re
 
 /** URL input + upload button + thumbnail preview, for any image field. */
 function ImageInput({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
-  const [uploading, setUploading] = useState(false);
+  const uploadAction = useAsyncAction();
+  const uploading = uploadAction.busy;
 
-  const upload = async (file: File) => {
-    setUploading(true);
+  const upload = (file: File) => uploadAction.run(async () => {
     try {
       const url = await uploadSectionImage(file);
       if (url) onChange(url);
     } catch (e) {
       alert(e instanceof Error ? e.message : "Upload failed");
-    } finally {
-      setUploading(false);
     }
-  };
+  });
 
   return (
     <div>
@@ -293,13 +293,19 @@ function ImageInput({ label, value, onChange }: { label: string; value: string; 
           placeholder="https://… or upload"
           className="flex-1 h-9 px-3 text-sm bg-white border border-neutral-200 rounded-lg focus:outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[color-mix(in_srgb,var(--accent)_25%,transparent)] transition-colors"
         />
-        <label className="inline-flex items-center h-9 px-3 text-sm font-medium text-neutral-700 bg-white border border-neutral-200 rounded-lg hover:bg-neutral-50 cursor-pointer transition-colors">
-          <FiUpload className="w-3.5 h-3.5 mr-1.5" />
-          {uploading ? "…" : "Upload"}
+        <label
+          aria-busy={uploading || undefined}
+          className={`relative inline-flex items-center h-9 px-3 text-sm font-medium text-neutral-700 bg-white border border-neutral-200 rounded-lg hover:bg-neutral-50 transition-colors ${uploading ? "cursor-wait" : "cursor-pointer"}`}
+        >
+          <BusyLabel busy={uploading}>
+            <FiUpload className="w-3.5 h-3.5 mr-1.5" />
+            Upload
+          </BusyLabel>
           <input
             type="file"
             accept="image/*"
             className="hidden"
+            disabled={uploading}
             onChange={(e) => {
               const f = e.target.files?.[0];
               if (f) upload(f);
@@ -324,7 +330,8 @@ function VideoInput({
   hint?: string;
   onChange: (v: string) => void;
 }) {
-  const [uploading, setUploading] = useState(false);
+  const uploadAction = useAsyncAction();
+  const uploading = uploadAction.busy;
   const [tooBig, setTooBig] = useState<string | null>(null);
   // The most this server takes, direct uploads included; unknown until asked.
   const [limitMb, setLimitMb] = useState<number | null>(null);
@@ -339,9 +346,8 @@ function VideoInput({
     };
   }, []);
 
-  const upload = async (file: File) => {
+  const upload = (file: File) => uploadAction.run(async () => {
     setTooBig(null);
-    setUploading(true);
     try {
       const direct = await directUploadIfLarge("homepage-video", file);
       if (direct) {
@@ -358,10 +364,8 @@ function VideoInput({
       } else {
         alert(e instanceof Error ? e.message : "Video upload failed");
       }
-    } finally {
-      setUploading(false);
     }
-  };
+  });
 
   return (
     <div>
@@ -380,13 +384,19 @@ function VideoInput({
           placeholder={`https://youtube.com/… or upload an mp4${limitMb ? ` (up to ${limitMb} MB)` : ""}`}
           className="flex-1 h-9 px-3 text-sm bg-white border border-neutral-200 rounded-lg focus:outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[color-mix(in_srgb,var(--accent)_25%,transparent)] transition-colors"
         />
-        <label className="inline-flex items-center h-9 px-3 text-sm font-medium text-neutral-700 bg-white border border-neutral-200 rounded-lg hover:bg-neutral-50 cursor-pointer transition-colors">
-          <FiUpload className="w-3.5 h-3.5 mr-1.5" />
-          {uploading ? "Uploading…" : "Upload"}
+        <label
+          aria-busy={uploading || undefined}
+          className={`relative inline-flex items-center h-9 px-3 text-sm font-medium text-neutral-700 bg-white border border-neutral-200 rounded-lg hover:bg-neutral-50 transition-colors ${uploading ? "cursor-wait" : "cursor-pointer"}`}
+        >
+          <BusyLabel busy={uploading}>
+            <FiUpload className="w-3.5 h-3.5 mr-1.5" />
+            Upload
+          </BusyLabel>
           <input
             type="file"
             accept="video/*"
             className="hidden"
+            disabled={uploading}
             onChange={(e) => {
               const f = e.target.files?.[0];
               if (f) upload(f);
@@ -594,7 +604,8 @@ function GalleryGroupsEditor({
   groups: GalleryGroupDraft[];
   onChange: (v: GalleryGroupDraft[]) => void;
 }) {
-  const [uploadingGroup, setUploadingGroup] = useState<number | null>(null);
+  // Keyed by the sub-section's index.
+  const uploading = useAsyncAction();
   const [urlDrafts, setUrlDrafts] = useState<Record<number, string>>({});
 
   const setGroup = (i: number, patch: Partial<GalleryGroupDraft>) =>
@@ -627,8 +638,7 @@ function GalleryGroupsEditor({
   const removeImage = (i: number, idx: number) =>
     setGroup(i, { images: imagesOf(groups[i]).filter((_, j) => j !== idx) });
 
-  const uploadFiles = async (i: number, files: File[]) => {
-    setUploadingGroup(i);
+  const uploadFiles = (i: number, files: File[]) => uploading.run(String(i), async () => {
     try {
       const urls: string[] = [];
       for (const file of files) {
@@ -638,10 +648,8 @@ function GalleryGroupsEditor({
       addImages(i, urls);
     } catch (e) {
       alert(e instanceof Error ? e.message : "Upload failed");
-    } finally {
-      setUploadingGroup(null);
     }
-  };
+  });
 
   const thumbBtn =
     "flex-1 flex items-center justify-center py-1 text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 disabled:opacity-30 transition-colors";
@@ -730,14 +738,20 @@ function GalleryGroupsEditor({
               {/* Photo adders — hidden once the group is full */}
               {!full && (
                 <div className="flex flex-wrap items-center gap-2">
-                  <label className="inline-flex items-center h-9 px-3 text-sm font-medium text-neutral-700 bg-white border border-neutral-200 rounded-lg hover:bg-neutral-50 cursor-pointer transition-colors">
-                    <FiUpload className="w-3.5 h-3.5 mr-1.5" />
-                    {uploadingGroup === i ? "Uploading…" : "Upload photos"}
+                  <label
+                    aria-busy={uploading.isBusy(String(i)) || undefined}
+                    className={`relative inline-flex items-center h-9 px-3 text-sm font-medium text-neutral-700 bg-white border border-neutral-200 rounded-lg hover:bg-neutral-50 transition-colors ${uploading.isBusy(String(i)) ? "cursor-wait" : "cursor-pointer"}`}
+                  >
+                    <BusyLabel busy={uploading.isBusy(String(i))}>
+                      <FiUpload className="w-3.5 h-3.5 mr-1.5" />
+                      Upload photos
+                    </BusyLabel>
                     <input
                       type="file"
                       accept="image/*"
                       multiple
                       className="hidden"
+                      disabled={uploading.isBusy(String(i))}
                       onChange={(e) => {
                         const files = Array.from(e.target.files || []);
                         if (files.length) uploadFiles(i, files);
@@ -794,7 +808,9 @@ export default function HomepageAdminPage() {
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<HomeSection | null>(null);
   const [draft, setDraft] = useState<Record<string, unknown>>({});
-  const [saving, setSaving] = useState(false);
+  const saveAction = useAsyncAction();
+  const saving = saveAction.busy;
+  const toggling = useAsyncAction();
   const [notice, setNotice] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -820,9 +836,8 @@ export default function HomepageAdminPage() {
     setDraft(JSON.parse(JSON.stringify(s.content || {})));
   };
 
-  const save = async () => {
+  const save = () => saveAction.run(async () => {
     if (!editing) return;
-    setSaving(true);
     try {
       await apiJson(`${SECTIONS_API}/${editing.key}`, "PUT", { content: draft });
       setEditing(null);
@@ -830,26 +845,25 @@ export default function HomepageAdminPage() {
       await load();
     } catch (e) {
       alert(e instanceof Error ? e.message : "Save failed");
-    } finally {
-      setSaving(false);
     }
-  };
+  });
 
-  const toggle = async (s: HomeSection) => {
+  const toggle = (s: HomeSection) => toggling.run(s.key, async () => {
     try {
       await apiJson(`${SECTIONS_API}/${s.key}/status`, "PATCH");
       await load();
     } catch (e) {
       alert(e instanceof Error ? e.message : "Toggle failed");
     }
-  };
+  });
 
   // --- Drag-and-drop ordering --------------------------------------------
   // Dropping only STAGES the new order locally; nothing is saved until the
   // admin clicks "Update order" (or discards the change).
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [overIndex, setOverIndex] = useState<number | null>(null);
-  const [savingOrder, setSavingOrder] = useState(false);
+  const orderAction = useAsyncAction();
+  const savingOrder = orderAction.busy;
   const [orderDirty, setOrderDirty] = useState(false);
   const [savedOrder, setSavedOrder] = useState<HomeSection[]>([]);
 
@@ -866,8 +880,7 @@ export default function HomepageAdminPage() {
     setOrderDirty(true);
   };
 
-  const saveOrder = async () => {
-    setSavingOrder(true);
+  const saveOrder = () => orderAction.run(async () => {
     try {
       await apiJson(`${SECTIONS_API}/reorder`, "PUT", {
         order: sections.map((s, i) => ({ key: s.key, order: i + 1 })),
@@ -877,10 +890,8 @@ export default function HomepageAdminPage() {
       await load();
     } catch (e) {
       setNotice(e instanceof Error ? e.message : "Could not save the new order.");
-    } finally {
-      setSavingOrder(false);
     }
-  };
+  });
 
   const discardOrder = () => {
     setSections(savedOrder);
@@ -961,8 +972,8 @@ export default function HomepageAdminPage() {
                 <SecondaryButton onClick={discardOrder} disabled={savingOrder}>
                   Discard
                 </SecondaryButton>
-                <PrimaryButton onClick={saveOrder} disabled={savingOrder}>
-                  {savingOrder ? "Saving…" : "Update order"}
+                <PrimaryButton onClick={saveOrder} loading={savingOrder}>
+                  Update order
                 </PrimaryButton>
               </div>
             </div>
@@ -1026,11 +1037,14 @@ export default function HomepageAdminPage() {
                   <button
                     type="button"
                     onClick={() => toggle(s)}
-                    className="shrink-0 disabled:opacity-40"
+                    className="relative shrink-0 disabled:opacity-40 aria-busy:disabled:cursor-wait aria-busy:disabled:opacity-100"
                     title={!editable ? undefined : orderDirty ? "Save or discard the new order first" : "Click to toggle visibility"}
-                    disabled={!editable || orderDirty}
+                    disabled={!editable || orderDirty || toggling.isBusy(s.key)}
+                    aria-busy={toggling.isBusy(s.key) || undefined}
                   >
-                    <Badge color={s.enabled ? "green" : "neutral"}>{s.enabled ? "Visible" : "Hidden"}</Badge>
+                    <BusyLabel busy={toggling.isBusy(s.key)}>
+                      <Badge color={s.enabled ? "green" : "neutral"}>{s.enabled ? "Visible" : "Hidden"}</Badge>
+                    </BusyLabel>
                   </button>
 
                   {editable && (
@@ -1050,6 +1064,7 @@ export default function HomepageAdminPage() {
         onClose={() => setEditing(null)}
         title={meta ? `Edit — ${meta.title}` : "Edit section"}
         size="lg"
+        busy={saving}
       >
         {meta?.dataNote && (
           <div className="mb-4 rounded-lg border border-sky-100 bg-sky-50 px-3 py-2 text-xs text-sky-800">
@@ -1124,9 +1139,9 @@ export default function HomepageAdminPage() {
         </div>
 
         <div className="flex justify-end gap-2 mt-6">
-          <SecondaryButton onClick={() => setEditing(null)}>Cancel</SecondaryButton>
-          <PrimaryButton onClick={save} disabled={saving}>
-            {saving ? "Saving…" : "Save section"}
+          <SecondaryButton onClick={() => setEditing(null)} disabled={saving}>Cancel</SecondaryButton>
+          <PrimaryButton onClick={save} loading={saving}>
+            Save section
           </PrimaryButton>
         </div>
       </Modal>

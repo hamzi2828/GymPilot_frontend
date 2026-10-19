@@ -16,6 +16,8 @@ import {
   Spinner,
   Table,
   useConfirm,
+  useAsyncAction,
+  BusyLabel,
 } from "../_shared/ui";
 import { API_BASE, apiGet, apiJson } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
@@ -74,15 +76,18 @@ export default function BlogsAdminPage() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Blog | null>(null);
   const [form, setForm] = useState<BlogForm>({});
-  const [saving, setSaving] = useState(false);
-  const [busyId, setBusyId] = useState<string | null>(null);
+  const saveAction = useAsyncAction();
+  const saving = saveAction.busy;
+  const removing = useAsyncAction();
+  const statusing = useAsyncAction();
 
   const [categories, setCategories] = useState<Category[]>([]);
   const [categoriesOpen, setCategoriesOpen] = useState(false);
   const [newCategory, setNewCategory] = useState("");
   const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
   const [categoryError, setCategoryError] = useState<string | null>(null);
-  const [categoryBusy, setCategoryBusy] = useState(false);
+  const categoryAction = useAsyncAction();
+  const categoryBusy = categoryAction.busy;
 
   // Paged: the endpoint returns ten at a time, and reading only the first
   // page used to hide every older post.
@@ -144,12 +149,11 @@ export default function BlogsAdminPage() {
     setOpen(true);
   };
 
-  const save = async () => {
+  const save = () => saveAction.run(async () => {
     if (!form.title?.trim() || !form.content?.trim() || !form.categoryId) {
       alert("A post needs a title, some content and a category.");
       return;
     }
-    setSaving(true);
     try {
       // Only the fields this form edits. The list rows carry populated and
       // computed extras (author, reading time) that are not the API's input.
@@ -172,38 +176,35 @@ export default function BlogsAdminPage() {
       await load();
     } catch (e) {
       alert(e instanceof Error ? e.message : "Save failed");
-    } finally {
-      setSaving(false);
     }
-  };
+  });
 
   const remove = async (b: Blog) => {
     const answer = await ask({ title: `Delete "${b.title}"?`, body: "The post is taken off the website and deleted. This cannot be undone.", confirmLabel: "Delete post" });
     if (answer === null) return;
-    try {
-      await apiJson(`${BLOGS_API}/${b._id}`, "DELETE");
-      await load();
-    } catch (e) {
-      alert(e instanceof Error ? e.message : "Delete failed");
-    }
+    await removing.run(b._id, async () => {
+      try {
+        await apiJson(`${BLOGS_API}/${b._id}`, "DELETE");
+        await load();
+      } catch (e) {
+        alert(e instanceof Error ? e.message : "Delete failed");
+      }
+    });
   };
 
   // Publish or pull a post without opening the editor.
-  const toggleStatus = async (b: Blog) => {
-    setBusyId(b._id);
+  const toggleStatus = (b: Blog) => statusing.run(b._id, async () => {
     try {
       await apiJson(`${BLOGS_API}/${b._id}/status`, "PATCH", { status: b.status === "published" ? "draft" : "published" });
       await load();
     } catch (e) {
       alert(e instanceof Error ? e.message : "Could not change the status");
-    } finally {
-      setBusyId(null);
     }
-  };
+  });
 
   // --- Categories -------------------------------------------------------
-  const categoryCall = async (fn: () => Promise<unknown>) => {
-    setCategoryBusy(true);
+  // `key` names the button that started it, which shows the spinner.
+  const categoryCall = (key: string, fn: () => Promise<unknown>) => categoryAction.run(key, async () => {
     setCategoryError(null);
     try {
       await fn();
@@ -212,20 +213,18 @@ export default function BlogsAdminPage() {
     } catch (e) {
       setCategoryError(e instanceof Error ? e.message : "Something went wrong");
       return false;
-    } finally {
-      setCategoryBusy(false);
     }
-  };
+  });
 
   const addCategory = async () => {
     const name = newCategory.trim();
     if (!name) return;
-    if (await categoryCall(() => apiJson(CATEGORIES_API, "POST", { name }))) setNewCategory("");
+    if (await categoryCall("add", () => apiJson(CATEGORIES_API, "POST", { name }))) setNewCategory("");
   };
 
   const renameCategory = async () => {
     if (!renaming || !renaming.name.trim()) return;
-    if (await categoryCall(() => apiJson(`${CATEGORIES_API}/${renaming.id}`, "PUT", { name: renaming.name.trim() }))) {
+    if (await categoryCall("rename", () => apiJson(`${CATEGORIES_API}/${renaming.id}`, "PUT", { name: renaming.name.trim() }))) {
       setRenaming(null);
       // Rows show the category name they were loaded with.
       await load();
@@ -235,7 +234,7 @@ export default function BlogsAdminPage() {
   const deleteCategory = async (c: Category) => {
     const answer = await ask({ title: `Delete the category "${c.name}"?`, body: "This cannot be undone.", confirmLabel: "Delete category" });
     if (answer === null) return;
-    await categoryCall(() => apiJson(`${CATEGORIES_API}/${c._id}`, "DELETE"));
+    await categoryCall(`delete:${c._id}`, () => apiJson(`${CATEGORIES_API}/${c._id}`, "DELETE"));
   };
 
   const categoryName = (b: Blog) =>
@@ -275,13 +274,16 @@ export default function BlogsAdminPage() {
               key="s"
               type="button"
               onClick={() => toggleStatus(b)}
-              disabled={!editable || busyId === b._id}
+              disabled={!editable || statusing.isBusy(b._id)}
+              aria-busy={statusing.isBusy(b._id) || undefined}
               title={editable ? (b.status === "published" ? "Click to unpublish" : "Click to publish") : undefined}
-              className="disabled:cursor-default"
+              className="relative disabled:cursor-default aria-busy:disabled:cursor-wait"
             >
-              <Badge color={b.status === "published" ? "green" : "neutral"}>
-                {b.status || "draft"}
-              </Badge>
+              <BusyLabel busy={statusing.isBusy(b._id)}>
+                <Badge color={b.status === "published" ? "green" : "neutral"}>
+                  {b.status || "draft"}
+                </Badge>
+              </BusyLabel>
             </button>,
             b.views ?? 0,
             b.featured ? <Badge color="amber">Featured</Badge> : "—",
@@ -290,7 +292,7 @@ export default function BlogsAdminPage() {
                 <SecondaryButton onClick={() => openEdit(b)} label={`Edit ${b.title}`}>
                   <FiEdit2 className="w-3.5 h-3.5" />
                 </SecondaryButton>
-                <DangerButton onClick={() => remove(b)} label={`Delete ${b.title}`}>
+                <DangerButton onClick={() => remove(b)} label={`Delete ${b.title}`} loading={removing.isBusy(b._id)}>
                   <FiTrash2 className="w-3.5 h-3.5" />
                 </DangerButton>
               </div>
@@ -304,7 +306,7 @@ export default function BlogsAdminPage() {
 
       <Pager page={page} pages={pages} total={total} onChange={setPage} disabled={loading} />
 
-      <Modal open={open} onClose={() => setOpen(false)} title={editing ? "Edit Blog" : "New Blog"} size="lg">
+      <Modal open={open} onClose={() => setOpen(false)} title={editing ? "Edit Blog" : "New Blog"} size="lg" busy={saving}>
         <div className="grid grid-cols-1 gap-4">
           <TextField label="Title" required value={form.title} onChange={(v) => setForm({ ...form, title: v })} />
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -339,12 +341,12 @@ export default function BlogsAdminPage() {
           </div>
         </div>
         <div className="flex justify-end gap-2 mt-6">
-          <SecondaryButton onClick={() => setOpen(false)}>Cancel</SecondaryButton>
-          <PrimaryButton onClick={save} disabled={saving}>{saving ? "Saving..." : editing ? "Update" : "Create"}</PrimaryButton>
+          <SecondaryButton onClick={() => setOpen(false)} disabled={saving}>Cancel</SecondaryButton>
+          <PrimaryButton onClick={save} loading={saving}>{editing ? "Update" : "Create"}</PrimaryButton>
         </div>
       </Modal>
 
-      <Modal open={categoriesOpen} onClose={() => { setCategoriesOpen(false); setRenaming(null); }} title="Blog categories" size="md">
+      <Modal open={categoriesOpen} onClose={() => { setCategoriesOpen(false); setRenaming(null); }} title="Blog categories" size="md" busy={categoryBusy}>
         <div className="space-y-4">
           <p className="text-sm text-neutral-500">Every post sits in one category. A category still holding posts cannot be deleted — move them first.</p>
           <div className="divide-y divide-neutral-100 rounded-lg border border-neutral-200">
@@ -359,7 +361,7 @@ export default function BlogsAdminPage() {
                       className="h-8 flex-1 rounded-lg border border-neutral-200 px-2.5 text-sm focus:border-[var(--accent)] focus:outline-none"
                       autoFocus
                     />
-                    <PrimaryButton onClick={renameCategory} disabled={categoryBusy || !renaming.name.trim()}>Save</PrimaryButton>
+                    <PrimaryButton onClick={renameCategory} loading={categoryAction.isBusy("rename")} disabled={categoryBusy || !renaming.name.trim()}>Save</PrimaryButton>
                     <SecondaryButton onClick={() => setRenaming(null)} disabled={categoryBusy}>Cancel</SecondaryButton>
                   </>
                 ) : (
@@ -370,7 +372,7 @@ export default function BlogsAdminPage() {
                     <SecondaryButton onClick={() => setRenaming({ id: c._id, name: c.name })} disabled={categoryBusy} label={`Rename the category ${c.name}`}>
                       <FiEdit2 className="w-3.5 h-3.5" />
                     </SecondaryButton>
-                    <DangerButton onClick={() => deleteCategory(c)} disabled={categoryBusy} label={`Delete the category ${c.name}`}>
+                    <DangerButton onClick={() => deleteCategory(c)} loading={categoryAction.isBusy(`delete:${c._id}`)} disabled={categoryBusy} label={`Delete the category ${c.name}`}>
                       <FiTrash2 className="w-3.5 h-3.5" />
                     </DangerButton>
                   </>
@@ -383,7 +385,7 @@ export default function BlogsAdminPage() {
             <div className="flex-1">
               <TextField label="New category" value={newCategory} onChange={setNewCategory} placeholder="Training tips, Nutrition, Gym news…" />
             </div>
-            <PrimaryButton onClick={addCategory} disabled={categoryBusy || !newCategory.trim()}>Add</PrimaryButton>
+            <PrimaryButton onClick={addCategory} loading={categoryAction.isBusy("add")} disabled={categoryBusy || !newCategory.trim()}>Add</PrimaryButton>
           </div>
           {categoryError && <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{categoryError}</p>}
         </div>

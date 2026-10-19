@@ -6,7 +6,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { PageHeader, Card, SecondaryButton, Badge } from "../_shared/ui";
+import { PageHeader, Card, SecondaryButton, Badge, useAsyncAction } from "../_shared/ui";
 import { apiGet, apiJson } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
 import { MESSAGING_API, CHANNEL_LABEL, type Channel, type ChannelsInfo } from "./shared";
@@ -31,7 +31,8 @@ export default function MessagingAdminPage() {
   const [tab, setTab] = useState<TabKey>("campaigns");
   const [channels, setChannels] = useState<ChannelsInfo | null>(null);
   const [channelsError, setChannelsError] = useState<string | null>(null);
-  const [running, setRunning] = useState(false);
+  const automations = useAsyncAction();
+  const running = automations.busy;
   const [runResult, setRunResult] = useState<string | null>(null);
 
   // A failure here is said out loud: swallowed, it read as every channel
@@ -51,8 +52,7 @@ export default function MessagingAdminPage() {
     loadChannels();
   }, [loadChannels]);
 
-  const runAutomations = async (dryRun: boolean) => {
-    setRunning(true);
+  const runAutomations = (dryRun: boolean) => automations.run(dryRun ? "preview" : "run", async () => {
     setRunResult(null);
     try {
       const res = await apiJson<{ data: { absent: { enabled: boolean; sent: number }; winBack: { enabled: boolean; sent: number }; birthday: { enabled: boolean; sent: number } } }>(`${MESSAGING_API}/automations/run`, "POST", { dryRun });
@@ -61,10 +61,8 @@ export default function MessagingAdminPage() {
       setRunResult([part("We miss you", d.absent), part("Win back", d.winBack), part("Birthdays", d.birthday)].join(" · "));
     } catch (e) {
       setRunResult(e instanceof Error ? e.message : "Could not run");
-    } finally {
-      setRunning(false);
     }
-  };
+  });
 
   return (
     <div>
@@ -147,10 +145,10 @@ export default function MessagingAdminPage() {
             </div>
             {editable && (
               <div className="mt-4 flex flex-wrap gap-2">
-                <SecondaryButton onClick={() => runAutomations(true)} disabled={running}>
+                <SecondaryButton onClick={() => runAutomations(true)} loading={automations.isBusy("preview")} disabled={running}>
                   Preview today&apos;s run
                 </SecondaryButton>
-                <SecondaryButton onClick={() => runAutomations(false)} disabled={running}>
+                <SecondaryButton onClick={() => runAutomations(false)} loading={automations.isBusy("run")} disabled={running}>
                   Run now
                 </SecondaryButton>
               </div>
