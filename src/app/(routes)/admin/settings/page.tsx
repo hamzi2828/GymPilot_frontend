@@ -27,7 +27,6 @@ import { setActiveTheme } from "@/components/ThemeProvider";
 import MessagingSettings, { messagingToSave, type MessagingConfig } from "./MessagingSettings";
 import WebsiteSettings from "./WebsiteSettings";
 import BillingSettings from "./BillingSettings";
-import BackupSettings from "./BackupSettings";
 
 interface StripeConfig {
   publishableKey?: string;
@@ -159,7 +158,7 @@ function absoluteAsset(url: string) {
 }
 const BANKS_API = `${API_BASE}/banks`;
 
-type TabKey = "general" | "logo" | "stripe" | "smtp" | "messaging" | "banks" | "theme" | "billing" | "backup";
+type TabKey = "general" | "logo" | "stripe" | "smtp" | "messaging" | "banks" | "theme" | "billing";
 
 const TABS: { key: TabKey; label: string; hint: string }[] = [
   { key: "general", label: "General", hint: "Business, money and time, memberships, bookings, website" },
@@ -170,7 +169,6 @@ const TABS: { key: TabKey; label: string; hint: string }[] = [
   { key: "banks", label: "Banks", hint: "Bank accounts and payment barcodes" },
   { key: "theme", label: "Colour Scheme", hint: "Public site palette" },
   { key: "billing", label: "Billing", hint: "Your GymsPilotPro plan and payments" },
-  { key: "backup", label: "Data & backup", hint: "Download, daily backups and restore" },
 ];
 
 // The General tab is five screens, not one long one. The active section
@@ -609,17 +607,6 @@ function SettingsAdminPageInner() {
         <PageHeader title="Settings" />
         {tabStrip}
         <BillingSettings />
-      </div>
-    );
-  }
-
-  // Data & backup reads its own endpoints too.
-  if (tab === "backup") {
-    return (
-      <div>
-        <PageHeader title="Settings" />
-        {tabStrip}
-        <BackupSettings />
       </div>
     );
   }
