@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { cancelBooking } from "../../classes/services/bookingService";
 import { getMyBookingsWithRules, type MyBookingRow } from "../service/userDetailService";
@@ -56,23 +56,34 @@ export const BookingsSection: React.FC = () => {
   const [confirming, setConfirming] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
 
+  // Only the newest request may fill the list: a slow answer for "past" (or
+  // the reload before a cancel) must not land over a newer one.
+  const latestRequest = useRef(0);
+
   const load = useCallback(async () => {
+    const request = ++latestRequest.current;
     setLoading(true);
     try {
       const result = await getMyBookingsWithRules(scope);
+      if (request !== latestRequest.current) return;
       setRows(result.rows);
       setCancelHours(result.cancelHours);
       setLoadError(null);
     } catch (e) {
+      if (request !== latestRequest.current) return;
       setLoadError(e instanceof Error ? e.message : "Could not load bookings");
       setRows([]);
     } finally {
-      setLoading(false);
+      if (request === latestRequest.current) setLoading(false);
     }
   }, [scope]);
 
   useEffect(() => {
     load();
+    // Leaving the tab: whatever is still on its way is not for this list.
+    return () => {
+      latestRequest.current += 1;
+    };
   }, [load]);
 
   const onCancel = (booking: MyBookingRow) =>
