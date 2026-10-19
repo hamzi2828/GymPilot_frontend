@@ -12,6 +12,7 @@ import {
   SecondaryButton,
   PrimaryButton,
   DangerButton,
+  Select2,
   SelectField,
   TextField,
   Badge,
@@ -575,7 +576,6 @@ function PackageOrdersAdminPageInner() {
     }
   });
 
-  const select = "h-9 rounded-lg border border-neutral-200 bg-white px-3 text-sm text-neutral-700";
   const isPack = (o: PackageOrder) => !!(o.sessions && o.sessions.total > 0);
   const live = (o: PackageOrder) => o.payment.status === "paid" && ["active", "frozen", "past_due"].includes(o.status);
   // A card subscription Stripe will charge again at the end of the term by
@@ -639,30 +639,30 @@ function PackageOrdersAdminPageInner() {
           placeholder="Search order #, name, email…"
           className="h-9 w-64 rounded-lg border border-neutral-200 bg-white px-3 text-sm focus:border-neutral-400 focus:outline-none"
         />
-        <select value={filters.status} onChange={(e) => filterBy({ status: e.target.value })} className={select}>
-          <option value="">Any status</option>
-          {ORDER_STATUSES.map((s) => (
-            <option key={s} value={s}>
-              {s.replace("_", " ")}
-            </option>
-          ))}
-        </select>
-        <select value={filters.paymentStatus} onChange={(e) => filterBy({ paymentStatus: e.target.value })} className={select}>
-          <option value="">Any payment</option>
-          {PAYMENT_STATUSES.map((s) => (
-            <option key={s} value={s}>
-              {s === "processing" ? "awaiting review" : s}
-            </option>
-          ))}
-        </select>
-        <select value={filters.paymentMethod} onChange={(e) => filterBy({ paymentMethod: e.target.value })} className={select}>
-          <option value="">Any method</option>
-          {Object.entries(METHOD_LABELS).map(([k, v]) => (
-            <option key={k} value={k}>
-              {v}
-            </option>
-          ))}
-        </select>
+        <div className="w-40">
+          <Select2
+            ariaLabel="Order status"
+            value={filters.status}
+            onChange={(status) => filterBy({ status })}
+            options={[{ value: "", label: "Any status" }, ...ORDER_STATUSES.map((s) => ({ value: s, label: s.replace("_", " ") }))]}
+          />
+        </div>
+        <div className="w-44">
+          <Select2
+            ariaLabel="Payment status"
+            value={filters.paymentStatus}
+            onChange={(paymentStatus) => filterBy({ paymentStatus })}
+            options={[{ value: "", label: "Any payment" }, ...PAYMENT_STATUSES.map((s) => ({ value: s, label: s === "processing" ? "awaiting review" : s }))]}
+          />
+        </div>
+        <div className="w-48">
+          <Select2
+            ariaLabel="Payment method"
+            value={filters.paymentMethod}
+            onChange={(paymentMethod) => filterBy({ paymentMethod })}
+            options={[{ value: "", label: "Any method" }, ...Object.entries(METHOD_LABELS).map(([k, v]) => ({ value: k, label: v }))]}
+          />
+        </div>
         <label className="flex items-center gap-2 text-sm text-neutral-700">
           <input type="checkbox" checked={filters.hasDues === "1"} onChange={(e) => filterBy({ hasDues: e.target.checked ? "1" : "" })} className="h-4 w-4 accent-[var(--accent)]" />
           Has dues

@@ -4,7 +4,7 @@
 // permission check, with the request summarised and secrets stripped.
 
 import { useCallback, useEffect, useState } from "react";
-import { PageHeader, Card, Spinner, EmptyState, Badge } from "../_shared/ui";
+import { PageHeader, Card, Spinner, EmptyState, Badge, Select2 } from "../_shared/ui";
 import { API_BASE, apiGet } from "../_shared/api";
 import { LoadError } from "../_ops/lists";
 
@@ -57,21 +57,27 @@ export default function AuditLogPage() {
     return () => clearTimeout(t);
   }, [load, filters.actor]);
 
-  const select = "h-9 rounded-lg border border-neutral-200 bg-white px-3 text-sm text-neutral-700 disabled:opacity-50";
-
   return (
     <div>
       <PageHeader eyebrow="System" title="Audit log" />
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <input value={filters.actor} onChange={(e) => { setPage(1); setFilters({ ...filters, actor: e.target.value }); }} placeholder="Filter by staff email…" className="h-9 w-64 rounded-lg border border-neutral-200 bg-white px-3 text-sm focus:border-neutral-400 focus:outline-none" />
         <input value={filters.tab} onChange={(e) => { setPage(1); setFilters({ ...filters, tab: e.target.value }); }} placeholder="Area (e.g. packages)" className="h-9 w-48 rounded-lg border border-neutral-200 bg-white px-3 text-sm focus:border-neutral-400 focus:outline-none" />
-        <select value={filters.method} disabled={loading} onChange={(e) => { setPage(1); setFilters({ ...filters, method: e.target.value }); }} className={select}>
-          <option value="">Any action</option>
-          <option value="POST">Create</option>
-          <option value="PUT">Update</option>
-          <option value="PATCH">Change</option>
-          <option value="DELETE">Delete</option>
-        </select>
+        <div className="w-40">
+          <Select2
+            ariaLabel="Action"
+            value={filters.method}
+            disabled={loading}
+            onChange={(method) => { setPage(1); setFilters({ ...filters, method }); }}
+            options={[
+              { value: "", label: "Any action" },
+              { value: "POST", label: "Create" },
+              { value: "PUT", label: "Update" },
+              { value: "PATCH", label: "Change" },
+              { value: "DELETE", label: "Delete" },
+            ]}
+          />
+        </div>
         <span className="text-xs text-neutral-500">{total} entries</span>
       </div>
 

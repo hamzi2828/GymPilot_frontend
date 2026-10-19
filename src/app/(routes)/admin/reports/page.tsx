@@ -7,7 +7,7 @@
 
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { PageHeader, Card, PrimaryButton, SecondaryButton, TextField, Spinner, ErrorState, useLatestRequest, useAsyncAction } from "../_shared/ui";
+import { PageHeader, Card, PrimaryButton, SecondaryButton, TextField, Select2, Spinner, ErrorState, useLatestRequest, useAsyncAction } from "../_shared/ui";
 import { API_BASE, apiGet } from "../_shared/api";
 import { BarChart, LineChart, HBarList, type Point } from "../_shared/Charts";
 import { downloadExport, FORMAT_LABELS, type ExportFormat } from "./download";
@@ -263,23 +263,24 @@ function ReportsPageInner() {
             // format, download -- for the dates above.
             <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-neutral-100 pt-4 text-sm">
               <span className="font-medium text-neutral-700">Download</span>
-              <select
-                value={chosenExport?.id ?? ""}
-                onChange={(e) => {
-                  setExportId(e.target.value);
-                  setExportErr(null);
-                }}
-                aria-label="What to download"
-                disabled={!chosenExport}
-                className="h-9 rounded-lg border border-neutral-300 bg-white px-3 text-sm text-neutral-900 focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/30 disabled:opacity-50"
-              >
-                {!chosenExport && <option value="">Nothing to download</option>}
-                {EXPORTS.map((item) => (
-                  <option key={item.id} value={item.id} disabled={!mayExport(item)}>
-                    {mayExport(item) ? item.label : `${item.label} — needs ${item.tabLabel} access`}
-                  </option>
-                ))}
-              </select>
+              <div className="w-56 max-w-full">
+                <Select2
+                  ariaLabel="What to download"
+                  value={chosenExport?.id ?? ""}
+                  onChange={(id) => {
+                    setExportId(id);
+                    setExportErr(null);
+                  }}
+                  disabled={!chosenExport}
+                  placeholder="Nothing to download"
+                  options={EXPORTS.map((item) => ({
+                    value: item.id,
+                    label: item.label,
+                    hint: mayExport(item) ? undefined : `Needs ${item.tabLabel} access`,
+                    disabled: !mayExport(item),
+                  }))}
+                />
+              </div>
               <span className="text-neutral-500">as</span>
               <div className="inline-flex overflow-hidden rounded-lg border border-neutral-300" role="radiogroup" aria-label="File type">
                 {(["xlsx", "csv"] as const).map((format) => (

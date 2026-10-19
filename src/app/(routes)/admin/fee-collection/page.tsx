@@ -14,7 +14,7 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { PageHeader, Card, Badge, Spinner, BusyLabel, useRequestId, useAsyncAction, untilPageLeaves } from "../_shared/ui";
+import { PageHeader, Card, Badge, Spinner, BusyLabel, Select2, useRequestId, useAsyncAction, untilPageLeaves } from "../_shared/ui";
 import { API_BASE, GYMFOLIO_API, apiGet, apiJson, absoluteUrl, replaceParams } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
 import { useSiteSettings } from "@/components/ThemeProvider";
@@ -930,11 +930,18 @@ function FeeCollectionInner() {
                   </p>
                   <div className="grid gap-4 sm:grid-cols-2">
                     <Field label="Start from">
-                      <select className={inputCls} value={renewDraft.startFrom} onChange={(e) => setRenewDraft({ ...renewDraft, startFrom: e.target.value as RenewDraft["startFrom"] })}>
-                        <option value="expiry">{m.endDate ? `Current expiry (${fmtDate(m.endDate)})` : "Current expiry"}</option>
-                        <option value="today">Today</option>
-                        <option value="date">A date…</option>
-                      </select>
+                      <div className="mt-1">
+                        <Select2
+                          ariaLabel="Start from"
+                          value={renewDraft.startFrom}
+                          onChange={(startFrom) => setRenewDraft({ ...renewDraft, startFrom: startFrom as RenewDraft["startFrom"] })}
+                          options={[
+                            { value: "expiry", label: m.endDate ? `Current expiry (${fmtDate(m.endDate)})` : "Current expiry" },
+                            { value: "today", label: "Today" },
+                            { value: "date", label: "A date…" },
+                          ]}
+                        />
+                      </div>
                     </Field>
                     {renewDraft.startFrom === "date" ? (
                       <Field label="Start date">
@@ -982,20 +989,20 @@ function FeeCollectionInner() {
                     {collectableDues.length > 1 ? (
                       <div className="sm:col-span-2">
                         <Field label="For">
-                          <select
-                            className={inputCls}
-                            value={duesDraft.orderId}
-                            onChange={(e) => {
-                              const due = collectableDues.find((d) => d.orderId === e.target.value);
-                              setDuesDraft({ ...duesDraft, orderId: e.target.value, method: deskMethod(due?.method) });
-                            }}
-                          >
-                            {collectableDues.map((due) => (
-                              <option key={due.orderId} value={due.orderId}>
-                                {due.packageName} · {due.orderNumber} · {money(due.balanceDue, due.currency)} due
-                              </option>
-                            ))}
-                          </select>
+                          <div className="mt-1">
+                            <Select2
+                              ariaLabel="For"
+                              value={duesDraft.orderId}
+                              onChange={(orderId) => {
+                                const due = collectableDues.find((d) => d.orderId === orderId);
+                                setDuesDraft({ ...duesDraft, orderId, method: deskMethod(due?.method) });
+                              }}
+                              options={collectableDues.map((due) => ({
+                                value: due.orderId,
+                                label: `${due.packageName} · ${due.orderNumber} · ${money(due.balanceDue, due.currency)} due`,
+                              }))}
+                            />
+                          </div>
                         </Field>
                       </div>
                     ) : (
@@ -1054,24 +1061,35 @@ function FeeCollectionInner() {
                       <div className="grid gap-4 sm:grid-cols-2">
                         <div className="sm:col-span-2">
                           <Field label="Package">
-                            <select className={inputCls} value={newDraft.packageId} onChange={(e) => setNewDraft({ ...newDraft, packageId: e.target.value })}>
-                              {packages.map((p) => (
-                                <option key={p._id} value={p._id}>
-                                  {p.name} — {(p.currency || view.currency || "").toUpperCase()} {p.price}
-                                  {p.period ? ` / ${p.period}` : ""}
-                                </option>
-                              ))}
-                            </select>
+                            <div className="mt-1">
+                              <Select2
+                                ariaLabel="Package"
+                                value={newDraft.packageId}
+                                onChange={(packageId) => setNewDraft({ ...newDraft, packageId })}
+                                options={packages.map((p) => ({
+                                  value: p._id,
+                                  label: `${p.name} — ${(p.currency || view.currency || "").toUpperCase()} ${p.price}${p.period ? ` / ${p.period}` : ""}`,
+                                }))}
+                              />
+                            </div>
                           </Field>
                         </div>
                         <Field label="Starts">
-                          <select className={inputCls} value={newDraft.startMode} onChange={(e) => setNewDraft({ ...newDraft, startMode: e.target.value as NewDraft["startMode"] })}>
-                            <option value="auto">
-                              {/* Packs and passes start at once; a membership after the one still running. */}
-                              {m?.live && (chosenPackage?.kind || "membership") === "membership" ? `When the current one ends (${fmtDate(m.endDate)})` : "Today"}
-                            </option>
-                            <option value="date">On a date…</option>
-                          </select>
+                          <div className="mt-1">
+                            <Select2
+                              ariaLabel="Starts"
+                              value={newDraft.startMode}
+                              onChange={(startMode) => setNewDraft({ ...newDraft, startMode: startMode as NewDraft["startMode"] })}
+                              options={[
+                                {
+                                  value: "auto",
+                                  // Packs and passes start at once; a membership after the one still running.
+                                  label: m?.live && (chosenPackage?.kind || "membership") === "membership" ? `When the current one ends (${fmtDate(m.endDate)})` : "Today",
+                                },
+                                { value: "date", label: "On a date…" },
+                              ]}
+                            />
+                          </div>
                         </Field>
                         {newDraft.startMode === "date" ? (
                           <Field label="Start date">
@@ -1220,13 +1238,9 @@ function StartHint({ m, startFrom }: { m: DeskMembership; startFrom: "expiry" | 
 
 function MethodSelect({ value, onChange }: { value: string; onChange: (method: string) => void }) {
   return (
-    <select className={inputCls} value={value} onChange={(e) => onChange(e.target.value)}>
-      {DESK_METHODS.map((method) => (
-        <option key={method} value={method}>
-          {methodLabel(method)}
-        </option>
-      ))}
-    </select>
+    <div className="mt-1">
+      <Select2 ariaLabel="Paid by" value={value} onChange={onChange} options={DESK_METHODS.map((method) => ({ value: method, label: methodLabel(method) }))} />
+    </div>
   );
 }
 

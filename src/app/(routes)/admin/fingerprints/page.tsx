@@ -22,6 +22,7 @@ import {
   Modal,
   SecondaryButton,
   DangerButton,
+  Select2,
   useAsyncAction,
 } from "../_shared/ui";
 import { ATTENDANCE_API, ApiError, apiGet, apiJson } from "../_shared/api";
@@ -73,8 +74,6 @@ interface Pending {
 }
 
 const PAGE_SIZE = 25;
-
-const selectCls = "h-9 rounded-lg border border-neutral-200 bg-white px-3 text-sm text-neutral-700";
 
 function formatDate(value: string | null): string {
   if (!value) return "";
@@ -267,32 +266,36 @@ export default function FingerprintsPage() {
           aria-label="Search"
           className="h-9 w-72 max-w-full rounded-lg border border-neutral-200 bg-white px-3 text-sm focus:border-neutral-400 focus:outline-none"
         />
-        <select
-          value={type}
-          onChange={(e) => {
-            setPage(1);
-            setType(e.target.value as "" | PersonType);
-          }}
-          aria-label="Who"
-          className={selectCls}
-        >
-          <option value="">Members and staff</option>
-          <option value="member">Members</option>
-          <option value="staff">Staff</option>
-        </select>
-        <select
-          value={show}
-          onChange={(e) => {
-            setPage(1);
-            setShow(e.target.value as Show);
-          }}
-          aria-label="Show"
-          className={selectCls}
-        >
-          <option value="">Everyone on file</option>
-          <option value="unreadable">Unreadable fingers</option>
-          <option value="departed">Left, switched off or deleted</option>
-        </select>
+        <div className="w-48 max-w-full">
+          <Select2
+            ariaLabel="Who"
+            value={type}
+            onChange={(next) => {
+              setPage(1);
+              setType(next as "" | PersonType);
+            }}
+            options={[
+              { value: "", label: "Members and staff" },
+              { value: "member", label: "Members" },
+              { value: "staff", label: "Staff" },
+            ]}
+          />
+        </div>
+        <div className="w-60 max-w-full">
+          <Select2
+            ariaLabel="Show"
+            value={show}
+            onChange={(next) => {
+              setPage(1);
+              setShow(next as Show);
+            }}
+            options={[
+              { value: "", label: "Everyone on file" },
+              { value: "unreadable", label: "Unreadable fingers" },
+              { value: "departed", label: "Left, switched off or deleted" },
+            ]}
+          />
+        </div>
         {!loading && !error && <span className="text-xs text-neutral-500">{total} {total === 1 ? "person" : "people"}</span>}
       </div>
 

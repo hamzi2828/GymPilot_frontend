@@ -8,7 +8,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { PageHeader, Card, PrimaryButton, SecondaryButton, TextField, TextArea, Toggle, UpgradePlanLink, ErrorState, useAsyncAction, untilPageLeaves } from "../_shared/ui";
+import { PageHeader, Card, PrimaryButton, SecondaryButton, TextField, TextArea, Toggle, Select2, UpgradePlanLink, ErrorState, useAsyncAction, untilPageLeaves } from "../_shared/ui";
 import { API_BASE, GYMFOLIO_API, apiGet, apiJson, apiForm, isPlanLimitError } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
 import { PACKAGE_TERMS } from "../packages/terms";
@@ -274,13 +274,15 @@ export default function SetupWizardPage() {
                 <span className="text-xs font-semibold text-neutral-700">How long it lasts</span>
                 {/* Monthly when the card is charged automatically; otherwise
                     one of the lengths the server reads correctly. */}
-                <select value={pkg.recurring ? "month" : pkg.period} disabled={pkg.recurring} onChange={(e) => setPkg({ ...pkg, period: e.target.value })} className={`${input} disabled:opacity-60`}>
-                  {PACKAGE_TERMS.map((t) => (
-                    <option key={t.label} value={t.label}>
-                      {t.name}
-                    </option>
-                  ))}
-                </select>
+                <div className="mt-1">
+                  <Select2
+                    ariaLabel="How long it lasts"
+                    value={pkg.recurring ? "month" : pkg.period}
+                    disabled={pkg.recurring}
+                    onChange={(period) => setPkg({ ...pkg, period })}
+                    options={PACKAGE_TERMS.map((t) => ({ value: t.label, label: t.name }))}
+                  />
+                </div>
               </label>
             </div>
             <TextArea label="What is included (one per line)" value={pkg.features} onChange={(v) => setPkg({ ...pkg, features: v })} />
@@ -365,12 +367,19 @@ export default function SetupWizardPage() {
               <TextField label="Email" type="email" value={staff.email} onChange={(v) => setStaff({ ...staff, email: v })} />
               <label className="block">
                 <span className="text-xs font-semibold text-neutral-700">Role</span>
-                <select value={staff.role} onChange={(e) => setStaff({ ...staff, role: e.target.value })} className={input}>
-                  <option value="receptionist">Receptionist</option>
-                  <option value="manager">Manager</option>
-                  <option value="trainer">Trainer</option>
-                  <option value="accountant">Accountant</option>
-                </select>
+                <div className="mt-1">
+                  <Select2
+                    ariaLabel="Role"
+                    value={staff.role}
+                    onChange={(role) => setStaff({ ...staff, role })}
+                    options={[
+                      { value: "receptionist", label: "Receptionist" },
+                      { value: "manager", label: "Manager" },
+                      { value: "trainer", label: "Trainer" },
+                      { value: "accountant", label: "Accountant" },
+                    ]}
+                  />
+                </div>
               </label>
             </div>
             <div className="flex justify-between">

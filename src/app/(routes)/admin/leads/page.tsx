@@ -7,7 +7,7 @@
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { FiPlus } from "react-icons/fi";
-import { PageHeader, Card, PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, TextArea, SelectField, Badge, Spinner, ErrorState, Pager, useConfirm, useAsyncAction } from "../_shared/ui";
+import { PageHeader, Card, PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, TextArea, Select2, SelectField, Badge, Spinner, ErrorState, Pager, useConfirm, useAsyncAction } from "../_shared/ui";
 import { API_BASE, apiGet, apiJson, replaceParams } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
 
@@ -419,19 +419,17 @@ function LeadsAdminPageInner() {
                         {l.notes.length > 0 && <p className="mt-2 truncate text-[11px] text-neutral-500">“{l.notes[l.notes.length - 1].text}”</p>}
                         {editable && (
                           <div className="mt-3 flex flex-wrap gap-1.5">
-                            <select
-                              value={l.status}
-                              onChange={(e) => setStatus(l, e.target.value as Status)}
-                              disabled={cardBusy(l.id)}
-                              aria-busy={statusing.isBusy(l.id) || undefined}
-                              className="h-7 rounded-md border border-neutral-200 bg-white px-1.5 text-xs disabled:cursor-wait disabled:opacity-50"
-                            >
-                              {STATUSES.map((s) => (
-                                <option key={s.key} value={s.key}>
-                                  {s.label}
-                                </option>
-                              ))}
-                            </select>
+                            <div className="w-32">
+                              <Select2
+                                size="sm"
+                                ariaLabel={`Stage for ${l.name}`}
+                                value={l.status}
+                                onChange={(next) => setStatus(l, next as Status)}
+                                disabled={cardBusy(l.id)}
+                                busy={statusing.isBusy(l.id)}
+                                options={STATUSES.map((s) => ({ value: s.key, label: s.label }))}
+                              />
+                            </div>
                             <SecondaryButton onClick={() => openEdit(l)}>Open</SecondaryButton>
                             {!l.converted_user_id && l.status !== "lost" && (
                               <SecondaryButton onClick={() => convert(l)} loading={converting.isBusy(l.id)} disabled={cardBusy(l.id)}>
