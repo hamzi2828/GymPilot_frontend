@@ -19,6 +19,7 @@ import {
   useConfirm,
   ErrorState,
   useLatestRequest,
+  useAsyncAction,
 } from "../_shared/ui";
 import { ACCOUNTS_API, apiGet, apiJson, csvField, replaceParams } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
@@ -475,7 +476,13 @@ function AccountsAdminPageInner() {
   const [editingAsset, setEditingAsset] = useState<AssetRow | null>(null);
   const [assetDraft, setAssetDraft] = useState(emptyAsset);
 
-  const [saving, setSaving] = useState(false);
+  const saveAction = useAsyncAction();
+  const saving = saveAction.busy;
+  // Row actions, each guarded per row.
+  const removing = useAsyncAction();
+  const servicing = useAsyncAction();
+  const draftingPayroll = useAsyncAction();
+  const refreshing = useAsyncAction();
   const [formErr, setFormErr] = useState<string | null>(null);
   const [headsOpen, setHeadsOpen] = useState(false);
 
@@ -593,12 +600,11 @@ function AccountsAdminPageInner() {
     setExpenseOpen(true);
   };
 
-  const saveExpense = async () => {
+  const saveExpense = () => saveAction.run(async () => {
     if (!expenseDraft.title.trim() || !expenseDraft.amount) {
       setFormErr("A title and an amount are both needed.");
       return;
     }
-    setSaving(true);
     setFormErr(null);
     try {
       const body = {
@@ -615,10 +621,8 @@ function AccountsAdminPageInner() {
       await load();
     } catch (e) {
       setFormErr(e instanceof Error ? e.message : "Could not save this expense");
-    } finally {
-      setSaving(false);
     }
-  };
+  });
 
   const deleteExpense = async (row: ExpenseRow) => {
     const answer = await ask({
@@ -627,24 +631,28 @@ function AccountsAdminPageInner() {
       confirmLabel: "Delete expense",
     });
     if (answer === null) return;
-    try {
-      const res = await apiJson<{ message: string }>(`${ACCOUNTS_API}/expenses/${row.id}`, "DELETE");
-      setNotice(res.message);
-      await load();
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : "Could not delete this expense");
-    }
+    await removing.run(row.id, async () => {
+      try {
+        const res = await apiJson<{ message: string }>(`${ACCOUNTS_API}/expenses/${row.id}`, "DELETE");
+        setNotice(res.message);
+        await load();
+      } catch (e) {
+        setErr(e instanceof Error ? e.message : "Could not delete this expense");
+      }
+    });
   };
 
   const draftPayroll = async () => {
     if (!confirm("Draft this period's salaries as pending expenses? Existing drafts are left alone.")) return;
-    try {
-      const res = await apiJson<{ message: string }>(`${ACCOUNTS_API}/expenses/payroll`, "POST", { from, to });
-      setNotice(res.message);
-      await load();
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : "Could not draft payroll");
-    }
+    await draftingPayroll.run(async () => {
+      try {
+        const res = await apiJson<{ message: string }>(`${ACCOUNTS_API}/expenses/payroll`, "POST", { from, to });
+        setNotice(res.message);
+        await load();
+      } catch (e) {
+        setErr(e instanceof Error ? e.message : "Could not draft payroll");
+      }
+    });
   };
 
   // ---- Asset form ---------------------------------------------------------
@@ -684,12 +692,11 @@ function AccountsAdminPageInner() {
     setAssetOpen(true);
   };
 
-  const saveAsset = async () => {
+  const saveAsset = () => saveAction.run(async () => {
     if (!assetDraft.name.trim()) {
       setFormErr("Give the asset a name.");
       return;
     }
-    setSaving(true);
     setFormErr(null);
     try {
       const res = editingAsset
@@ -700,20 +707,20 @@ function AccountsAdminPageInner() {
       await load();
     } catch (e) {
       setFormErr(e instanceof Error ? e.message : "Could not save this asset");
-    } finally {
-      setSaving(false);
     }
-  };
+  });
 
   const logService = async (row: AssetRow) => {
     if (!confirm(`Log a service for ${row.tag} — ${row.name} today?`)) return;
-    try {
-      const res = await apiJson<{ message: string }>(`${ACCOUNTS_API}/assets/${row.id}/service`, "POST", {});
-      setNotice(res.message);
-      await load();
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : "Could not log that service");
-    }
+    await servicing.run(row.id, async () => {
+      try {
+        const res = await apiJson<{ message: string }>(`${ACCOUNTS_API}/assets/${row.id}/service`, "POST", {});
+        setNotice(res.message);
+        await load();
+      } catch (e) {
+        setErr(e instanceof Error ? e.message : "Could not log that service");
+      }
+    });
   };
 
   const deleteAsset = async (row: AssetRow) => {
@@ -723,13 +730,15 @@ function AccountsAdminPageInner() {
       confirmLabel: "Remove asset",
     });
     if (answer === null) return;
-    try {
-      const res = await apiJson<{ message: string }>(`${ACCOUNTS_API}/assets/${row.id}`, "DELETE");
-      setNotice(res.message);
-      await load();
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : "Could not remove this asset");
-    }
+    await removing.run(row.id, async () => {
+      try {
+        const res = await apiJson<{ message: string }>(`${ACCOUNTS_API}/assets/${row.id}`, "DELETE");
+        setNotice(res.message);
+        await load();
+      } catch (e) {
+        setErr(e instanceof Error ? e.message : "Could not remove this asset");
+      }
+    });
   };
 
   const exportCsv = () => {
@@ -797,8 +806,8 @@ function AccountsAdminPageInner() {
             <SecondaryButton onClick={exportCsv} disabled={loading}>
               <FiDownload className="mr-1.5 h-4 w-4" /> Export CSV
             </SecondaryButton>
-            <SecondaryButton onClick={load} disabled={loading}>
-              <FiRefreshCw className={`mr-1.5 h-4 w-4 ${loading ? "animate-spin" : ""}`} /> Refresh
+            <SecondaryButton onClick={() => refreshing.run(load)} loading={loading}>
+              <FiRefreshCw className="mr-1.5 h-4 w-4" /> Refresh
             </SecondaryButton>
             {editable && (tab === "expenses" || tab === "assets") && (
               <SecondaryButton onClick={() => setHeadsOpen(true)}>Manage heads</SecondaryButton>
@@ -841,7 +850,8 @@ function AccountsAdminPageInner() {
                 setShownFrom(preset.from);
                 setShownTo(preset.to);
               }}
-              className={`h-8 rounded-lg px-3 text-[13px] font-medium transition-colors ${
+              disabled={loading}
+              className={`h-8 rounded-lg px-3 text-[13px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
                 activePreset === preset.id
                   ? "bg-neutral-900 text-white"
                   : "border border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900"
@@ -1042,7 +1052,9 @@ function AccountsAdminPageInner() {
             editable={editable}
             onEdit={openExpense}
             onDelete={deleteExpense}
+            deleting={removing.isBusy}
             onDraftPayroll={draftPayroll}
+            draftingPayroll={draftingPayroll.busy}
           />
         ) : (
           <AssetsTab
@@ -1051,13 +1063,15 @@ function AccountsAdminPageInner() {
             editable={editable}
             onEdit={openAsset}
             onService={logService}
+            servicing={servicing.isBusy}
             onDelete={deleteAsset}
+            removing={removing.isBusy}
           />
         )}
       </div>
 
       {/* ---- Expense dialog ---- */}
-      <Modal open={expenseOpen} onClose={() => setExpenseOpen(false)} title={editingExpense ? `Edit ${editingExpense.reference}` : "Add expense"} size="lg">
+      <Modal open={expenseOpen} onClose={() => setExpenseOpen(false)} title={editingExpense ? `Edit ${editingExpense.reference}` : "Add expense"} size="lg" busy={saving}>
         <div className="space-y-4">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <TextField label="What was it for" value={expenseDraft.title} onChange={(v) => setExpenseDraft({ ...expenseDraft, title: v })} required />
@@ -1132,8 +1146,8 @@ function AccountsAdminPageInner() {
           {formErr && <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">{formErr}</p>}
 
           <div className="flex justify-end gap-2 pt-1">
-            <SecondaryButton onClick={() => setExpenseOpen(false)}>Cancel</SecondaryButton>
-            <PrimaryButton onClick={saveExpense} disabled={saving}>{saving ? "Saving…" : editingExpense ? "Save changes" : "Record expense"}</PrimaryButton>
+            <SecondaryButton onClick={() => setExpenseOpen(false)} disabled={saving}>Cancel</SecondaryButton>
+            <PrimaryButton onClick={saveExpense} loading={saving}>{editingExpense ? "Save changes" : "Record expense"}</PrimaryButton>
           </div>
         </div>
       </Modal>
@@ -1146,7 +1160,7 @@ function AccountsAdminPageInner() {
       />
 
       {/* ---- Asset dialog ---- */}
-      <Modal open={assetOpen} onClose={() => setAssetOpen(false)} title={editingAsset ? `Edit ${editingAsset.tag}` : "Add asset"} size="lg">
+      <Modal open={assetOpen} onClose={() => setAssetOpen(false)} title={editingAsset ? `Edit ${editingAsset.tag}` : "Add asset"} size="lg" busy={saving}>
         <div className="space-y-4">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <TextField label="What is it" value={assetDraft.name} onChange={(v) => setAssetDraft({ ...assetDraft, name: v })} required />
@@ -1221,8 +1235,8 @@ function AccountsAdminPageInner() {
           {formErr && <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">{formErr}</p>}
 
           <div className="flex justify-end gap-2 pt-1">
-            <SecondaryButton onClick={() => setAssetOpen(false)}>Cancel</SecondaryButton>
-            <PrimaryButton onClick={saveAsset} disabled={saving}>{saving ? "Saving…" : editingAsset ? "Save changes" : "Add to register"}</PrimaryButton>
+            <SecondaryButton onClick={() => setAssetOpen(false)} disabled={saving}>Cancel</SecondaryButton>
+            <PrimaryButton onClick={saveAsset} loading={saving}>{editingAsset ? "Save changes" : "Add to register"}</PrimaryButton>
           </div>
         </div>
       </Modal>
@@ -1566,14 +1580,19 @@ function ExpensesTab({
   editable,
   onEdit,
   onDelete,
+  deleting,
   onDraftPayroll,
+  draftingPayroll,
 }: {
   data: ExpensesResponse | null;
   format: (v: number, c?: string) => string;
   editable: boolean;
   onEdit: (row?: ExpenseRow) => void;
   onDelete: (row: ExpenseRow) => void;
+  /** That row's delete is running. */
+  deleting: (id: string) => boolean;
   onDraftPayroll: () => void;
+  draftingPayroll: boolean;
 }) {
   if (!data) return <EmptyState title="No expense data" />;
 
@@ -1602,7 +1621,7 @@ function ExpensesTab({
           />
           {editable && (
             <div className="mt-5 border-t border-neutral-100 pt-4">
-              <SecondaryButton onClick={onDraftPayroll}>Draft this period&apos;s salaries</SecondaryButton>
+              <SecondaryButton onClick={onDraftPayroll} loading={draftingPayroll}>Draft this period&apos;s salaries</SecondaryButton>
               <p className="mt-2 text-[12px] text-neutral-400">
                 Creates one unpaid entry per salaried staff member from their pay rate.
               </p>
@@ -1649,7 +1668,7 @@ function ExpensesTab({
                           {editable && (
                             <div className="flex items-center justify-end gap-2">
                               <SecondaryButton onClick={() => onEdit(row)}>Edit</SecondaryButton>
-                              <DangerButton onClick={() => onDelete(row)}>Delete</DangerButton>
+                              <DangerButton onClick={() => onDelete(row)} loading={deleting(row.id)}>Delete</DangerButton>
                             </div>
                           )}
                         </td>
@@ -1676,14 +1695,20 @@ function AssetsTab({
   editable,
   onEdit,
   onService,
+  servicing,
   onDelete,
+  removing,
 }: {
   data: AssetsResponse | null;
   format: (v: number, c?: string) => string;
   editable: boolean;
   onEdit: (row?: AssetRow) => void;
   onService: (row: AssetRow) => void;
+  /** That row's service is being logged. */
+  servicing: (id: string) => boolean;
   onDelete: (row: AssetRow) => void;
+  /** That row is being removed. */
+  removing: (id: string) => boolean;
 }) {
   if (!data) return <EmptyState title="No asset data" />;
 
@@ -1756,9 +1781,15 @@ function AssetsTab({
                     <td className="whitespace-nowrap px-5 py-3 text-right">
                       {editable && (
                         <div className="flex items-center justify-end gap-2">
-                          {row.service_interval_days > 0 && <SecondaryButton onClick={() => onService(row)}>Serviced</SecondaryButton>}
+                          {row.service_interval_days > 0 && (
+                            <SecondaryButton onClick={() => onService(row)} loading={servicing(row.id)} disabled={removing(row.id)}>
+                              Serviced
+                            </SecondaryButton>
+                          )}
                           <SecondaryButton onClick={() => onEdit(row)}>Edit</SecondaryButton>
-                          <DangerButton onClick={() => onDelete(row)}>Remove</DangerButton>
+                          <DangerButton onClick={() => onDelete(row)} loading={removing(row.id)} disabled={servicing(row.id)}>
+                            Remove
+                          </DangerButton>
                         </div>
                       )}
                     </td>

@@ -7,7 +7,7 @@
 
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { PageHeader, Card, PrimaryButton, SecondaryButton, TextField, Spinner, ErrorState, useLatestRequest } from "../_shared/ui";
+import { PageHeader, Card, PrimaryButton, SecondaryButton, TextField, Spinner, ErrorState, useLatestRequest, useAsyncAction } from "../_shared/ui";
 import { API_BASE, apiGet } from "../_shared/api";
 import { BarChart, LineChart, HBarList, type Point } from "../_shared/Charts";
 import { downloadExport, FORMAT_LABELS, type ExportFormat } from "./download";
@@ -143,7 +143,7 @@ function ReportsPageInner() {
   const [data, setData] = useState<Report | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [exporting, setExporting] = useState<string | null>(null);
+  const exporting = useAsyncAction();
   // The export picker: one list, one format, one button.
   const [exportId, setExportId] = useState(EXPORTS[0].id);
   const [exportFormat, setExportFormat] = useState<ExportFormat>("xlsx");
@@ -173,22 +173,21 @@ function ReportsPageInner() {
     load();
   }, [load]);
 
+  // The range buttons wait while the overview reloads; the daily tab loads its own figures.
+  const reloading = tab === "overview" && loading;
   const preset = (f: string, t: string) => {
     setFrom(f);
     setTo(t);
   };
 
-  const download = async ({ id, kind, query }: (typeof EXPORTS)[number], format: ExportFormat) => {
-    setExporting(`${id}.${format}`);
+  const download = ({ kind, query }: (typeof EXPORTS)[number], format: ExportFormat) => exporting.run(async () => {
     try {
       const params = `from=${from}&to=${to}${query ? `&${query}` : ""}${format === "xlsx" ? "&format=xlsx" : ""}`;
       await downloadExport(`${API_BASE}/admin/reports/export/${kind}?${params}`, `${kind}.${format}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Export failed");
-    } finally {
-      setExporting(null);
     }
-  };
+  });
 
   const money = (n: number) => `${data?.base_currency || ""} ${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
 
@@ -239,11 +238,11 @@ function ReportsPageInner() {
               <TextField label="To" type="date" value={to} onChange={setTo} />
             </div>
             <div className="flex flex-wrap gap-1.5 pb-1">
-              <SecondaryButton onClick={() => preset(today(), today())}>Today</SecondaryButton>
-              <SecondaryButton onClick={() => preset(monthStart(today()), today())}>This month</SecondaryButton>
-              <SecondaryButton onClick={() => preset(shift(today(), -29), today())}>Last 30 days</SecondaryButton>
-              <SecondaryButton onClick={() => preset(shift(today(), -89), today())}>Last 90 days</SecondaryButton>
-              <SecondaryButton onClick={() => preset(monthStart(shift(today(), -364)), today())}>Last 12 months</SecondaryButton>
+              <SecondaryButton onClick={() => preset(today(), today())} disabled={reloading}>Today</SecondaryButton>
+              <SecondaryButton onClick={() => preset(monthStart(today()), today())} disabled={reloading}>This month</SecondaryButton>
+              <SecondaryButton onClick={() => preset(shift(today(), -29), today())} disabled={reloading}>Last 30 days</SecondaryButton>
+              <SecondaryButton onClick={() => preset(shift(today(), -89), today())} disabled={reloading}>Last 90 days</SecondaryButton>
+              <SecondaryButton onClick={() => preset(monthStart(shift(today(), -364)), today())} disabled={reloading}>Last 12 months</SecondaryButton>
             </div>
           </div>
           {tab === "overview" && (
@@ -278,8 +277,8 @@ function ReportsPageInner() {
                   </button>
                 ))}
               </div>
-              <PrimaryButton onClick={() => download(EXPORTS.find((e) => e.id === exportId) || EXPORTS[0], exportFormat)} disabled={exporting !== null}>
-                {exporting ? "Preparing…" : "Download"}
+              <PrimaryButton onClick={() => download(EXPORTS.find((e) => e.id === exportId) || EXPORTS[0], exportFormat)} loading={exporting.busy}>
+                Download
               </PrimaryButton>
               <span className="text-xs text-neutral-400">for the dates above</span>
             </div>

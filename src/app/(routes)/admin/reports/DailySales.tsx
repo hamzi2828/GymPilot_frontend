@@ -6,7 +6,7 @@
 // download as CSV or as an Excel workbook.
 
 import { useCallback, useEffect, useState } from "react";
-import { Card, Spinner, ErrorState, Toggle, useLatestRequest } from "../_shared/ui";
+import { Card, Spinner, ErrorState, Toggle, useLatestRequest, useAsyncAction, BusyLabel } from "../_shared/ui";
 import { API_BASE, apiGet } from "../_shared/api";
 import { downloadExport, FORMAT_LABELS, type ExportFormat } from "./download";
 
@@ -47,7 +47,7 @@ export default function DailySales({ from, to }: { from: string; to: string }) {
   const [data, setData] = useState<DailySalesReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [exporting, setExporting] = useState<ExportFormat | null>(null);
+  const exporting = useAsyncAction();
   const [hideQuiet, setHideQuiet] = useState(false);
 
   const begin = useLatestRequest();
@@ -71,8 +71,7 @@ export default function DailySales({ from, to }: { from: string; to: string }) {
     load();
   }, [load]);
 
-  const download = async (format: ExportFormat) => {
-    setExporting(format);
+  const download = (format: ExportFormat) => exporting.run(format, async () => {
     try {
       await downloadExport(
         `${API_BASE}/admin/reports/export/daily-sales?from=${from}&to=${to}${format === "xlsx" ? "&format=xlsx" : ""}`,
@@ -80,10 +79,8 @@ export default function DailySales({ from, to }: { from: string; to: string }) {
       );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Export failed");
-    } finally {
-      setExporting(null);
     }
-  };
+  });
 
   if (loading && !data) return <Spinner />;
   if (error && !data) return <ErrorState message={error} onRetry={load} />;
@@ -109,10 +106,13 @@ export default function DailySales({ from, to }: { from: string; to: string }) {
                 key={format}
                 type="button"
                 onClick={() => download(format)}
-                disabled={exporting === format}
-                className="border-l border-neutral-200 px-1.5 py-1 font-semibold text-neutral-500 hover:bg-neutral-50 hover:text-neutral-900 disabled:opacity-50"
+                disabled={exporting.isBusy(format)}
+                aria-busy={exporting.isBusy(format) || undefined}
+                className="relative border-l border-neutral-200 px-1.5 py-1 font-semibold text-neutral-500 hover:bg-neutral-50 hover:text-neutral-900 disabled:opacity-50 aria-busy:disabled:opacity-100 aria-busy:disabled:cursor-wait"
               >
-                {exporting === format ? "…" : FORMAT_LABELS[format]}
+                <BusyLabel busy={exporting.isBusy(format)} className="">
+                  {FORMAT_LABELS[format]}
+                </BusyLabel>
               </button>
             ))}
           </span>

@@ -6,7 +6,7 @@
 // offered for new rows, and the rows already filed under it keep their name.
 
 import { useCallback, useEffect, useState } from "react";
-import { Modal, PrimaryButton, SecondaryButton, TextField, Badge, Spinner } from "../_shared/ui";
+import { Modal, PrimaryButton, SecondaryButton, TextField, Badge, Spinner, useAsyncAction } from "../_shared/ui";
 import { ACCOUNTS_API, apiGet, apiJson } from "../_shared/api";
 
 export type HeadKind = "expense" | "asset";
@@ -37,7 +37,9 @@ export function ManageHeadsModal({
   const [newLabel, setNewLabel] = useState("");
   // The head being renamed, and the name being typed for it.
   const [renaming, setRenaming] = useState<{ id: string; label: string } | null>(null);
-  const [busy, setBusy] = useState(false);
+  // One change at a time; the key says which button shows the spinner.
+  const action = useAsyncAction();
+  const busy = action.busy;
   const [message, setMessage] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
 
   const load = useCallback(async () => {
@@ -58,8 +60,7 @@ export function ManageHeadsModal({
     load();
   }, [open, load]);
 
-  const run = async (request: () => Promise<{ message: string }>) => {
-    setBusy(true);
+  const run = (key: string, request: () => Promise<{ message: string }>) => action.run(key, async () => {
     setMessage(null);
     try {
       const res = await request();
@@ -70,31 +71,29 @@ export function ManageHeadsModal({
     } catch (e) {
       setMessage({ tone: "error", text: e instanceof Error ? e.message : "Could not save" });
       return false;
-    } finally {
-      setBusy(false);
     }
-  };
+  });
 
   const add = async () => {
     if (!newLabel.trim()) return;
-    const ok = await run(() => apiJson<{ message: string }>(`${ACCOUNTS_API}/categories`, "POST", { kind, label: newLabel }));
+    const ok = await run("add", () => apiJson<{ message: string }>(`${ACCOUNTS_API}/categories`, "POST", { kind, label: newLabel }));
     if (ok) setNewLabel("");
   };
 
   const rename = async () => {
     if (!renaming || !renaming.label.trim()) return;
-    const ok = await run(() => apiJson<{ message: string }>(`${ACCOUNTS_API}/categories/${renaming.id}`, "PUT", { label: renaming.label }));
+    const ok = await run(`rename:${renaming.id}`, () => apiJson<{ message: string }>(`${ACCOUNTS_API}/categories/${renaming.id}`, "PUT", { label: renaming.label }));
     if (ok) setRenaming(null);
   };
 
   const setArchived = (head: Head, archived: boolean) =>
-    run(() => apiJson<{ message: string }>(`${ACCOUNTS_API}/categories/${head.id}`, "PUT", { archived }));
+    run(`archive:${head.id}`, () => apiJson<{ message: string }>(`${ACCOUNTS_API}/categories/${head.id}`, "PUT", { archived }));
 
   const own = (heads || []).filter((head) => !head.built_in);
   const builtIn = (heads || []).filter((head) => head.built_in);
 
   return (
-    <Modal open={open} onClose={onClose} title={NOUN[kind]} size="md">
+    <Modal open={open} onClose={onClose} title={NOUN[kind]} size="md" busy={busy}>
       <div className="space-y-5">
         <div className="flex items-end gap-2">
           <div className="flex-1">
@@ -105,7 +104,7 @@ export function ManageHeadsModal({
               placeholder={kind === "expense" ? "Tea, Electricity bill…" : "Boxing kit, CCTV…"}
             />
           </div>
-          <PrimaryButton onClick={add} disabled={busy || !newLabel.trim()}>
+          <PrimaryButton onClick={add} loading={action.isBusy("add")} disabled={busy || !newLabel.trim()}>
             Add
           </PrimaryButton>
         </div>
@@ -145,7 +144,9 @@ export function ManageHeadsModal({
                             aria-label={`New name for ${head.label}`}
                             className="h-8 flex-1 rounded-lg border border-neutral-200 px-2 text-sm focus:border-[var(--accent)] focus:outline-none"
                           />
-                          <SecondaryButton onClick={rename} disabled={busy || !renaming.label.trim()}>Save</SecondaryButton>
+                          <SecondaryButton onClick={rename} loading={action.isBusy(`rename:${renaming.id}`)} disabled={busy || !renaming.label.trim()}>
+                            Save
+                          </SecondaryButton>
                           <SecondaryButton onClick={() => setRenaming(null)} disabled={busy}>Cancel</SecondaryButton>
                         </>
                       ) : (
@@ -157,7 +158,7 @@ export function ManageHeadsModal({
                               Rename
                             </SecondaryButton>
                           )}
-                          <SecondaryButton onClick={() => setArchived(head, !head.archived)} disabled={busy}>
+                          <SecondaryButton onClick={() => setArchived(head, !head.archived)} loading={action.isBusy(`archive:${head.id}`)} disabled={busy}>
                             {head.archived ? "Restore" : "Archive"}
                           </SecondaryButton>
                         </>
