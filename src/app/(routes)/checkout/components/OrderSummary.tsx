@@ -151,7 +151,8 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
   // joined at the desk (the packages page links there instead of here).
   const free = !(listPrice > 0);
   const canPay = !free && !noMethods && (paymentMethod === "online" ? !!online : !!methods?.bankTransfer);
-  const cardReason = methods && !online ? methods.cardUnavailable?.reason || "" : "";
+  // Why card is off: Stripe's reason, so not for a gym whose gateway is bank transfer and a receipt.
+  const cardReason = methods && !online && methods.online?.provider !== "generic" ? methods.cardUnavailable?.reason || "" : "";
   // What a renewal costs: the price, less a discount that carries over.
   const renewalPrice = Math.max(0, listPrice - (coupon?.appliesToRenewals ? discount : 0));
   const term = termOf(packageData);
