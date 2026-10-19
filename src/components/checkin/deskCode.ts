@@ -61,6 +61,8 @@ export interface CheckinReceipt {
   status_label?: string;
   warning?: string | null;
   alert?: { level: "ok" | "warning" | "problem"; speech: string | null } | null;
+  /** "Balance due PKR 500" when a member still owes on their package. */
+  balance_due_label?: string | null;
   rows?: { caption: string; value: string }[];
   check_in_time?: string | null;
   check_out_time?: string | null;

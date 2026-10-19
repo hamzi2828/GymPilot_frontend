@@ -83,8 +83,9 @@ function ResultView({
   // The server's own words for an ignored punch say whether it was the
   // check-in or the check-out that just happened.
   const title = outcome.kind === "ignored" && outcome.message ? outcome.message.replace(/\.$/, "") : look.title;
-  const warning = detail?.warning && detail.warning !== outcome.message ? detail.warning : null;
-  const warningCls = detail?.alert?.level === "problem" || outcome.kind === "refused" ? "border-rose-200 bg-rose-50 text-rose-800" : "border-amber-200 bg-amber-50 text-amber-900";
+  // The receipt's `warning` is written for the desk ("EXPIRES IN 3 DAYS — offer
+  // a renewal"), so a member is shown only what they can act on: money owed.
+  const owed = recorded && detail?.balance_due_label ? `${detail.balance_due_label} — please pay at the front desk.` : null;
   // The server's sentence on a recorded punch ("Welcome back"), when it adds
   // something to the headline.
   const extra =
@@ -100,7 +101,7 @@ function ResultView({
         {extra && <p className="mt-1 break-words text-sm opacity-90">{extra}</p>}
       </div>
 
-      {warning && <p className={`mt-4 rounded-xl border px-4 py-3 text-sm font-semibold ${warningCls}`}>{warning}</p>}
+      {owed && <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">{owed}</p>}
 
       {recorded && detail?.rows && detail.rows.length > 0 && (
         <dl className="mt-4 grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 rounded-2xl border border-gray-200 bg-white px-4 py-4 text-sm">
