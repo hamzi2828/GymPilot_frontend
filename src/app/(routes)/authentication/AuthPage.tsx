@@ -8,6 +8,8 @@ import TwoFactorStep from "./components/TwoFactorStep";
 import { signUp, login, requestPasswordReset, resetPassword, verifyTwoFactor } from "./service/authService";
 import { setToken, setRole, getRole, decodeJwt, hasSessionCookie, restoreSessionCookie, safeRedirect } from "@/helper/helper";
 import type { Mode } from "./components/leftsSideComponents/types";
+import useAsyncAction from "@/components/ui/useAsyncAction";
+import { startNavigationProgress } from "@/components/NavigationProgress";
 
 // Where someone lands when nothing asked for a particular page: the panel for
 // anyone who works here, the homepage for a member.
@@ -62,7 +64,8 @@ const AuthPage: React.FC = () => {
 
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
+  // One request at a time: a second click or Enter while it runs does nothing.
+  const { busy: isLoading, run, leave } = useAsyncAction();
   const [termsError, setTermsError] = useState<string | null>(null);
   // A pending second step: the password was right, the emailed code is next.
   const [twoFactor, setTwoFactor] = useState<{ challengeId: string; message: string } | null>(null);
@@ -79,7 +82,11 @@ const AuthPage: React.FC = () => {
     // Back to the page that sent them here -- staff as well as members: a
     // session that ended on Attendance resumes on Attendance. Otherwise staff
     // land on the panel and members on the homepage.
-    router.replace(redirectTo || homeFor(role));
+    const target = redirectTo || homeFor(role);
+    // The button keeps spinning until the next page is up.
+    if (!target.startsWith("/authentication")) leave();
+    startNavigationProgress();
+    router.replace(target);
   };
 
   // Someone still signed in can be sent here by the route guard, which only
@@ -96,16 +103,15 @@ const AuthPage: React.FC = () => {
 
   const verifyCode = async (code: string) => {
     if (!twoFactor) return;
-    setIsLoading(true);
-    setNotice(null);
-    try {
-      const res = await verifyTwoFactor({ challengeId: twoFactor.challengeId, code });
-      finishSignIn(res);
-    } catch (err: unknown) {
-      setNotice({ tone: "error", text: err instanceof Error ? err.message : "Could not verify the code" });
-    } finally {
-      setIsLoading(false);
-    }
+    await run(async () => {
+      setNotice(null);
+      try {
+        const res = await verifyTwoFactor({ challengeId: twoFactor.challengeId, code });
+        finishSignIn(res);
+      } catch (err: unknown) {
+        setNotice({ tone: "error", text: err instanceof Error ? err.message : "Could not verify the code" });
+      }
+    });
   };
 
   // "Send a new code": there is no separate endpoint for it -- signing in
@@ -262,85 +268,84 @@ const AuthPage: React.FC = () => {
 
     // clear any previous terms error on valid attempt
     setTermsError(null);
-    setIsLoading(true);
-    try {
-      if (isSignUp) {
-        const payload = {
-          firstName: formData.firstName.trim(),
-          lastName: formData.lastName.trim(),
-          email: formData.email,
-          password: formData.password,
-        };
-        const created = await signUp(payload);
-        updateMode("signin");
-        // A new address starts unconfirmed and is emailed a link. The account
-        // works straight away, so the link is mentioned after the sign-in --
-        // and only promised when the API says the email really went.
-        setNotice({
-          tone: "ok",
-          text:
-            created.data?.emailVerified !== false
-              ? "Account created. You can sign in now."
-              : created.verificationEmailSent
-              ? `Account created. You can sign in now. We have also emailed ${payload.email.trim()} a link to confirm the address is yours.`
-              : "Your account is ready. We couldn't send the confirmation email right now — you can still sign in, and send it again from your account page.",
-        });
-        return;
-      }
-
-      // Step one: ask for the email. The server answers the same way whether
-      // or not the address is on file, so its message is shown as-is rather
-      // than being replaced with a cheerier one that would leak the answer.
-      if (isForgot) {
-        const res = await requestPasswordReset(formData.email.trim());
-        setNotice({
-          tone: "ok",
-          text: res?.message || "If that email address has an account, a reset link is on its way.",
-        });
-        return;
-      }
-
-      // Step two: the token from the emailed link, plus the new password.
-      if (isReset) {
-        if (!resetToken) {
+    await run(async () => {
+      try {
+        if (isSignUp) {
+          const payload = {
+            firstName: formData.firstName.trim(),
+            lastName: formData.lastName.trim(),
+            email: formData.email,
+            password: formData.password,
+          };
+          const created = await signUp(payload);
+          updateMode("signin");
+          // A new address starts unconfirmed and is emailed a link. The account
+          // works straight away, so the link is mentioned after the sign-in --
+          // and only promised when the API says the email really went.
           setNotice({
-            tone: "error",
-            text: "This reset link is incomplete. Please request a new one.",
+            tone: "ok",
+            text:
+              created.data?.emailVerified !== false
+                ? "Account created. You can sign in now."
+                : created.verificationEmailSent
+                ? `Account created. You can sign in now. We have also emailed ${payload.email.trim()} a link to confirm the address is yours.`
+                : "Your account is ready. We couldn't send the confirmation email right now — you can still sign in, and send it again from your account page.",
           });
           return;
         }
-        await resetPassword({ token: resetToken, password: formData.password });
-        setResetToken(null);
-        updateMode("signin");
-        setNotice({
-          tone: "ok",
-          text: "Password updated. Sign in with your new password.",
-        });
-        return;
-      }
 
-      // Sign In flow
-      const res = await login({
-        email: formData.email,
-        password: formData.password,
-        remember: formData.rememberMe,
-      });
-      if (res.requires2fa && res.challengeId) {
-        // Password accepted; the emailed code comes next.
-        setTwoFactor({ challengeId: res.challengeId, message: res.message });
-        return;
+        // Step one: ask for the email. The server answers the same way whether
+        // or not the address is on file, so its message is shown as-is rather
+        // than being replaced with a cheerier one that would leak the answer.
+        if (isForgot) {
+          const res = await requestPasswordReset(formData.email.trim());
+          setNotice({
+            tone: "ok",
+            text: res?.message || "If that email address has an account, a reset link is on its way.",
+          });
+          return;
+        }
+
+        // Step two: the token from the emailed link, plus the new password.
+        if (isReset) {
+          if (!resetToken) {
+            setNotice({
+              tone: "error",
+              text: "This reset link is incomplete. Please request a new one.",
+            });
+            return;
+          }
+          await resetPassword({ token: resetToken, password: formData.password });
+          setResetToken(null);
+          updateMode("signin");
+          setNotice({
+            tone: "ok",
+            text: "Password updated. Sign in with your new password.",
+          });
+          return;
+        }
+
+        // Sign In flow
+        const res = await login({
+          email: formData.email,
+          password: formData.password,
+          remember: formData.rememberMe,
+        });
+        if (res.requires2fa && res.challengeId) {
+          // Password accepted; the emailed code comes next.
+          setTwoFactor({ challengeId: res.challengeId, message: res.message });
+          return;
+        }
+        // Anyone who works here lands on the panel -- what they can actually
+        // open there is decided by their role's permissions. Gym members
+        // resume whatever they were doing (checkout, most often) or land on
+        // the homepage.
+        finishSignIn(res);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : "Request failed";
+        setNotice({ tone: "error", text: msg });
       }
-      // Anyone who works here lands on the panel -- what they can actually
-      // open there is decided by their role's permissions. Gym members
-      // resume whatever they were doing (checkout, most often) or land on
-      // the homepage.
-      finishSignIn(res);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Request failed";
-      setNotice({ tone: "error", text: msg });
-    } finally {
-      setIsLoading(false);
-    }
+    });
   };
 
   const resetForm = (clearMode = true) => {

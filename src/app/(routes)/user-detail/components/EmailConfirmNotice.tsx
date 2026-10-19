@@ -8,30 +8,30 @@
 
 import React, { useState } from "react";
 import { sendEmailConfirmation, SessionEndedError } from "../service/userDetailService";
+import Spinner from "@/components/ui/Spinner";
+import useAsyncAction from "@/components/ui/useAsyncAction";
 
 export const EmailConfirmNotice: React.FC<{
   /** The address turned out to be confirmed already; the API's sentence saying so. */
   onConfirmed: (message: string) => void;
   onSessionEnded: () => void;
 }> = ({ onConfirmed, onSessionEnded }) => {
-  const [sending, setSending] = useState(false);
+  const { busy: sending, run } = useAsyncAction();
   const [answer, setAnswer] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
 
-  const send = async () => {
-    setSending(true);
-    setAnswer(null);
-    try {
-      const r = await sendEmailConfirmation();
-      // Nothing left to confirm: the page says so and takes this notice away.
-      if (r.alreadyVerified) return onConfirmed(r.message || "Your email address is already confirmed.");
-      setAnswer({ tone: "ok", text: r.message || "We sent you a new link. Open it to confirm the address is yours." });
-    } catch (e) {
-      if (e instanceof SessionEndedError) return onSessionEnded();
-      setAnswer({ tone: "error", text: e instanceof Error ? e.message : "We could not send the email just now. Please try again later." });
-    } finally {
-      setSending(false);
-    }
-  };
+  const send = () =>
+    run(async () => {
+      setAnswer(null);
+      try {
+        const r = await sendEmailConfirmation();
+        // Nothing left to confirm: the page says so and takes this notice away.
+        if (r.alreadyVerified) return onConfirmed(r.message || "Your email address is already confirmed.");
+        setAnswer({ tone: "ok", text: r.message || "We sent you a new link. Open it to confirm the address is yours." });
+      } catch (e) {
+        if (e instanceof SessionEndedError) return onSessionEnded();
+        setAnswer({ tone: "error", text: e instanceof Error ? e.message : "We could not send the email just now. Please try again later." });
+      }
+    });
 
   return (
     <div className="mb-8 rounded-xl border-2 border-amber-200 bg-amber-50 p-4">
@@ -46,8 +46,10 @@ export const EmailConfirmNotice: React.FC<{
           type="button"
           onClick={send}
           disabled={sending}
-          className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+          aria-busy={sending || undefined}
+          className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
         >
+          {sending && <Spinner />}
           {sending ? "Sending…" : "Send the link again"}
         </button>
       </div>

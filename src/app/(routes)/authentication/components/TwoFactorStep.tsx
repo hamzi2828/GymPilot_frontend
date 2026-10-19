@@ -5,6 +5,8 @@
 // that requires it.
 
 import React, { useEffect, useState } from "react";
+import Spinner from "@/components/ui/Spinner";
+import useAsyncAction from "@/components/ui/useAsyncAction";
 
 // How long "Send a new code" rests after each send, so a slow email is not
 // answered with a burst of them (only the newest code works).
@@ -27,7 +29,7 @@ export default function TwoFactorStep({
   notice: { tone: "ok" | "error"; text: string } | null;
 }) {
   const [code, setCode] = useState("");
-  const [resending, setResending] = useState(false);
+  const { busy: resending, run } = useAsyncAction();
   // Counts down from the moment this step opens: a code has only just gone.
   const [wait, setWait] = useState(RESEND_WAIT_SECONDS);
 
@@ -37,24 +39,21 @@ export default function TwoFactorStep({
     return () => clearTimeout(timer);
   }, [wait]);
 
-  const resend = async () => {
-    setResending(true);
-    try {
+  const resend = () =>
+    run(async () => {
       if (await onResend()) {
         // The old code no longer works; do not leave it in the box.
         setCode("");
         setWait(RESEND_WAIT_SECONDS);
       }
-    } finally {
-      setResending(false);
-    }
-  };
+    });
 
   return (
     <div className="w-full lg:w-1/2 flex items-center justify-center px-6 py-12">
       <form
         onSubmit={(e) => {
           e.preventDefault();
+          if (isLoading || resending) return;
           if (code.replace(/\D/g, "").length === 6) onVerify(code.replace(/\D/g, ""));
         }}
         className="w-full max-w-md"
@@ -83,17 +82,21 @@ export default function TwoFactorStep({
 
         <button
           type="submit"
-          disabled={isLoading || code.replace(/\D/g, "").length !== 6}
-          className="mt-6 w-full rounded-lg bg-black px-4 py-3 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
+          disabled={isLoading || resending || code.replace(/\D/g, "").length !== 6}
+          aria-busy={isLoading || undefined}
+          className="mt-6 flex w-full items-center justify-center gap-2 rounded-lg bg-black px-4 py-3 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
         >
+          {isLoading && <Spinner />}
           {isLoading ? "Checking…" : "Sign in"}
         </button>
         <button
           type="button"
           onClick={resend}
           disabled={isLoading || resending || wait > 0}
-          className="mt-3 w-full rounded-lg border border-gray-300 px-4 py-3 text-sm font-semibold text-gray-800 hover:bg-gray-50 disabled:opacity-50"
+          aria-busy={resending || undefined}
+          className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border border-gray-300 px-4 py-3 text-sm font-semibold text-gray-800 hover:bg-gray-50 disabled:opacity-50"
         >
+          {resending && <Spinner />}
           {resending ? "Sending…" : wait > 0 ? `Send a new code (in ${wait}s)` : "Send a new code"}
         </button>
         <button type="button" onClick={onBack} className="mt-3 w-full text-sm text-gray-600 underline underline-offset-2">
