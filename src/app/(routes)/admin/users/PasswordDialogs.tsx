@@ -13,7 +13,7 @@
 // is decided by the API (services/adminPasswords.js), not here.
 
 import { useEffect, useState } from "react";
-import { Modal, PrimaryButton, SecondaryButton, TextField } from "../_shared/ui";
+import { Modal, PrimaryButton, SecondaryButton, TextField, useAsyncAction } from "../_shared/ui";
 import { apiJson } from "../_shared/api";
 
 export const MIN_PASSWORD_LENGTH = 8;
@@ -121,7 +121,8 @@ export function SetPasswordModal({
 }) {
   const [mode, setMode] = useState<"generate" | "type">("generate");
   const [password, setPassword] = useState("");
-  const [busy, setBusy] = useState(false);
+  const submitAction = useAsyncAction();
+  const busy = submitAction.busy;
   const [error, setError] = useState<string | null>(null);
   const [reveal, setReveal] = useState<RevealedPassword | null>(null);
 
@@ -134,12 +135,11 @@ export function SetPasswordModal({
 
   if (!target) return null;
 
-  const submit = async () => {
+  const submit = () => submitAction.run(async () => {
     if (mode === "type" && password.length < MIN_PASSWORD_LENGTH) {
       setError(`A password needs at least ${MIN_PASSWORD_LENGTH} characters.`);
       return;
     }
-    setBusy(true);
     setError(null);
     try {
       const res = await apiJson<{ message: string; data: { generated: boolean; password?: string; username?: string | null } }>(
@@ -155,10 +155,8 @@ export function SetPasswordModal({
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not set the password.");
-    } finally {
-      setBusy(false);
     }
-  };
+  });
 
   if (reveal) return <PasswordReveal reveal={reveal} onClose={onClose} />;
 
@@ -191,8 +189,8 @@ export function SetPasswordModal({
         {error && <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>}
         <div className="flex justify-end gap-2 pt-1">
           <SecondaryButton onClick={onClose} disabled={busy}>Cancel</SecondaryButton>
-          <PrimaryButton onClick={submit} disabled={busy}>
-            {busy ? "Setting…" : mode === "type" ? "Set password" : "Generate password"}
+          <PrimaryButton onClick={submit} loading={busy}>
+            {mode === "type" ? "Set password" : "Generate password"}
           </PrimaryButton>
         </div>
       </div>

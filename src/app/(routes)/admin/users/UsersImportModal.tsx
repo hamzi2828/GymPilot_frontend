@@ -9,7 +9,7 @@
 // file is then sent again to carry on (rows already in are skipped).
 
 import { useState } from "react";
-import { Modal, PrimaryButton, SecondaryButton } from "../_shared/ui";
+import { Modal, PrimaryButton, SecondaryButton, useAsyncAction } from "../_shared/ui";
 import { API_BASE, apiForm } from "../_shared/api";
 
 interface Row {
@@ -84,7 +84,9 @@ const count = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? on
 
 export default function UsersImportModal({ open, onClose, onImported }: { open: boolean; onClose: () => void; onImported: () => void }) {
   const [file, setFile] = useState<File | null>(null);
-  const [busy, setBusy] = useState<"preview" | "import" | null>(null);
+  // Keyed "preview" / "import", so the spinner shows on the button pressed.
+  const importAction = useAsyncAction();
+  const busy = importAction.busy;
   const [report, setReport] = useState<Report | null>(null);
   const [error, setError] = useState<string | null>(null);
   // This file has been previewed / has gone in completely.
@@ -94,9 +96,8 @@ export default function UsersImportModal({ open, onClose, onImported }: { open: 
   // The last real run stopped part-way: the same file carries on from there.
   const resumable = !!report && !report.dryRun && !!report.stopped;
 
-  const run = async (dryRun: boolean) => {
+  const run = (dryRun: boolean) => importAction.run(dryRun ? "preview" : "import", async () => {
     if (!file) return;
-    setBusy(dryRun ? "preview" : "import");
     setError(null);
     try {
       const form = new FormData();
@@ -114,10 +115,8 @@ export default function UsersImportModal({ open, onClose, onImported }: { open: 
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Import failed");
-    } finally {
-      setBusy(null);
     }
-  };
+  });
 
   const downloadTemplate = () => {
     const blob = new Blob([TEMPLATE_CSV], { type: "text/csv" });
@@ -141,7 +140,7 @@ export default function UsersImportModal({ open, onClose, onImported }: { open: 
   const problems = report ? report.errors.filter((row) => !isStopMarker(row)) : [];
 
   return (
-    <Modal open={open} onClose={close} title="Import members from CSV" size="lg" busy={!!busy}>
+    <Modal open={open} onClose={close} title="Import members from CSV" size="lg" busy={busy}>
       <div className="space-y-4">
         <div className="space-y-2 text-sm text-neutral-600">
           <p>
@@ -249,12 +248,12 @@ export default function UsersImportModal({ open, onClose, onImported }: { open: 
           </p>
         )}
         <div className="flex flex-wrap justify-end gap-2 pt-2">
-          <SecondaryButton onClick={close} disabled={!!busy}>Close</SecondaryButton>
-          <SecondaryButton onClick={() => run(true)} disabled={!file || !!busy}>
-            {busy === "preview" ? "Checking…" : "Preview"}
+          <SecondaryButton onClick={close} disabled={busy}>Close</SecondaryButton>
+          <SecondaryButton onClick={() => run(true)} loading={importAction.isBusy("preview")} disabled={!file || busy}>
+            Preview
           </SecondaryButton>
-          <PrimaryButton onClick={() => run(false)} disabled={!file || !!busy || finished || (!previewed && !resumable)}>
-            {busy === "import" ? "Importing…" : resumable ? "Continue import" : "Import"}
+          <PrimaryButton onClick={() => run(false)} loading={importAction.isBusy("import")} disabled={!file || busy || finished || (!previewed && !resumable)}>
+            {resumable ? "Continue import" : "Import"}
           </PrimaryButton>
         </div>
       </div>

@@ -4,7 +4,7 @@
 // the signed agreement, tags and the notes staff keep.
 
 import { useCallback, useEffect, useState } from "react";
-import { Modal, PrimaryButton, SecondaryButton, DangerButton, TextField, TextArea, SelectField, Badge, Spinner, useConfirm, ErrorState } from "../_shared/ui";
+import { Modal, PrimaryButton, SecondaryButton, DangerButton, TextField, TextArea, SelectField, Badge, Spinner, useConfirm, useAsyncAction, ErrorState, BusyLabel } from "../_shared/ui";
 import { API_BASE, apiGet, apiJson, apiForm, absoluteUrl } from "../_shared/api";
 
 interface Profile {
@@ -60,7 +60,13 @@ export default function MemberProfileModal({ userId, onClose, onSaved }: { userI
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadErr, setLoadErr] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
+  // The profile's Save and a document's Upload: one at a time, and the
+  // dialog stays open until it has settled.
+  const saveAction = useAsyncAction();
+  const saving = saveAction.busy;
+  const photoAction = useAsyncAction();
+  const removing = useAsyncAction();
+  const waiverAction = useAsyncAction();
   const [notice, setNotice] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
   const [docName, setDocName] = useState("");
   const [docFile, setDocFile] = useState<File | null>(null);
@@ -101,9 +107,8 @@ export default function MemberProfileModal({ userId, onClose, onSaved }: { userI
 
   const set = (patch: Partial<Profile>) => setProfile((p) => (p ? { ...p, ...patch } : p));
 
-  const save = async () => {
+  const save = () => saveAction.run("profile", async () => {
     if (!profile) return;
-    setSaving(true);
     setNotice(null);
     try {
       const res = await apiJson<{ message?: string; data?: { email?: string | null } }>(`${API_BASE}/admin/users/${profile.id}/profile`, "PUT", {
@@ -131,12 +136,10 @@ export default function MemberProfileModal({ userId, onClose, onSaved }: { userI
       onSaved?.();
     } catch (e) {
       setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not save" });
-    } finally {
-      setSaving(false);
     }
-  };
+  });
 
-  const uploadPhoto = async (file: File | null) => {
+  const uploadPhoto = (file: File | null) => photoAction.run(async () => {
     if (!file || !profile) return;
     const form = new FormData();
     form.append("photo", file);
@@ -147,14 +150,13 @@ export default function MemberProfileModal({ userId, onClose, onSaved }: { userI
     } catch (e) {
       setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not upload the photo" });
     }
-  };
+  });
 
-  const addDocument = async () => {
+  const addDocument = () => saveAction.run("document", async () => {
     if (!docFile || !profile) return;
     const form = new FormData();
     form.append("file", docFile);
     form.append("name", docName || docFile.name);
-    setSaving(true);
     try {
       await apiForm(`${API_BASE}/admin/users/${profile.id}/documents`, "POST", form);
       setDocFile(null);
@@ -162,38 +164,40 @@ export default function MemberProfileModal({ userId, onClose, onSaved }: { userI
       await load();
     } catch (e) {
       setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not add the document" });
-    } finally {
-      setSaving(false);
     }
-  };
+  });
 
   const removeDocument = async (doc: { id: string; name: string }) => {
     if (!profile) return;
     const answer = await ask({ title: `Remove ${doc.name || "this document"}?`, body: "The file is deleted from their profile. This cannot be undone.", confirmLabel: "Remove document" });
     if (answer === null) return;
-    try {
-      await apiJson(`${API_BASE}/admin/users/${profile.id}/documents/${doc.id}`, "DELETE");
-      await load();
-    } catch (e) {
-      setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not remove" });
-    }
+    await removing.run(doc.id, async () => {
+      try {
+        await apiJson(`${API_BASE}/admin/users/${profile.id}/documents/${doc.id}`, "DELETE");
+        await load();
+      } catch (e) {
+        setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not remove" });
+      }
+    });
   };
 
   const recordWaiver = async () => {
     if (!profile || !confirm(`Record that ${profile.firstName} signed the membership agreement on paper?`)) return;
-    try {
-      const res = await apiJson<{ message: string }>(`${API_BASE}/admin/users/${profile.id}/waiver`, "POST", {});
-      setNotice({ tone: "ok", text: res.message });
-      await load();
-    } catch (e) {
-      setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not record" });
-    }
+    await waiverAction.run(async () => {
+      try {
+        const res = await apiJson<{ message: string }>(`${API_BASE}/admin/users/${profile.id}/waiver`, "POST", {});
+        setNotice({ tone: "ok", text: res.message });
+        await load();
+      } catch (e) {
+        setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not record" });
+      }
+    });
   };
 
   const name = profile ? [profile.firstName, profile.lastName].filter(Boolean).join(" ") || profile.email || "Member" : "Member";
 
   return (
-    <Modal open={!!userId} onClose={onClose} title={name} size="xl">
+    <Modal open={!!userId} onClose={onClose} title={name} size="xl" busy={saving}>
       {confirmDialog}
       {loading ? (
         <Spinner />
@@ -229,9 +233,12 @@ export default function MemberProfileModal({ userId, onClose, onSaved }: { userI
                 {profile.medical.parq.flagged && <Badge color="rose">PAR-Q flagged</Badge>}
               </div>
             </div>
-            <label className="cursor-pointer rounded-lg border border-neutral-200 px-3 py-1.5 text-xs font-semibold text-neutral-700 hover:bg-neutral-50">
-              Change photo
-              <input type="file" accept="image/*" className="hidden" onChange={(e) => uploadPhoto(e.target.files?.[0] || null)} />
+            <label
+              aria-busy={photoAction.busy || undefined}
+              className={`relative rounded-lg border border-neutral-200 px-3 py-1.5 text-xs font-semibold text-neutral-700 hover:bg-neutral-50 ${photoAction.busy ? "cursor-wait" : "cursor-pointer"}`}
+            >
+              <BusyLabel busy={photoAction.busy}>Change photo</BusyLabel>
+              <input type="file" accept="image/*" className="hidden" disabled={photoAction.busy} onChange={(e) => uploadPhoto(e.target.files?.[0] || null)} />
             </label>
           </div>
 
@@ -310,7 +317,7 @@ export default function MemberProfileModal({ userId, onClose, onSaved }: { userI
                   <span className="text-xs font-medium text-neutral-600">File (image or PDF, 10 MB)</span>
                   <input type="file" accept="image/*,application/pdf" className="mt-1 block w-full text-sm" onChange={(e) => setDocFile(e.target.files?.[0] || null)} />
                 </label>
-                <PrimaryButton onClick={addDocument} disabled={!docFile || saving}>
+                <PrimaryButton onClick={addDocument} loading={saveAction.isBusy("document")} disabled={!docFile || saving}>
                   Upload
                 </PrimaryButton>
               </div>
@@ -326,7 +333,7 @@ export default function MemberProfileModal({ userId, onClose, onSaved }: { userI
                           {(d.size / 1024).toFixed(0)} KB · {new Date(d.uploadedAt).toLocaleDateString()}
                         </p>
                       </div>
-                      <DangerButton onClick={() => removeDocument(d)}>Remove</DangerButton>
+                      <DangerButton onClick={() => removeDocument(d)} loading={removing.isBusy(d.id)}>Remove</DangerButton>
                     </div>
                   ))}
                 </div>
@@ -351,7 +358,7 @@ export default function MemberProfileModal({ userId, onClose, onSaved }: { userI
                 )}
                 {profile.waiver.text && (
                   <div className="mt-2">
-                    <SecondaryButton onClick={recordWaiver}>Record signed on paper</SecondaryButton>
+                    <SecondaryButton onClick={recordWaiver} loading={waiverAction.busy}>Record signed on paper</SecondaryButton>
                   </div>
                 )}
               </div>
@@ -363,8 +370,8 @@ export default function MemberProfileModal({ userId, onClose, onSaved }: { userI
               Close
             </SecondaryButton>
             {tab !== "documents" && (
-              <PrimaryButton onClick={save} disabled={saving}>
-                {saving ? "Saving…" : "Save"}
+              <PrimaryButton onClick={save} loading={saveAction.isBusy("profile")} disabled={saving}>
+                Save
               </PrimaryButton>
             )}
           </div>

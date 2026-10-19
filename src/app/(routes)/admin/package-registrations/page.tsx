@@ -14,6 +14,7 @@ import {
   Spinner,
   Table,
   useConfirm,
+  useAsyncAction,
 } from "../_shared/ui";
 import { GYMFOLIO_API, apiGet, apiJson, replaceParams } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
@@ -59,7 +60,9 @@ function PackageRegistrationsAdminPageInner() {
   const [selected, setSelected] = useState<Registration | null>(null);
   const [status, setStatus] = useState("");
   const [notes, setNotes] = useState("");
-  const [saving, setSaving] = useState(false);
+  const saveAction = useAsyncAction();
+  const saving = saveAction.busy;
+  const removing = useAsyncAction();
 
   // Paged rather than one big request: the endpoint defaults to twenty, and a
   // fixed larger limit only moved the point where registrations went missing.
@@ -99,19 +102,16 @@ function PackageRegistrationsAdminPageInner() {
     setNotes(r.notes || "");
   };
 
-  const save = async () => {
+  const save = () => saveAction.run(async () => {
     if (!selected) return;
-    setSaving(true);
     try {
       await apiJson(`${GYMFOLIO_API}/package-registrations/${selected._id}/status`, "PUT", { status, notes });
       setSelected(null);
       await load();
     } catch (e) {
       alert(e instanceof Error ? e.message : "Update failed");
-    } finally {
-      setSaving(false);
     }
-  };
+  });
 
   const remove = async (r: Registration) => {
     const answer = await ask({
@@ -120,12 +120,14 @@ function PackageRegistrationsAdminPageInner() {
       confirmLabel: "Delete registration",
     });
     if (answer === null) return;
-    try {
-      await apiJson(`${GYMFOLIO_API}/package-registrations/${r._id}`, "DELETE");
-      await load();
-    } catch (e) {
-      alert(e instanceof Error ? e.message : "Delete failed");
-    }
+    await removing.run(r._id, async () => {
+      try {
+        await apiJson(`${GYMFOLIO_API}/package-registrations/${r._id}`, "DELETE");
+        await load();
+      } catch (e) {
+        alert(e instanceof Error ? e.message : "Delete failed");
+      }
+    });
   };
 
   return (
@@ -164,7 +166,7 @@ function PackageRegistrationsAdminPageInner() {
             editable ? (
               <div key="a" className="flex gap-2">
                 <SecondaryButton onClick={() => open(r)}>Update</SecondaryButton>
-                <DangerButton onClick={() => remove(r)}>Delete</DangerButton>
+                <DangerButton onClick={() => remove(r)} loading={removing.isBusy(r._id)}>Delete</DangerButton>
               </div>
             ) : (
               <span key="a" />
@@ -176,7 +178,7 @@ function PackageRegistrationsAdminPageInner() {
 
       <Pager page={page} pages={pages} total={total} onChange={setPage} disabled={loading} />
 
-      <Modal open={!!selected} onClose={() => setSelected(null)} title="Update Registration" size="md">
+      <Modal open={!!selected} onClose={() => setSelected(null)} title="Update Registration" size="md" busy={saving}>
         {selected && (
           <div className="space-y-4">
             <div className="text-sm">
@@ -191,8 +193,8 @@ function PackageRegistrationsAdminPageInner() {
             />
             <TextArea label="Notes" value={notes} onChange={setNotes} />
             <div className="flex justify-end gap-2 pt-2">
-              <SecondaryButton onClick={() => setSelected(null)}>Cancel</SecondaryButton>
-              <PrimaryButton onClick={save} disabled={saving}>{saving ? "Saving..." : "Save"}</PrimaryButton>
+              <SecondaryButton onClick={() => setSelected(null)} disabled={saving}>Cancel</SecondaryButton>
+              <PrimaryButton onClick={save} loading={saving}>Save</PrimaryButton>
             </div>
           </div>
         )}

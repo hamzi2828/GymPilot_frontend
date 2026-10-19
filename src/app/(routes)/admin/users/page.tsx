@@ -19,6 +19,8 @@ import {
   useConfirm,
   ActionMenu,
   useRequestId,
+  useAsyncAction,
+  BusyLabel,
 } from "../_shared/ui";
 import { API_BASE, GYMFOLIO_API, apiGet, apiJson, isPlanLimitError, replaceParams } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
@@ -119,7 +121,8 @@ function UsernameCell({
   onEdit: () => void;
 }) {
   const [copied, setCopied] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const regenerating = useAsyncAction();
+  const busy = regenerating.busy;
 
   if (!user.username) {
     return <span className="text-xs text-neutral-400">not issued yet</span>;
@@ -137,16 +140,15 @@ function UsernameCell({
 
   const regenerate = async () => {
     if (!confirm(`Give ${displayName(user)} a new username? The one they have now stops working straight away, so you will need to tell them.`)) return;
-    setBusy(true);
-    try {
-      const r = await apiJson<{ data: { username: string } }>(`${API_BASE}/admin/users/${user._id}/username`, "POST");
-      onNotice("ok", `New username for ${displayName(user)}: ${r.data.username}`);
-      onRegenerated();
-    } catch (e) {
-      onNotice("warn", e instanceof Error ? e.message : "Could not issue a new username");
-    } finally {
-      setBusy(false);
-    }
+    await regenerating.run(async () => {
+      try {
+        const r = await apiJson<{ data: { username: string } }>(`${API_BASE}/admin/users/${user._id}/username`, "POST");
+        onNotice("ok", `New username for ${displayName(user)}: ${r.data.username}`);
+        onRegenerated();
+      } catch (e) {
+        onNotice("warn", e instanceof Error ? e.message : "Could not issue a new username");
+      }
+    });
   };
 
   return (
@@ -174,10 +176,11 @@ function UsernameCell({
             type="button"
             onClick={regenerate}
             disabled={busy}
+            aria-busy={busy || undefined}
             title="Issue a new generated username"
-            className="rounded px-1 py-0.5 text-[11px] font-medium text-neutral-400 hover:bg-neutral-100 hover:text-neutral-800 disabled:opacity-50"
+            className="relative rounded px-1 py-0.5 text-[11px] font-medium text-neutral-400 hover:bg-neutral-100 hover:text-neutral-800 disabled:opacity-50 aria-busy:disabled:opacity-100 aria-busy:disabled:cursor-wait"
           >
-            {busy ? "…" : "new"}
+            <BusyLabel busy={busy}>new</BusyLabel>
           </button>
         </>
       )}
@@ -250,10 +253,15 @@ function UsersAdminPageInner() {
   const [summaries, setSummaries] = useState<Record<string, MembershipSummary | null>>({});
   const [summaryErr, setSummaryErr] = useState<string | null>(null);
   const [summaryRetry, setSummaryRetry] = useState(0);
-  const [creating, setCreating] = useState(false);
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const createAction = useAsyncAction();
+  const creating = createAction.busy;
   const [createErr, setCreateErr] = useState<string | null>(null);
   const [createLimit, setCreateLimit] = useState(false);
   const [notice, setNotice] = useState<{ tone: "ok" | "warn"; text: string } | null>(null);
+  // One action at a time per row (its More menu), and the role dialog's save.
+  const rowAction = useAsyncAction();
+  const roleAction = useAsyncAction();
   // The details the desk takes down at the counter; the rest of the profile
   // (health, emergency contact, documents) is filled in afterwards.
   const emptyDraft = {
@@ -281,7 +289,8 @@ function UsersAdminPageInner() {
   const [assignFor, setAssignFor] = useState<User | null>(null);
   const [packages, setPackages] = useState<PackageOption[]>([]);
   const [assignErr, setAssignErr] = useState<string | null>(null);
-  const [assigning, setAssigning] = useState(false);
+  const assignAction = useAsyncAction();
+  const assigning = assignAction.busy;
   const emptyAssign = { packageId: "", paymentMethod: "cash", markPaid: "yes", durationMonths: "" };
   const [assignDraft, setAssignDraft] = useState(emptyAssign);
   // Sent with the sale, so Assign pressed again after a lost reply sells once.
@@ -300,12 +309,11 @@ function UsersAdminPageInner() {
     }
   };
 
-  const assignPackage = async () => {
+  const assignPackage = () => assignAction.run(async () => {
     if (!assignFor || !assignDraft.packageId) {
       setAssignErr("Choose a package to assign.");
       return;
     }
-    setAssigning(true);
     setAssignErr(null);
     try {
       const body = {
@@ -322,10 +330,8 @@ function UsersAdminPageInner() {
       setSummaries({});
     } catch (e) {
       setAssignErr(e instanceof Error ? e.message : "Could not assign the package.");
-    } finally {
-      setAssigning(false);
     }
-  };
+  });
 
   const openCreate = () => {
     setDraft(emptyDraft);
@@ -336,7 +342,7 @@ function UsersAdminPageInner() {
     setCreateOpen(true);
   };
 
-  const createUser = async () => {
+  const createUser = () => createAction.run(async () => {
     if (!draft.firstName.trim() || !draft.lastName.trim()) {
       setCreateErr("First name and last name are both required.");
       return;
@@ -351,7 +357,6 @@ function UsersAdminPageInner() {
       setCreateErr(`The password needs at least ${MIN_PASSWORD_LENGTH} characters.`);
       return;
     }
-    setCreating(true);
     setCreateErr(null);
     setCreateLimit(false);
     try {
@@ -403,10 +408,8 @@ function UsersAdminPageInner() {
     } catch (e) {
       setCreateErr(e instanceof Error ? e.message : "Could not create the user.");
       setCreateLimit(isPlanLimitError(e));
-    } finally {
-      setCreating(false);
     }
-  };
+  });
 
   // Add member saved: the list gains the row, and the page says so once the
   // dialog (password, receipt) is closed.
@@ -474,23 +477,27 @@ function UsersAdminPageInner() {
       });
       if (answer === null) return;
     }
-    try {
-      const r = await apiJson<{ message: string }>(`${API_BASE}/update/status/${u._id}`, "PUT", { isActive });
-      setNotice({ tone: "ok", text: r.message || (isActive ? "Account reactivated." : "Account deactivated.") });
-      await load();
-    } catch (e) {
-      setNotice({ tone: "warn", text: e instanceof Error ? e.message : "Could not change the status" });
-    }
+    await rowAction.run(u._id, async () => {
+      try {
+        const r = await apiJson<{ message: string }>(`${API_BASE}/update/status/${u._id}`, "PUT", { isActive });
+        setNotice({ tone: "ok", text: r.message || (isActive ? "Account reactivated." : "Account deactivated.") });
+        await load();
+      } catch (e) {
+        setNotice({ tone: "warn", text: e instanceof Error ? e.message : "Could not change the status" });
+      }
+    });
   };
 
   const recordConsent = async (u: User) => {
     if (!confirm(`Record that ${displayName(u)} has consented to fingerprint storage (signed form)?`)) return;
-    try {
-      const r = await apiJson<{ message: string }>(`${API_BASE}/admin/users/${u._id}/consent`, "PUT", { biometric: true });
-      setNotice({ tone: "ok", text: r.message });
-    } catch (e) {
-      setNotice({ tone: "warn", text: e instanceof Error ? e.message : "Could not record consent" });
-    }
+    await rowAction.run(u._id, async () => {
+      try {
+        const r = await apiJson<{ message: string }>(`${API_BASE}/admin/users/${u._id}/consent`, "PUT", { biometric: true });
+        setNotice({ tone: "ok", text: r.message });
+      } catch (e) {
+        setNotice({ tone: "warn", text: e instanceof Error ? e.message : "Could not record consent" });
+      }
+    });
   };
 
   // The desk vouching for an address in place of the emailed link: the member
@@ -504,13 +511,15 @@ function UsersAdminPageInner() {
       danger: false,
     });
     if (answer === null) return;
-    try {
-      const r = await apiJson<{ message: string }>(`${API_BASE}/admin/users/${u._id}/verify-email`, "POST");
-      setNotice({ tone: "ok", text: r.message || "Email address marked as confirmed." });
-      await load();
-    } catch (e) {
-      setNotice({ tone: "warn", text: e instanceof Error ? e.message : "Could not confirm the email address" });
-    }
+    await rowAction.run(u._id, async () => {
+      try {
+        const r = await apiJson<{ message: string }>(`${API_BASE}/admin/users/${u._id}/verify-email`, "POST");
+        setNotice({ tone: "ok", text: r.message || "Email address marked as confirmed." });
+        await load();
+      } catch (e) {
+        setNotice({ tone: "warn", text: e instanceof Error ? e.message : "Could not confirm the email address" });
+      }
+    });
   };
 
   const signOut = async (u: User) => {
@@ -521,15 +530,17 @@ function UsersAdminPageInner() {
       danger: false,
     });
     if (answer === null) return;
-    try {
-      const r = await apiJson<{ message: string }>(`${API_BASE}/admin/users/${u._id}/logout-all`, "POST");
-      setNotice({ tone: "ok", text: r.message });
-    } catch (e) {
-      setNotice({ tone: "warn", text: e instanceof Error ? e.message : "Could not sign the user out" });
-    }
+    await rowAction.run(u._id, async () => {
+      try {
+        const r = await apiJson<{ message: string }>(`${API_BASE}/admin/users/${u._id}/logout-all`, "POST");
+        setNotice({ tone: "ok", text: r.message });
+      } catch (e) {
+        setNotice({ tone: "warn", text: e instanceof Error ? e.message : "Could not sign the user out" });
+      }
+    });
   };
 
-  const saveRole = async () => {
+  const saveRole = () => roleAction.run(async () => {
     if (!selected || !role) return;
     try {
       await apiJson(`${API_BASE}/update/role/${selected._id}`, "PUT", { role });
@@ -538,7 +549,7 @@ function UsersAdminPageInner() {
     } catch (e) {
       alert(e instanceof Error ? e.message : "Update failed");
     }
-  };
+  });
 
   const remove = async (u: User) => {
     const answer = await ask({
@@ -547,13 +558,15 @@ function UsersAdminPageInner() {
       confirmLabel: "Delete account",
     });
     if (answer === null) return;
-    try {
-      await apiJson(`${API_BASE}/delete/${u._id}`, "DELETE");
-      setNotice({ tone: "ok", text: `${displayName(u)} was deleted.` });
-      await load();
-    } catch (e) {
-      setNotice({ tone: "warn", text: e instanceof Error ? e.message : "Could not delete this account" });
-    }
+    await rowAction.run(u._id, async () => {
+      try {
+        await apiJson(`${API_BASE}/delete/${u._id}`, "DELETE");
+        setNotice({ tone: "ok", text: `${displayName(u)} was deleted.` });
+        await load();
+      } catch (e) {
+        setNotice({ tone: "warn", text: e instanceof Error ? e.message : "Could not delete this account" });
+      }
+    });
   };
 
   const allTags = Array.from(new Set(list.flatMap((u) => u.tags || []))).sort();
@@ -588,6 +601,7 @@ function UsersAdminPageInner() {
     const missing = pageKey.split(",").filter((id) => !(id in summaries));
     if (!missing.length) return;
     let cancelled = false;
+    setSummaryLoading(true);
     apiJson<{ data?: { userId: string; membership: MembershipSummary | null }[] }>(`${GYMFOLIO_API}/package-orders/summary`, "POST", { userIds: missing })
       .then((r) => {
         if (cancelled) return;
@@ -603,9 +617,13 @@ function UsersAdminPageInner() {
       })
       .catch((e) => {
         if (!cancelled) setSummaryErr(e instanceof Error ? e.message : "Could not load the memberships.");
+      })
+      .finally(() => {
+        if (!cancelled) setSummaryLoading(false);
       });
     return () => {
       cancelled = true;
+      setSummaryLoading(false);
     };
   }, [pageKey, summaries, summaryRetry]);
 
@@ -735,7 +753,7 @@ function UsersAdminPageInner() {
       {showMemberships && summaryErr && (
         <div className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-rose-200 bg-rose-50 px-4 py-2 text-sm text-rose-800">
           <span>Memberships could not be loaded: {summaryErr}</span>
-          <SecondaryButton onClick={() => setSummaryRetry((n) => n + 1)}>Try again</SecondaryButton>
+          <SecondaryButton onClick={() => setSummaryRetry((n) => n + 1)} loading={summaryLoading}>Try again</SecondaryButton>
         </div>
       )}
 
@@ -808,6 +826,7 @@ function UsersAdminPageInner() {
               {canManage && (
                 <ActionMenu
                   ariaLabel={`More for ${displayName(u)}`}
+                  busy={rowAction.isBusy(u._id)}
                   actions={[
                     { label: "Change role", onClick: () => { setSelected(u); setRole(u.role || "user"); } },
                     {
@@ -837,7 +856,7 @@ function UsersAdminPageInner() {
       )}
       {!loading && !loadErr && <Pager page={currentPage} pages={pages} total={visible.length} onChange={setPage} />}
 
-      <Modal open={createOpen} onClose={() => setCreateOpen(false)} title="Create User" size="md">
+      <Modal open={createOpen} onClose={() => setCreateOpen(false)} title="Create User" size="md" busy={creating}>
         <div className="space-y-4">
           <p className="text-sm text-neutral-500">
             Choose how they get their first password below: emailed, shown to you once to hand
@@ -923,9 +942,9 @@ function UsersAdminPageInner() {
           )}
 
           <div className="flex justify-end gap-2 pt-2">
-            <SecondaryButton onClick={() => setCreateOpen(false)}>Cancel</SecondaryButton>
-            <PrimaryButton onClick={createUser} disabled={creating}>
-              {creating ? "Creating..." : credentials === "email" ? "Create & Email Password" : "Create User"}
+            <SecondaryButton onClick={() => setCreateOpen(false)} disabled={creating}>Cancel</SecondaryButton>
+            <PrimaryButton onClick={createUser} loading={creating}>
+              {credentials === "email" ? "Create & Email Password" : "Create User"}
             </PrimaryButton>
           </div>
         </div>
@@ -936,6 +955,7 @@ function UsersAdminPageInner() {
         onClose={() => setAssignFor(null)}
         title="Assign Package"
         size="sm"
+        busy={assigning}
       >
         {assignFor && (
           <div className="space-y-4">
@@ -994,9 +1014,9 @@ function UsersAdminPageInner() {
             )}
 
             <div className="flex justify-end gap-2 pt-2">
-              <SecondaryButton onClick={() => setAssignFor(null)}>Cancel</SecondaryButton>
-              <PrimaryButton onClick={assignPackage} disabled={assigning}>
-                {assigning ? "Assigning..." : "Assign Package"}
+              <SecondaryButton onClick={() => setAssignFor(null)} disabled={assigning}>Cancel</SecondaryButton>
+              <PrimaryButton onClick={assignPackage} loading={assigning}>
+                Assign Package
               </PrimaryButton>
             </div>
           </div>
@@ -1016,7 +1036,7 @@ function UsersAdminPageInner() {
         }}
       />
 
-      <Modal open={!!selected} onClose={() => setSelected(null)} title="Update Role" size="sm">
+      <Modal open={!!selected} onClose={() => setSelected(null)} title="Update Role" size="sm" busy={roleAction.busy}>
         {selected && (
           <div className="space-y-4">
             <div className="text-sm">
@@ -1030,8 +1050,8 @@ function UsersAdminPageInner() {
               options={roleOptions}
             />
             <div className="flex justify-end gap-2 pt-2">
-              <SecondaryButton onClick={() => setSelected(null)}>Cancel</SecondaryButton>
-              <PrimaryButton onClick={saveRole}>Save</PrimaryButton>
+              <SecondaryButton onClick={() => setSelected(null)} disabled={roleAction.busy}>Cancel</SecondaryButton>
+              <PrimaryButton onClick={saveRole} loading={roleAction.busy}>Save</PrimaryButton>
             </div>
           </div>
         )}

@@ -433,7 +433,7 @@ function FeeExpiryPageInner() {
   const print = () => printReport(`${siteName ? `${siteName} ` : ""}Fee expiry ${TABS.find((t) => t.key === tab)?.label || ""} ${today}`);
 
   const chip = (on: boolean) =>
-    `h-8 rounded-lg px-3 text-[13px] font-medium transition-colors ${
+    `h-8 rounded-lg px-3 text-[13px] font-medium transition-colors disabled:cursor-wait ${
       on ? "bg-neutral-900 text-white" : "border border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900"
     }`;
 
@@ -491,8 +491,10 @@ function FeeExpiryPageInner() {
               key={t.key}
               type="button"
               onClick={() => chooseTab(t.key)}
+              // The list reloads for each: held still until it has.
+              disabled={loading}
               aria-current={tab === t.key ? "page" : undefined}
-              className={`whitespace-nowrap border-b-2 px-4 py-2.5 text-sm font-medium transition-colors ${
+              className={`whitespace-nowrap border-b-2 px-4 py-2.5 text-sm font-medium transition-colors disabled:cursor-wait ${
                 tab === t.key ? "border-neutral-900 text-neutral-900" : "border-transparent text-neutral-500 hover:border-neutral-300 hover:text-neutral-800"
               }`}
             >
@@ -519,7 +521,7 @@ function FeeExpiryPageInner() {
               days
             </label>
             {DAY_CHIPS.map((n) => (
-              <button key={n} type="button" onClick={() => chooseDays(String(n))} className={chip(!daysInvalid && days === n)}>
+              <button key={n} type="button" onClick={() => chooseDays(String(n))} disabled={loading} className={chip(!daysInvalid && days === n)}>
                 {plural(n, "day")}
               </button>
             ))}
@@ -527,6 +529,7 @@ function FeeExpiryPageInner() {
               <input
                 type="checkbox"
                 checked={includeAutoRenew}
+                disabled={loading}
                 onChange={(e) => {
                   setIncludeAutoRenew(e.target.checked);
                   setPage(1);

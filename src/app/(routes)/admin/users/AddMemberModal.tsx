@@ -13,7 +13,7 @@
 // order actually recorded.
 
 import { useEffect, useState, type ReactNode } from "react";
-import { Modal, PrimaryButton, SecondaryButton, SelectField, TextArea, TextField, Toggle, UpgradePlanLink, useRequestId } from "../_shared/ui";
+import { Modal, PrimaryButton, SecondaryButton, SelectField, TextArea, TextField, Toggle, UpgradePlanLink, useAsyncAction, useRequestId } from "../_shared/ui";
 import { API_BASE, GYMFOLIO_API, ApiError, apiGet, apiJson, isPlanLimitError } from "../_shared/api";
 import { EMPTY_RECEIPT_PROFILE, loadReceiptProfile, printReceipt, type ReceiptProfile, type ThermalReceiptProps } from "@/components/receipts";
 import { CopyButton, CredentialsChoice, MIN_PASSWORD_LENGTH, type CredentialMode } from "./PasswordDialogs";
@@ -331,12 +331,15 @@ export default function AddMemberModal({
   const [packages, setPackages] = useState<PackageOption[]>([]);
   const [trainers, setTrainers] = useState<TrainerOption[]>([]);
   const [profile, setProfile] = useState<ReceiptProfile>(EMPTY_RECEIPT_PROFILE);
-  const [saving, setSaving] = useState(false);
+  // Keyed by the button pressed, so the spinner shows on that one.
+  const saveAction = useAsyncAction();
+  const saving = saveAction.busy;
   const [error, setError] = useState<string | null>(null);
   const [limitHit, setLimitHit] = useState(false);
   const [duplicate, setDuplicate] = useState<DuplicateWarning | null>(null);
   const [done, setDone] = useState<RegisterResult | null>(null);
-  const [printing, setPrinting] = useState(false);
+  const printAction = useAsyncAction();
+  const printing = printAction.busy;
   // The sale carries this attempt's id, as every sale at the desk does.
   const requestId = useRequestId();
 
@@ -391,7 +394,7 @@ export default function AddMemberModal({
 
   // `registerAnyway`: the desk has seen who is already on that phone and
   // says this is somebody else.
-  const submit = async (registerAnyway = false) => {
+  const submit = (registerAnyway = false) => saveAction.run(registerAnyway ? "anyway" : "register", async () => {
     const problem = problemOf({ member, credentials, password, selling, sale, pkg });
     if (problem) {
       setError(problem);
@@ -399,7 +402,6 @@ export default function AddMemberModal({
       setDuplicate(null);
       return;
     }
-    setSaving(true);
     setError(null);
     setLimitHit(false);
     setDuplicate(null);
@@ -447,24 +449,19 @@ export default function AddMemberModal({
         setError(e instanceof Error ? e.message : "Could not register the member.");
         setLimitHit(isPlanLimitError(e));
       }
-    } finally {
-      setSaving(false);
     }
-  };
+  });
 
-  const print = async () => {
+  const print = () => printAction.run(async () => {
     if (!done) return;
     const receipt = receiptFor(done, profile);
     if (!receipt) return;
-    setPrinting(true);
     try {
       await printReceipt(receipt);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not print the receipt.");
-    } finally {
-      setPrinting(false);
     }
-  };
+  });
 
   const who = [member.firstName.trim(), member.lastName.trim()].filter(Boolean).join(" ");
 
@@ -684,8 +681,8 @@ export default function AddMemberModal({
               {duplicate.canRegisterAnyway ? (
                 <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
                   <span className="text-xs text-amber-800">Someone else on the same phone (a family member)?</span>
-                  <PrimaryButton onClick={() => submit(true)} disabled={saving}>
-                    {saving ? "Saving…" : "Register anyway"}
+                  <PrimaryButton onClick={() => submit(true)} loading={saveAction.isBusy("anyway")} disabled={saving}>
+                    Register anyway
                   </PrimaryButton>
                 </div>
               ) : (
@@ -696,8 +693,8 @@ export default function AddMemberModal({
 
           <div className="flex justify-end gap-2">
             <SecondaryButton onClick={onClose} disabled={saving}>Cancel</SecondaryButton>
-            <PrimaryButton onClick={() => submit()} disabled={saving}>
-              {saving ? "Saving…" : canSell && selling ? `Register ${who || "member"} & take payment` : `Register ${who || "member"}`}
+            <PrimaryButton onClick={() => submit()} loading={saveAction.isBusy("register")} disabled={saving}>
+              {canSell && selling ? `Register ${who || "member"} & take payment` : `Register ${who || "member"}`}
             </PrimaryButton>
           </div>
         </div>
@@ -795,8 +792,8 @@ function Registered({
 
       <div className="flex justify-end gap-2">
         {o && (
-          <SecondaryButton onClick={onPrint} disabled={printing}>
-            {printing ? "Printing…" : "Print receipt"}
+          <SecondaryButton onClick={onPrint} loading={printing}>
+            Print receipt
           </SecondaryButton>
         )}
         <PrimaryButton onClick={onClose}>Done</PrimaryButton>
