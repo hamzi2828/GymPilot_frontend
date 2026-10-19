@@ -42,8 +42,16 @@ const Footer = () => {
         setNotice({ tone: "ok", text: t("footer.newsDone") });
         setEmail("");
       } catch (err) {
-        const already = (err as { status?: number } | null)?.status === 409;
-        setNotice({ tone: already ? "ok" : "error", text: t(already ? "footer.newsAlready" : "footer.newsError") });
+        const status = (err as { status?: number } | null)?.status;
+        if (status === 409) {
+          setNotice({ tone: "ok", text: t("footer.newsAlready") });
+          return;
+        }
+        // A refusal the server explained ("Please enter a valid email") is
+        // shown in its words: the visitor can fix the address. No answer at
+        // all, or a server fault, gets the general "try again".
+        const said = status && status < 500 && err instanceof Error ? err.message.trim() : "";
+        setNotice({ tone: "error", text: said || t("footer.newsError") });
       }
     });
   };

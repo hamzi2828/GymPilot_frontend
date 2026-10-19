@@ -1,3 +1,5 @@
+import { looksLikeEmail } from '@/helper/email';
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_BACKEND_URL;
 
 export interface NewsletterSubscription {
@@ -65,9 +67,10 @@ class NewsletterService {
     }
   }
 
+  // The API's rule (helper/email.ts): any last part of two or more letters,
+  // so jane@gym.info is not turned away here.
   validateEmail(email: string): boolean {
-    const emailRegex = /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/;
-    return emailRegex.test(email);
+    return looksLikeEmail(email);
   }
 }
 

@@ -96,12 +96,15 @@ const ContactUsPage = () => {
 
         if (response.errors) {
           const errors: ContactValidationErrors = {};
+          // Matched without regard to case: "Email address is required" is
+          // the email box's as much as "a valid email address" is.
           response.errors.forEach(error => {
-            if (error.includes('name')) errors.fullName = error;
-            else if (error.includes('email')) errors.emailAddress = error;
-            else if (error.includes('phone')) errors.phoneNumber = error;
-            else if (error.includes('subject')) errors.subject = error;
-            else if (error.includes('message')) errors.message = error;
+            const said = error.toLowerCase();
+            if (said.includes('name')) errors.fullName = error;
+            else if (said.includes('email')) errors.emailAddress = error;
+            else if (said.includes('phone')) errors.phoneNumber = error;
+            else if (said.includes('subject')) errors.subject = error;
+            else if (said.includes('message')) errors.message = error;
           });
           setValidationErrors(errors);
         }

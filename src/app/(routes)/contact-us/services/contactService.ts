@@ -1,20 +1,21 @@
 import axios from 'axios';
+import { looksLikeEmail, MAX_EMAIL_LENGTH } from '@/helper/email';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_BACKEND_URL;
 
-// What the enquiry is about, in a gym's terms. The form offers these; the API
-// still files a contact under its older list of categories, so each topic is
-// sent as the nearest one of those and is also written into the subject,
-// which is where the gym's staff read it. The label here is that subject
-// wording; the page shows the visitor a translated one.
+// What the enquiry is about, in a gym's terms. The form offers these and the
+// API files the enquiry under the same category (its contact model takes
+// each of them), so staff can sort their inbox by it. The topic is also
+// written into the subject, where they read it. The label here is that
+// subject wording; the page shows the visitor a translated one.
 export type ContactTopic = 'membership' | 'classes' | 'personal-training' | 'billing' | 'other';
 
-const CONTACT_TOPICS: { value: ContactTopic; label: string; apiCategory: 'general' | 'support' }[] = [
-  { value: 'membership', label: 'Membership', apiCategory: 'general' },
-  { value: 'classes', label: 'Classes', apiCategory: 'general' },
-  { value: 'personal-training', label: 'Personal training', apiCategory: 'general' },
-  { value: 'billing', label: 'Billing', apiCategory: 'support' },
-  { value: 'other', label: 'Other', apiCategory: 'general' },
+const CONTACT_TOPICS: { value: ContactTopic; label: string }[] = [
+  { value: 'membership', label: 'Membership' },
+  { value: 'classes', label: 'Classes' },
+  { value: 'personal-training', label: 'Personal training' },
+  { value: 'billing', label: 'Billing' },
+  { value: 'other', label: 'Other' },
 ];
 
 export interface ContactFormData {
@@ -58,11 +59,13 @@ export const validateContactForm = (formData: ContactFormData): ContactValidatio
     errors.fullName = 'Full name cannot exceed 100 characters';
   }
 
-  // Email validation
-  const emailRegex = /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/;
+  // Email validation: the API's rule (helper/email.ts), so an address it
+  // takes -- jane@gym.info -- is not refused here first.
   if (!formData.emailAddress || formData.emailAddress.trim().length === 0) {
     errors.emailAddress = 'Email address is required';
-  } else if (!emailRegex.test(formData.emailAddress.trim())) {
+  } else if (formData.emailAddress.trim().length > MAX_EMAIL_LENGTH) {
+    errors.emailAddress = `Email address cannot exceed ${MAX_EMAIL_LENGTH} characters`;
+  } else if (!looksLikeEmail(formData.emailAddress)) {
     errors.emailAddress = 'Please enter a valid email address';
   }
 
@@ -110,7 +113,7 @@ export const contactService = {
         // The topic leads the subject, e.g. "Billing: card charged twice".
         subject: (subject ? `${topic.label}: ${subject}` : topic.label).slice(0, 200),
         message: formData.message.trim(),
-        category: topic.apiCategory
+        category: topic.value
       };
 
       const response = await axios.post(
