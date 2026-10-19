@@ -83,6 +83,27 @@ export interface VerifiedOrder {
   status?: string;
 }
 
+/**
+ * A refused checkout request, with the API's sentence as `message`, the HTTP
+ * status and the API's `code` when it gave one -- so a page can tell "no
+ * such order" (404 ORDER_NOT_FOUND) or "this order is closed" (409) from a
+ * failure worth trying again.
+ */
+export class CheckoutRequestError extends Error {
+  status: number;
+  code?: string;
+
+  constructor(message: string, status: number, code?: string) {
+    super(message);
+    this.name = "CheckoutRequestError";
+    this.status = status;
+    this.code = code;
+  }
+}
+
+/** The 24-character id the API gives an order. Anything else is no order of ours. */
+export const isOrderId = (value: string | null | undefined): value is string => !!value && /^[a-f\d]{24}$/i.test(value);
+
 class CheckoutService {
   private baseUrl: string;
 
@@ -100,7 +121,9 @@ class CheckoutService {
 
   private async parse<T>(response: Response, fallback: string): Promise<T> {
     const json = await response.json().catch(() => ({}));
-    if (!response.ok || json?.success === false) throw new Error(json?.message || fallback);
+    if (!response.ok || json?.success === false) {
+      throw new CheckoutRequestError(json?.message || fallback, response.status, typeof json?.code === "string" ? json.code : undefined);
+    }
     return json as T;
   }
 
@@ -182,7 +205,7 @@ class CheckoutService {
   }
 
   async getOrder(orderId: string): Promise<BankOrder> {
-    const res = await fetch(`${this.baseUrl}/api/gymfolio/package-orders/${orderId}`, { headers: this.getAuthHeaders() });
+    const res = await fetch(`${this.baseUrl}/api/gymfolio/package-orders/${encodeURIComponent(orderId)}`, { headers: this.getAuthHeaders() });
     const json = await this.parse<{ data: BankOrder }>(res, "Could not load the order");
     return json.data;
   }

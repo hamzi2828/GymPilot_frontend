@@ -8,7 +8,7 @@ import React, { Suspense, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { isAuthenticated } from "../../../../helper/helper";
-import { checkoutService, type BankAccount, type BankOrder } from "../services/checkoutService";
+import { checkoutService, CheckoutRequestError, isOrderId, type BankAccount, type BankOrder } from "../services/checkoutService";
 import Spinner from "@/components/ui/Spinner";
 import useAsyncAction from "@/components/ui/useAsyncAction";
 
@@ -27,6 +27,11 @@ function assetUrl(url?: string) {
   return url.startsWith("http") ? url : `${API_BASE}${url}`;
 }
 
+// What a link to an order that is not there (a mistyped or someone else's
+// `?order=`) is told, rather than the server's internals.
+const ORDER_NOT_FOUND = "We could not find this order.";
+const isNotFound = (e: unknown) => e instanceof CheckoutRequestError && (e.status === 404 || e.code === "ORDER_NOT_FOUND");
+
 function BankTransferContent() {
   const router = useRouter();
   const params = useSearchParams();
@@ -35,6 +40,7 @@ function BankTransferContent() {
   const [order, setOrder] = useState<BankOrder | null>(null);
   const [banks, setBanks] = useState<BankAccount[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [notFound, setNotFound] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const [file, setFile] = useState<File | null>(null);
@@ -49,13 +55,22 @@ function BankTransferContent() {
       setLoading(false);
       return;
     }
+    // Not an order id at all: no order to ask the server for.
+    if (!isOrderId(orderId)) {
+      setNotFound(true);
+      setLoading(false);
+      return;
+    }
     try {
-      const [o, b] = await Promise.all([checkoutService.getOrder(orderId), checkoutService.getBanks()]);
+      // The bank list failing leaves the order on screen; the page then says
+      // to ask at reception for the details.
+      const [o, b] = await Promise.all([checkoutService.getOrder(orderId), checkoutService.getBanks().catch(() => [] as BankAccount[])]);
       setOrder(o);
       setBanks(b);
       setReference(o.payment.proof?.reference || "");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not load the order");
+      if (isNotFound(e)) setNotFound(true);
+      else setError(e instanceof Error ? e.message : "Could not load the order");
     } finally {
       setLoading(false);
     }
@@ -80,6 +95,9 @@ function BankTransferContent() {
         await load();
       } catch (err) {
         setError(err instanceof Error ? err.message : "Could not send the receipt");
+        // 409: the order changed under the page -- cancelled, closed, or being
+        // confirmed right now. Reloading shows it as it is.
+        if (err instanceof CheckoutRequestError && err.status === 409) await load();
       }
     });
   };
@@ -98,18 +116,41 @@ function BankTransferContent() {
     return (
       <main className="pt-24 px-4">
         <div className="mx-auto max-w-xl py-16 text-center">
-          <p className="text-red-600">{error || "Order not found."}</p>
-          <Link href="/packages" className="mt-4 inline-block underline">
-            Back to packages
-          </Link>
+          {notFound ? (
+            <>
+              <h1 className="text-2xl font-bold text-black">{ORDER_NOT_FOUND}</h1>
+              <p className="mt-2 text-gray-600">Check the link you followed. Your orders are listed under My account.</p>
+            </>
+          ) : (
+            <p className="text-red-600">{error || ORDER_NOT_FOUND}</p>
+          )}
+          <div className="mt-6 flex flex-wrap justify-center gap-3">
+            <Link href="/packages" className="btn-accent rounded-lg px-5 py-2.5 text-sm font-semibold">
+              Back to packages
+            </Link>
+            {notFound && (
+              <Link href="/user-detail?tab=history" className="rounded-lg border border-gray-300 px-5 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50">
+                Go to my account
+              </Link>
+            )}
+          </div>
         </div>
       </main>
     );
   }
 
-  const paid = order.payment.status === "paid";
-  const awaiting = order.payment.status === "processing";
-  const rejected = order.payment.status === "failed";
+  // The order's own status, not only its payment's: an order the gym (or the
+  // member) cancelled still has a payment waiting, and used to offer the
+  // receipt form for it.
+  const cancelled = order.status === "cancelled" || order.payment.status === "cancelled";
+  const refunded = !cancelled && order.payment.status === "refunded";
+  // Closed: nothing to pay into and nothing to send.
+  const closed = cancelled || refunded;
+  const paid = !closed && order.payment.status === "paid";
+  const awaiting = !closed && order.payment.status === "processing";
+  const rejected = !closed && order.payment.status === "failed";
+  // Paid for, then cancelled: a membership that has ended, not an unpaid order.
+  const cancelledAfterPaying = cancelled && order.payment.status === "paid";
 
   return (
     <main className="pt-24">
@@ -122,10 +163,28 @@ function BankTransferContent() {
           </nav>
 
           <h1 className="text-2xl font-bold text-black">
-            {paid ? "Payment confirmed" : awaiting ? "Receipt received" : rejected ? "Payment not confirmed" : "Pay by bank transfer"}
+            {cancelled
+              ? cancelledAfterPaying
+                ? "This membership was cancelled"
+                : "This order was cancelled"
+              : refunded
+              ? "This payment was refunded"
+              : paid
+              ? "Payment confirmed"
+              : awaiting
+              ? "Receipt received"
+              : rejected
+              ? "Payment not confirmed"
+              : "Pay by bank transfer"}
           </h1>
           <p className="mt-2 text-gray-600">
-            {paid
+            {cancelled
+              ? cancelledAfterPaying
+                ? "Its details stay under My account. Choose a package to start a new membership."
+                : "There is nothing to pay or send for it. Please do not transfer money for this order. Choose a package to start a new one."
+              : refunded
+              ? "The money for this order was sent back, so there is nothing to pay or send. Choose a package to start a new order."
+              : paid
               ? `Your ${order.packageDetails.name} membership is active.`
               : awaiting
               ? "We have your transfer details. Staff will confirm the payment shortly and your membership starts the moment they do."
@@ -145,16 +204,20 @@ function BankTransferContent() {
               </div>
               <div className="text-right">
                 <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">Amount to send</p>
-                <p className="text-3xl font-bold text-primary">{money(order.payment.amount, order.payment.currency)}</p>
+                <p className={`text-3xl font-bold ${closed ? "text-gray-400 line-through" : ""}`} style={closed ? undefined : { color: "var(--accent-dark, #c74e1b)" }}>
+                  {money(order.payment.amount, order.payment.currency)}
+                </p>
                 {(order.payment.discountAmount || 0) > 0 && <p className="text-xs text-green-700">includes {order.payment.couponCode} discount</p>}
               </div>
             </div>
-            <p className="mt-4 rounded-lg bg-amber-50 px-4 py-2 text-sm text-amber-900">
-              Use <strong>{order.orderNumber}</strong> as the payment reference so we can match it to you.
-            </p>
+            {!closed && (
+              <p className="mt-4 rounded-lg bg-amber-50 px-4 py-2 text-sm text-amber-900">
+                Use <strong>{order.orderNumber}</strong> as the payment reference so we can match it to you.
+              </p>
+            )}
           </div>
 
-          {!paid && (
+          {!paid && !closed && (
             <div className="mt-6 grid gap-4 md:grid-cols-2">
               {banks.map((bank) => (
                 <div key={bank._id} className="rounded-2xl border-2 border-gray-200 bg-white p-5">
@@ -176,7 +239,7 @@ function BankTransferContent() {
             </div>
           )}
 
-          {!paid && !rejected && (
+          {!paid && !rejected && !closed && (
             <form onSubmit={submit} className="mt-8 rounded-2xl border-2 border-gray-200 bg-white p-6 space-y-4">
               <h2 className="text-lg font-bold text-black">{awaiting ? "Update your receipt" : "Attach your receipt"}</h2>
               <div>
@@ -205,7 +268,7 @@ function BankTransferContent() {
                   type="submit"
                   disabled={sending || (!file && !reference.trim())}
                   aria-busy={sending || undefined}
-                  className="inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-black hover:opacity-90 disabled:opacity-50"
+                  className="btn-accent inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-semibold disabled:opacity-50"
                 >
                   {sending && <Spinner />}
                   {sending ? "Sending…" : awaiting ? "Update receipt" : "Send receipt"}
@@ -217,9 +280,20 @@ function BankTransferContent() {
             </form>
           )}
 
+          {closed && (
+            <div className="mt-8 flex flex-wrap gap-3">
+              <Link href="/packages" className="btn-accent rounded-lg px-5 py-2.5 text-sm font-semibold">
+                Back to packages
+              </Link>
+              <Link href="/user-detail?tab=history" className="rounded-lg border border-gray-300 px-5 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50">
+                Go to my account
+              </Link>
+            </div>
+          )}
+
           {(paid || rejected) && (
-            <div className="mt-8 flex gap-3">
-              <Link href="/user-detail?tab=history" className="rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-black hover:opacity-90">
+            <div className="mt-8 flex flex-wrap gap-3">
+              <Link href="/user-detail?tab=history" className="btn-accent rounded-lg px-5 py-2.5 text-sm font-semibold">
                 Go to my account
               </Link>
               {rejected && (
