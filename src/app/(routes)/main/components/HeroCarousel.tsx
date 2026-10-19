@@ -4,6 +4,8 @@ import Link from "next/link";
 import { ArrowRight, CalendarCheck, ChevronLeft, ChevronRight, CreditCard, DoorOpen } from "lucide-react";
 import { heroService, type HeroSlide } from "../services/heroService";
 import { resolveMediaUrl } from "../services/homeService";
+import { gymClassService } from "../services/gymClassService";
+import { checkoutService, type PaymentMethods } from "../../checkout/services/checkoutService";
 import { useSiteSettings } from "@/components/ThemeProvider";
 
 /** How long a slide holds before advancing. Slower than a typical banner on
@@ -29,6 +31,31 @@ const fallbackSlide = (siteName: string): HeroSlide => ({
   createdAt: "",
   updatedAt: "",
 });
+
+/**
+ * The ways this gym takes money online, by name: "Card" when it takes cards,
+ * then each bank or wallet it lists for transfers. Empty when it has none.
+ */
+function payWith(methods: PaymentMethods): string[] {
+  const names: string[] = [];
+  const seen = new Set<string>();
+  const add = (name: string | undefined) => {
+    const clean = (name || "").trim();
+    if (!clean || seen.has(clean.toLowerCase())) return;
+    seen.add(clean.toLowerCase());
+    names.push(clean);
+  };
+  if (methods.card) add("Card");
+  if (methods.bankTransfer) for (const bank of methods.banks || []) add(bank.name);
+  return names;
+}
+
+/** "Card, JazzCash or Easypaisa", at most three names. */
+function namesLine(names: string[]): string {
+  if (names.length > 3) return `${names.slice(0, 3).join(", ")} and more`;
+  if (names.length === 1) return names[0] === "Card" ? "By card" : names[0];
+  return `${names.slice(0, -1).join(", ")} or ${names[names.length - 1]}`;
+}
 
 /**
  * `compact` shortens the banner for interior pages, where a full-screen hero
@@ -67,6 +94,37 @@ const HeroCarousel: React.FC<{ compact?: boolean }> = ({ compact = false }) => {
 
     fetchSlides();
   }, []);
+
+  // What the perks under the banner may promise, read from the gym's own
+  // setup: online payment only when it takes some, naming the ways it really
+  // takes; booking only when it has classes to book. Nothing is promised
+  // until the answer is in, and a failed read promises nothing.
+  const [paymentNames, setPaymentNames] = useState<string[]>([]);
+  const [hasClasses, setHasClasses] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    checkoutService
+      .getPaymentMethods()
+      .then((methods) => {
+        if (!cancelled) setPaymentNames(payWith(methods));
+      })
+      .catch(() => {});
+    gymClassService
+      .getActiveClasses(1)
+      .then((classes) => {
+        if (!cancelled) setHasClasses(classes.length > 0);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const perks = [
+    hasClasses && { icon: CalendarCheck, title: "Book classes online", text: "Pick a slot in seconds" },
+    paymentNames.length > 0 && { icon: CreditCard, title: "Pay your fees online", text: namesLine(paymentNames) },
+    { icon: DoorOpen, title: "Quick check-in at the door", text: "Every visit saved to your account" },
+  ].filter((perk): perk is { icon: typeof DoorOpen; title: string; text: string } => !!perk);
 
   // Auto-play. Pausing on hover/focus and while the tab is hidden keeps the
   // slide the visitor is actually reading on screen.
@@ -195,13 +253,10 @@ const HeroCarousel: React.FC<{ compact?: boolean }> = ({ compact = false }) => {
       </div>
 
       {/* What the site does for a member, floating over the photo on wide
-          screens: true for every gym on the platform. */}
+          screens: only what this gym has set up (see `perks`). Checking in at
+          the door, with the visit in the member's account, is every gym's. */}
       <ul className="hero-perks" aria-label="What you can do here">
-        {[
-          { icon: CalendarCheck, title: "Book classes online", text: "Pick a slot in seconds" },
-          { icon: CreditCard, title: "Pay your fees online", text: "Bank, JazzCash or Easypaisa" },
-          { icon: DoorOpen, title: "Quick check-in at the door", text: "Every visit saved to your account" },
-        ].map(({ icon: Icon, title, text }, i) => (
+        {perks.map(({ icon: Icon, title, text }, i) => (
           <li key={title} className="hero-perk" style={{ "--perk-i": i } as React.CSSProperties}>
             <span className="hero-perk__icon" aria-hidden="true">
               <Icon size={18} strokeWidth={2.2} />
