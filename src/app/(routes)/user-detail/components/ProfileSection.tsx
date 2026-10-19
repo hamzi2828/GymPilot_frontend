@@ -6,6 +6,7 @@ import { FORGOT_PASSWORD_PATH, getUserDetailForProfile, SessionEndedError } from
 import { toDateInputValue } from "@/helper/date";
 import Spinner from "@/components/ui/Spinner";
 import useAsyncAction from "@/components/ui/useAsyncAction";
+import SearchableSelect from "@/components/ui/SearchableSelect";
 
 export interface UserProfileShape {
   firstName: string;
@@ -57,6 +58,12 @@ export interface ProfileSectionProps<T extends UserProfileShape> {
 
 // Two addresses that differ only in case or stray spaces are the same address.
 const sameEmail = (a?: string | null, b?: string | null) => (a ?? "").trim().toLowerCase() === (b ?? "").trim().toLowerCase();
+
+const GENDERS = [
+  { value: "male", label: "Male" },
+  { value: "female", label: "Female" },
+  { value: "other", label: "Other" },
+];
 
 const Field = ({
   label,
@@ -302,19 +309,19 @@ export function ProfileSection<T extends UserProfileShape>({
 
         {/* Gender */}
         <div>
-          <label className="block text-sm font-semibold text-gray-900 mb-2">Gender</label>
+          <label htmlFor={isEditing ? "profile-gender" : undefined} className="block text-sm font-semibold text-gray-900 mb-2">
+            Gender
+          </label>
           {isEditing ? (
-            <select
+            <SearchableSelect
+              id="profile-gender"
               value={userProfile?.gender || "other"}
-              onChange={(e) =>
-                setUserProfile((prev) => (prev ? { ...prev, gender: e.target.value as T["gender"] } : null) as T)
+              onChange={(gender) =>
+                setUserProfile((prev) => (prev ? { ...prev, gender: gender as T["gender"] } : null) as T)
               }
-              className="w-full border-2 border-gray-200 rounded-lg px-4 py-3 focus:outline-none focus:border-primary"
-            >
-              <option value="male">Male</option>
-              <option value="female">Female</option>
-              <option value="other">Other</option>
-            </select>
+              options={GENDERS}
+              className="w-full border-2 border-gray-200 rounded-lg bg-white px-4 py-3 focus:outline-none focus:border-primary"
+            />
           ) : (
             <div className="w-full border-2 border-gray-100 rounded-lg px-4 py-3 bg-gray-50 text-gray-900 capitalize">
               {userProfile?.gender || "—"}

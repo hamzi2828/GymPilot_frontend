@@ -8,10 +8,13 @@ import { getCurrentUser } from "../../../../helper/helper";
 import { type Package } from "../../packages/services/packageService";
 import { COUNTRIES } from "@/data/countries";
 import { startNavigationProgress } from "@/components/NavigationProgress";
+import SearchableSelect from "@/components/ui/SearchableSelect";
 
 // Every country, alphabetically, stored by name as before. Four hardcoded
 // options meant most gyms' members could not pick their own.
-const COUNTRY_NAMES = COUNTRIES.map((c) => c.name).sort((a, b) => a.localeCompare(b));
+const COUNTRY_OPTIONS = COUNTRIES.map((c) => c.name)
+  .sort((a, b) => a.localeCompare(b))
+  .map((name) => ({ value: name, label: name }));
 
 export interface OrderData {
   orderId: string;
@@ -227,23 +230,20 @@ const CheckoutForm: React.FC<CheckoutFormProps> = ({ packageData, onSubmitChange
 
           {/* Country */}
           <div className="space-y-2">
-            <label className="checkout-label block font-medium">Country</label>
-            <div className="relative">
-              <select
-                value={shippingData.country}
-                onChange={(e) => updateShippingData('country', e.target.value)}
-                className={`checkout-input w-full px-4 py-3 bg-white border rounded-lg shadow-sm input-accent appearance-none transition-all duration-200 ${
-                  errors.country ? 'border-red-500' : 'border-gray-300'
-                }`}
-                required
-              >
-                <option value="">Select your country</option>
-                {COUNTRY_NAMES.map((name) => (
-                  <option key={name} value={name}>{name}</option>
-                ))}
-              </select>
-              <i className="fas fa-chevron-down absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none" />
-            </div>
+            <label htmlFor="checkout-country" className="checkout-label block font-medium">Country</label>
+            <SearchableSelect
+              id="checkout-country"
+              value={shippingData.country}
+              onChange={(country) => updateShippingData('country', country)}
+              options={COUNTRY_OPTIONS}
+              placeholder="Select your country"
+              searchPlaceholder="Search countries…"
+              required
+              invalid={!!errors.country}
+              className={`checkout-input w-full px-4 py-3 bg-white border rounded-lg shadow-sm input-accent transition-all duration-200 ${
+                errors.country ? 'border-red-500' : 'border-gray-300'
+              }`}
+            />
             {errors.country && <p className="text-red-500 text-sm">{errors.country}</p>}
           </div>
 

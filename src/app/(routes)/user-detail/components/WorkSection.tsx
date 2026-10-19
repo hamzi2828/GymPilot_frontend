@@ -8,6 +8,7 @@ import { getAuthHeader } from "@/helper/helper";
 import { localDateKey } from "@/helper/date";
 import Spinner from "@/components/ui/Spinner";
 import useAsyncAction from "@/components/ui/useAsyncAction";
+import SearchableSelect from "@/components/ui/SearchableSelect";
 
 const API_BASE = process.env.NEXT_PUBLIC_BACKEND_URL || "";
 
@@ -29,6 +30,12 @@ async function call(path: string, method: string, body?: unknown) {
 // Local date: a leave request "from today" should mean the member's today.
 const today = () => localDateKey();
 const input = "w-full border-2 border-gray-200 rounded-lg px-4 py-3 focus:outline-none focus:border-primary";
+const LEAVE_TYPES = [
+  { value: "annual", label: "Annual leave" },
+  { value: "sick", label: "Sick leave" },
+  { value: "unpaid", label: "Unpaid leave" },
+  { value: "other", label: "Other" },
+];
 const btn = "inline-flex items-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50";
 const STATUS: Record<string, string> = { pending: "bg-amber-50 text-amber-800", approved: "bg-green-50 text-green-800", rejected: "bg-red-50 text-red-700", cancelled: "bg-gray-100 text-gray-600" };
 
@@ -115,12 +122,13 @@ export const WorkSection: React.FC<{ initial?: Work | null }> = ({ initial = nul
       <section className="rounded-2xl border-2 border-gray-200 bg-white p-6">
         <h2 className="text-xl font-bold text-black">Leave</h2>
         <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-4">
-          <select className={input} value={draft.type} onChange={(e) => setDraft({ ...draft, type: e.target.value })}>
-            <option value="annual">Annual leave</option>
-            <option value="sick">Sick leave</option>
-            <option value="unpaid">Unpaid leave</option>
-            <option value="other">Other</option>
-          </select>
+          <SearchableSelect
+            ariaLabel="Type of leave"
+            value={draft.type}
+            onChange={(type) => setDraft({ ...draft, type })}
+            options={LEAVE_TYPES}
+            className={`${input} bg-white`}
+          />
           <input type="date" className={input} value={draft.from} onChange={(e) => setDraft({ ...draft, from: e.target.value })} />
           <input type="date" className={input} value={draft.to} onChange={(e) => setDraft({ ...draft, to: e.target.value })} />
           <input className={input} placeholder="Reason (optional)" value={draft.reason} onChange={(e) => setDraft({ ...draft, reason: e.target.value })} />
