@@ -16,6 +16,7 @@ import {
   useConfirm,
   ErrorState,
   useLatestRequest,
+  useAsyncAction,
 } from "../_shared/ui";
 import { GYMFOLIO_API, apiGet, apiJson } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
@@ -91,7 +92,9 @@ export default function BookingsAdminPage() {
   const [list, setList] = useState<Booking[]>([]);
   const [classes, setClasses] = useState<GymClassOption[]>([]);
   const [loading, setLoading] = useState(true);
-  const [busyId, setBusyId] = useState<string | null>(null);
+  // One booking's change at a time, keyed by booking and by what is being done to it.
+  const acting = useAsyncAction();
+  const refreshing = useAsyncAction();
   const [err, setErr] = useState<string | null>(null);
   const [loadErr, setLoadErr] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -118,7 +121,8 @@ export default function BookingsAdminPage() {
   const [sessionKey, setSessionKey] = useState("");
   const [member, setMember] = useState<MemberOption | null>(null);
   const [bookNotes, setBookNotes] = useState("");
-  const [booking, setBooking] = useState(false);
+  const bookAction = useAsyncAction();
+  const booking = bookAction.busy;
   const [bookErr, setBookErr] = useState<string | null>(null);
 
   const begin = useLatestRequest();
@@ -206,9 +210,8 @@ export default function BookingsAdminPage() {
     setBookOpen(true);
   };
 
-  const bookMember = async () => {
+  const bookMember = () => bookAction.run(async () => {
     if (!chosenSession || !member) return;
-    setBooking(true);
     setBookErr(null);
     try {
       const res = await apiJson<{ message: string; membership_warning?: string | null }>(`${GYMFOLIO_API}/bookings/staff`, "POST", {
@@ -225,22 +228,17 @@ export default function BookingsAdminPage() {
       await load();
     } catch (e) {
       setBookErr(e instanceof Error ? e.message : "Could not book this class");
-    } finally {
-      setBooking(false);
     }
-  };
+  });
 
-  const mark = async (booking: Booking, next: "attended" | "no_show" | "booked") => {
-    setBusyId(booking.id);
+  const mark = (booking: Booking, next: "attended" | "no_show" | "booked") => acting.run(`${booking.id}:${next}`, async () => {
     try {
       await apiJson(`${GYMFOLIO_API}/bookings/${booking.id}/status`, "PATCH", { status: next });
       await load();
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Could not update the booking");
-    } finally {
-      setBusyId(null);
     }
-  };
+  });
 
   const cancel = async (booking: Booking) => {
     const answer = await ask({
@@ -254,18 +252,20 @@ export default function BookingsAdminPage() {
       cancelLabel: "Keep booking",
     });
     if (answer === null) return;
-    setBusyId(booking.id);
-    try {
-      // The staff variant, which is what allows cancelling somebody else's
-      // place and promotes whoever is at the front of the waiting list.
-      await apiJson(`${GYMFOLIO_API}/bookings/staff/${booking.id}`, "DELETE");
-      await load();
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : "Could not cancel the booking");
-    } finally {
-      setBusyId(null);
-    }
+    await acting.run(`${booking.id}:cancel`, async () => {
+      try {
+        // The staff variant, which is what allows cancelling somebody else's
+        // place and promotes whoever is at the front of the waiting list.
+        await apiJson(`${GYMFOLIO_API}/bookings/staff/${booking.id}`, "DELETE");
+        await load();
+      } catch (e) {
+        setErr(e instanceof Error ? e.message : "Could not cancel the booking");
+      }
+    });
   };
+
+  // Something is being done to this booking: its other buttons wait.
+  const rowBusy = (id: string) => ["attended", "no_show", "booked", "cancel"].some((what) => acting.isBusy(`${id}:${what}`));
 
   const counts = {
     booked: list.filter((b) => b.status === "booked").length,
@@ -285,7 +285,7 @@ export default function BookingsAdminPage() {
         title="Bookings"
         actions={
           <>
-            <SecondaryButton onClick={load}>
+            <SecondaryButton onClick={() => refreshing.run(load)} loading={refreshing.busy}>
               <FiRefreshCw className="w-3.5 h-3.5" /> Refresh
             </SecondaryButton>
             {editable && (
@@ -408,19 +408,19 @@ export default function BookingsAdminPage() {
             <div key="a" className="flex flex-wrap gap-1.5">
               {editable && ["booked", "waitlisted"].includes(b.status) && (
                 <>
-                  <SecondaryButton onClick={() => mark(b, "attended")} disabled={busyId === b.id}>
+                  <SecondaryButton onClick={() => mark(b, "attended")} disabled={rowBusy(b.id)} loading={acting.isBusy(`${b.id}:attended`)}>
                     <FiCheck className="w-3.5 h-3.5" /> Attended
                   </SecondaryButton>
-                  <SecondaryButton onClick={() => mark(b, "no_show")} disabled={busyId === b.id}>
+                  <SecondaryButton onClick={() => mark(b, "no_show")} disabled={rowBusy(b.id)} loading={acting.isBusy(`${b.id}:no_show`)}>
                     <FiSlash className="w-3.5 h-3.5" /> No show
                   </SecondaryButton>
-                  <SecondaryButton onClick={() => cancel(b)} disabled={busyId === b.id}>
+                  <SecondaryButton onClick={() => cancel(b)} disabled={rowBusy(b.id)} loading={acting.isBusy(`${b.id}:cancel`)}>
                     <FiX className="w-3.5 h-3.5" /> Cancel
                   </SecondaryButton>
                 </>
               )}
               {editable && ["attended", "no_show"].includes(b.status) && (
-                <SecondaryButton onClick={() => mark(b, "booked")} disabled={busyId === b.id}>
+                <SecondaryButton onClick={() => mark(b, "booked")} disabled={rowBusy(b.id)} loading={acting.isBusy(`${b.id}:booked`)}>
                   Undo
                 </SecondaryButton>
               )}
@@ -432,7 +432,7 @@ export default function BookingsAdminPage() {
 
       <Pager page={page} pages={pages} total={total} onChange={setPage} disabled={loading} />
 
-      <Modal open={bookOpen} onClose={() => setBookOpen(false)} title="Book a member into a class" size="lg">
+      <Modal open={bookOpen} onClose={() => setBookOpen(false)} title="Book a member into a class" size="lg" busy={booking}>
         <div className="space-y-4">
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <TextField
@@ -481,8 +481,8 @@ export default function BookingsAdminPage() {
             <SecondaryButton onClick={() => setBookOpen(false)} disabled={booking}>
               Cancel
             </SecondaryButton>
-            <PrimaryButton onClick={bookMember} disabled={booking || !chosenSession || !member}>
-              {booking ? "Booking…" : chosenSession?.is_full ? "Add to waiting list" : "Book"}
+            <PrimaryButton onClick={bookMember} loading={booking} disabled={!chosenSession || !member}>
+              {chosenSession?.is_full ? "Add to waiting list" : "Book"}
             </PrimaryButton>
           </div>
         </div>

@@ -5,7 +5,7 @@
 // printed.
 
 import { useCallback, useEffect, useState } from "react";
-import { PageHeader, Card, PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, TextArea, SelectField, Badge, Spinner, Table, ErrorState, useConfirm } from "../../_shared/ui";
+import { PageHeader, Card, PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, TextArea, SelectField, Badge, Spinner, Table, ErrorState, useConfirm, useAsyncAction } from "../../_shared/ui";
 import { API_BASE, apiBlob, apiGet, apiJson } from "../../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
 import { useGymToday } from "@/components/ThemeProvider";
@@ -63,7 +63,12 @@ export default function PayslipsPage() {
   const [rows, setRows] = useState<Payslip[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadErr, setLoadErr] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  // Drafting, paying and editing, keyed by which; `busy` while any of them runs.
+  const working = useAsyncAction();
+  const busy = working.busy;
+  // Issuing and voiding on a row, keyed by payslip and action.
+  const rowActs = useAsyncAction();
+  const pdf = useAsyncAction();
   const [notice, setNotice] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
   // Why a save in the open dialog (pay, edit) failed, shown in that dialog.
   const [dialogErr, setDialogErr] = useState<string | null>(null);
@@ -91,17 +96,16 @@ export default function PayslipsPage() {
 
   const generate = async () => {
     if (!confirm(`Draft payslips for every active staff member for ${from} → ${to}? Existing drafts are refreshed; issued ones are left alone.`)) return;
-    setBusy(true);
-    setNotice(null);
-    try {
-      const r = await apiJson<{ message: string }>(`${API_BASE}/staff/payslips/generate`, "POST", { from, to });
-      setNotice({ tone: "ok", text: r.message });
-      await load();
-    } catch (e) {
-      setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not draft payslips" });
-    } finally {
-      setBusy(false);
-    }
+    await working.run("generate", async () => {
+      setNotice(null);
+      try {
+        const r = await apiJson<{ message: string }>(`${API_BASE}/staff/payslips/generate`, "POST", { from, to });
+        setNotice({ tone: "ok", text: r.message });
+        await load();
+      } catch (e) {
+        setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not draft payslips" });
+      }
+    });
   };
 
   const act = async (p: Payslip, action: "issue" | "pay" | "void", body: Record<string, unknown> = {}) => {
@@ -113,19 +117,25 @@ export default function PayslipsPage() {
       });
       if (answer === null) return false;
     }
-    try {
-      const r = await apiJson<{ message: string }>(`${API_BASE}/staff/payslips/${p.id}/${action}`, "POST", body);
-      setNotice({ tone: "ok", text: r.message });
-      await load();
-      return true;
-    } catch (e) {
-      const text = e instanceof Error ? e.message : "Could not update";
-      // Paying happens in a dialog; issuing and voiding happen on the row.
-      if (action === "pay") setDialogErr(text);
-      else setNotice({ tone: "error", text });
-      return false;
-    }
+    const done = await rowActs.run(`${p.id}:${action}`, async () => {
+      try {
+        const r = await apiJson<{ message: string }>(`${API_BASE}/staff/payslips/${p.id}/${action}`, "POST", body);
+        setNotice({ tone: "ok", text: r.message });
+        await load();
+        return true;
+      } catch (e) {
+        const text = e instanceof Error ? e.message : "Could not update";
+        // Paying happens in a dialog; issuing and voiding happen on the row.
+        if (action === "pay") setDialogErr(text);
+        else setNotice({ tone: "error", text });
+        return false;
+      }
+    });
+    return done ?? false;
   };
+
+  // Being issued or voided: the row's other buttons wait.
+  const rowBusy = (id: string) => rowActs.isBusy(`${id}:issue`) || rowActs.isBusy(`${id}:void`);
 
   // Paying files the wage under Accounts → Expenses with this method, so it
   // is asked for rather than assumed.
@@ -136,20 +146,18 @@ export default function PayslipsPage() {
     setPayDraft({ paymentMethod: "bank_transfer", paidOn: today(), reference: "" });
   };
 
-  const confirmPay = async () => {
+  const confirmPay = () => working.run("pay", async () => {
     if (!paying) return;
-    setBusy(true);
     setDialogErr(null);
     const done = await act(paying, "pay", {
       paymentMethod: payDraft.paymentMethod,
       paidOn: payDraft.paidOn || undefined,
       reference: payDraft.reference.trim(),
     });
-    setBusy(false);
     if (done) setPaying(null);
-  };
+  });
 
-  const openPdf = async (p: Payslip) => {
+  const openPdf = (p: Payslip) => pdf.run(p.id, async () => {
     try {
       const { blob } = await apiBlob(`${API_BASE}/staff/payslips/${p.id}/pdf`);
       const url = URL.createObjectURL(blob);
@@ -158,7 +166,7 @@ export default function PayslipsPage() {
     } catch (e) {
       setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not open the payslip" });
     }
-  };
+  });
 
   const openEdit = (p: Payslip) => {
     setEditing(p);
@@ -166,9 +174,8 @@ export default function PayslipsPage() {
     setDraft({ earnings: p.earnings.map((l) => ({ label: l.label, amount: l.amount })), deductions: p.deductions.map((l) => ({ label: l.label, amount: l.amount })), notes: p.notes });
   };
 
-  const saveEdit = async () => {
+  const saveEdit = () => working.run("edit", async () => {
     if (!editing) return;
-    setBusy(true);
     setDialogErr(null);
     try {
       await apiJson(`${API_BASE}/staff/payslips/${editing.id}`, "PUT", draft);
@@ -176,10 +183,8 @@ export default function PayslipsPage() {
       await load();
     } catch (e) {
       setDialogErr(e instanceof Error ? e.message : "Could not save");
-    } finally {
-      setBusy(false);
     }
-  };
+  });
 
   const lineEditor = (key: "earnings" | "deductions", title: string) => (
     <div>
@@ -202,7 +207,7 @@ export default function PayslipsPage() {
   return (
     <div>
       {confirmDialog}
-      <PageHeader eyebrow="Operations" title="Payslips" actions={editable ? <PrimaryButton onClick={generate} disabled={busy}>{busy ? "Working…" : "Draft payslips for period"}</PrimaryButton> : undefined} />
+      <PageHeader eyebrow="Operations" title="Payslips" actions={editable ? <PrimaryButton onClick={generate} loading={working.isBusy("generate")} disabled={busy}>Draft payslips for period</PrimaryButton> : undefined} />
       {notice && <p className={`mb-4 rounded-lg px-3 py-2 text-sm ${notice.tone === "ok" ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}>{notice.text}</p>}
       <Card className="mb-6 p-4">
         <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
@@ -249,11 +254,11 @@ export default function PayslipsPage() {
               {p.paid_on && <p className="text-[11px] text-neutral-400">{new Date(p.paid_on).toLocaleDateString()}</p>}
             </div>,
             <div key="a" className="flex flex-wrap gap-1.5">
-              <SecondaryButton onClick={() => openPdf(p)}>PDF</SecondaryButton>
+              <SecondaryButton onClick={() => openPdf(p)} loading={pdf.isBusy(p.id)}>PDF</SecondaryButton>
               {editable && p.status !== "paid" && p.status !== "void" && <SecondaryButton onClick={() => openEdit(p)}>Edit</SecondaryButton>}
-              {editable && p.status === "draft" && <SecondaryButton onClick={() => act(p, "issue")}>Issue</SecondaryButton>}
+              {editable && p.status === "draft" && <SecondaryButton onClick={() => act(p, "issue")} disabled={rowBusy(p.id)} loading={rowActs.isBusy(`${p.id}:issue`)}>Issue</SecondaryButton>}
               {editable && (p.status === "draft" || p.status === "issued") && <PrimaryButton onClick={() => openPay(p)}>Mark paid</PrimaryButton>}
-              {editable && p.status !== "paid" && p.status !== "void" && <DangerButton onClick={() => act(p, "void")}>Void</DangerButton>}
+              {editable && p.status !== "paid" && p.status !== "void" && <DangerButton onClick={() => act(p, "void")} disabled={rowBusy(p.id)} loading={rowActs.isBusy(`${p.id}:void`)}>Void</DangerButton>}
             </div>,
           ])}
           empty="No payslips for this period yet. Draft them from the button above."
@@ -271,7 +276,7 @@ export default function PayslipsPage() {
             <TextField label="Payment reference (optional)" value={payDraft.reference} onChange={(v) => setPayDraft({ ...payDraft, reference: v })} placeholder="Bank ref, cheque number…" />
             <div className="flex justify-end gap-2">
               <SecondaryButton onClick={() => setPaying(null)} disabled={busy}>Cancel</SecondaryButton>
-              <PrimaryButton onClick={confirmPay} disabled={busy}>{busy ? "Saving…" : "Mark paid"}</PrimaryButton>
+              <PrimaryButton onClick={confirmPay} loading={working.isBusy("pay")} disabled={busy}>Mark paid</PrimaryButton>
             </div>
           </div>
         )}
@@ -289,7 +294,7 @@ export default function PayslipsPage() {
             <TextArea label="Notes on the payslip" value={draft.notes} onChange={(v) => setDraft({ ...draft, notes: v })} />
             <div className="flex justify-end gap-2">
               <SecondaryButton onClick={() => setEditing(null)} disabled={busy}>Cancel</SecondaryButton>
-              <PrimaryButton onClick={saveEdit} disabled={busy}>{busy ? "Saving…" : "Save"}</PrimaryButton>
+              <PrimaryButton onClick={saveEdit} loading={working.isBusy("edit")} disabled={busy}>Save</PrimaryButton>
             </div>
           </div>
         )}

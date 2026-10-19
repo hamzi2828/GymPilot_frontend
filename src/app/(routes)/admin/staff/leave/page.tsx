@@ -6,7 +6,7 @@
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { FiPlus } from "react-icons/fi";
-import { PageHeader, PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, TextArea, SelectField, Toggle, Badge, Spinner, Table, ErrorState, useConfirm } from "../../_shared/ui";
+import { PageHeader, PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, TextArea, SelectField, Toggle, Badge, Spinner, Table, ErrorState, useConfirm, useAsyncAction } from "../../_shared/ui";
 import { API_BASE, apiGet, apiJson, replaceParams } from "../../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
 import { useGymToday } from "@/components/ThemeProvider";
@@ -60,7 +60,10 @@ function LeavePageInner() {
   const [loadErr, setLoadErr] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
   const [open, setOpen] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const saveAction = useAsyncAction();
+  const saving = saveAction.busy;
+  // One request's change at a time, keyed by request and by what is being done to it.
+  const acting = useAsyncAction();
   const [saveErr, setSaveErr] = useState<string | null>(null);
   const [draft, setDraft] = useState({ staffId: "", type: "annual", from: today(), to: today(), reason: "", approve: true });
 
@@ -104,28 +107,34 @@ function LeavePageInner() {
       if (reason === null) return;
       note = reason;
     }
-    try {
-      await apiJson(`${API_BASE}/staff/leave/${l.id}`, "PATCH", { status: next, note });
-      await load();
-    } catch (e) {
-      setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not update" });
-    }
+    await acting.run(`${l.id}:${next}`, async () => {
+      try {
+        await apiJson(`${API_BASE}/staff/leave/${l.id}`, "PATCH", { status: next, note });
+        await load();
+      } catch (e) {
+        setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not update" });
+      }
+    });
   };
 
   // Sent on its own, `unpaid` changes only that: the decision, its note and
   // who made it stay as they were. Withdrawn leave is left alone.
   const toggleUnpaid = async (l: Leave) => {
     if (l.status === "cancelled") return;
-    try {
-      await apiJson(`${API_BASE}/staff/leave/${l.id}`, "PATCH", { unpaid: !l.unpaid });
-      await load();
-    } catch (e) {
-      setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not update" });
-    }
+    await acting.run(`${l.id}:unpaid`, async () => {
+      try {
+        await apiJson(`${API_BASE}/staff/leave/${l.id}`, "PATCH", { unpaid: !l.unpaid });
+        await load();
+      } catch (e) {
+        setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not update" });
+      }
+    });
   };
 
-  const save = async () => {
-    setSaving(true);
+  // Something is being done to this request: its other buttons wait.
+  const rowBusy = (id: string) => ["approved", "rejected", "pending", "unpaid"].some((what) => acting.isBusy(`${id}:${what}`));
+
+  const save = () => saveAction.run(async () => {
     setNotice(null);
     setSaveErr(null);
     try {
@@ -134,10 +143,8 @@ function LeavePageInner() {
       await load();
     } catch (e) {
       setSaveErr(e instanceof Error ? e.message : "Could not record leave");
-    } finally {
-      setSaving(false);
     }
-  };
+  });
 
   return (
     <div>
@@ -186,10 +193,10 @@ function LeavePageInner() {
             </div>,
             editable ? (
               <div key="a" className="flex flex-wrap gap-1.5">
-                {l.status === "pending" && <PrimaryButton onClick={() => decide(l, "approved")}>Approve</PrimaryButton>}
-                {l.status === "pending" && <DangerButton onClick={() => decide(l, "rejected")}>Reject</DangerButton>}
-                {l.status === "approved" && <SecondaryButton onClick={() => decide(l, "pending")}>Undo</SecondaryButton>}
-                {l.status !== "cancelled" && <SecondaryButton onClick={() => toggleUnpaid(l)}>{l.unpaid ? "Mark paid" : "Mark unpaid"}</SecondaryButton>}
+                {l.status === "pending" && <PrimaryButton onClick={() => decide(l, "approved")} disabled={rowBusy(l.id)} loading={acting.isBusy(`${l.id}:approved`)}>Approve</PrimaryButton>}
+                {l.status === "pending" && <DangerButton onClick={() => decide(l, "rejected")} disabled={rowBusy(l.id)} loading={acting.isBusy(`${l.id}:rejected`)}>Reject</DangerButton>}
+                {l.status === "approved" && <SecondaryButton onClick={() => decide(l, "pending")} disabled={rowBusy(l.id)} loading={acting.isBusy(`${l.id}:pending`)}>Undo</SecondaryButton>}
+                {l.status !== "cancelled" && <SecondaryButton onClick={() => toggleUnpaid(l)} disabled={rowBusy(l.id)} loading={acting.isBusy(`${l.id}:unpaid`)}>{l.unpaid ? "Mark paid" : "Mark unpaid"}</SecondaryButton>}
               </div>
             ) : (
               <span key="a" />
@@ -211,7 +218,7 @@ function LeavePageInner() {
           <Toggle label="Approved now" checked={draft.approve} onChange={(v) => setDraft({ ...draft, approve: v })} />
           <div className="flex justify-end gap-2">
             <SecondaryButton onClick={() => setOpen(false)} disabled={saving}>Cancel</SecondaryButton>
-            <PrimaryButton onClick={save} disabled={saving || !draft.staffId}>{saving ? "Saving…" : "Save"}</PrimaryButton>
+            <PrimaryButton onClick={save} loading={saving} disabled={!draft.staffId}>Save</PrimaryButton>
           </div>
         </div>
       </Modal>

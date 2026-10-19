@@ -6,7 +6,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { FiPlus } from "react-icons/fi";
-import { PageHeader, Card, PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, SelectField, Badge, Spinner, Table, useConfirm, ErrorState } from "../_shared/ui";
+import { PageHeader, Card, PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, SelectField, Badge, Spinner, Table, useConfirm, ErrorState, useAsyncAction } from "../_shared/ui";
 import { GYMFOLIO_API, apiGet, apiJson } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
 import { useGymToday } from "@/components/ThemeProvider";
@@ -88,7 +88,10 @@ export default function PtAdminPage() {
   const [draft, setDraft] = useState({ trainerId: "", date: today(), startTime: "", notes: "" });
   const [member, setMember] = useState<MemberOption | null>(null);
   const [slots, setSlots] = useState<Slot[]>([]);
-  const [saving, setSaving] = useState(false);
+  const bookAction = useAsyncAction();
+  const saving = bookAction.busy;
+  // One session's change at a time, keyed by session and by what is being done to it.
+  const acting = useAsyncAction();
   // Why the booking was refused, shown in the form itself.
   const [bookErr, setBookErr] = useState<string | null>(null);
 
@@ -136,8 +139,7 @@ export default function PtAdminPage() {
     setOpen(true);
   };
 
-  const book = async () => {
-    setSaving(true);
+  const book = () => bookAction.run(async () => {
     setNotice(null);
     setBookErr(null);
     try {
@@ -147,19 +149,17 @@ export default function PtAdminPage() {
       await load();
     } catch (e) {
       setBookErr(e instanceof Error ? e.message : "Could not book");
-    } finally {
-      setSaving(false);
     }
-  };
+  });
 
-  const setSessionStatus = async (s: Session, next: string) => {
+  const setSessionStatus = (s: Session, next: string) => acting.run(`${s.id}:${next}`, async () => {
     try {
       await apiJson(`${PT_API}/sessions/${s.id}/status`, "PATCH", { status: next });
       await load();
     } catch (e) {
       setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not update" });
     }
-  };
+  });
 
   const cancel = async (s: Session) => {
     const reason = await ask({
@@ -170,13 +170,18 @@ export default function PtAdminPage() {
       reason: { label: "Reason (optional)" },
     });
     if (reason === null) return;
-    try {
-      await apiJson(`${PT_API}/sessions/staff/${s.id}`, "DELETE", { reason });
-      await load();
-    } catch (e) {
-      setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not cancel" });
-    }
+    await acting.run(`${s.id}:cancel`, async () => {
+      try {
+        await apiJson(`${PT_API}/sessions/staff/${s.id}`, "DELETE", { reason });
+        await load();
+      } catch (e) {
+        setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not cancel" });
+      }
+    });
   };
+
+  // Something is being done to this session: its other buttons wait.
+  const rowBusy = (id: string) => ["completed", "no_show", "scheduled", "cancel"].some((what) => acting.isBusy(`${id}:${what}`));
 
   return (
     <div>
@@ -254,10 +259,10 @@ export default function PtAdminPage() {
             </div>,
             editable ? (
               <div key="a" className="flex flex-wrap gap-1.5">
-                {s.status === "scheduled" && <SecondaryButton onClick={() => setSessionStatus(s, "completed")}>Done</SecondaryButton>}
-                {s.status === "scheduled" && <SecondaryButton onClick={() => setSessionStatus(s, "no_show")}>No show</SecondaryButton>}
-                {(s.status === "completed" || s.status === "no_show") && <SecondaryButton onClick={() => setSessionStatus(s, "scheduled")}>Undo</SecondaryButton>}
-                {s.status === "scheduled" && <DangerButton onClick={() => cancel(s)}>Cancel</DangerButton>}
+                {s.status === "scheduled" && <SecondaryButton onClick={() => setSessionStatus(s, "completed")} disabled={rowBusy(s.id)} loading={acting.isBusy(`${s.id}:completed`)}>Done</SecondaryButton>}
+                {s.status === "scheduled" && <SecondaryButton onClick={() => setSessionStatus(s, "no_show")} disabled={rowBusy(s.id)} loading={acting.isBusy(`${s.id}:no_show`)}>No show</SecondaryButton>}
+                {(s.status === "completed" || s.status === "no_show") && <SecondaryButton onClick={() => setSessionStatus(s, "scheduled")} disabled={rowBusy(s.id)} loading={acting.isBusy(`${s.id}:scheduled`)}>Undo</SecondaryButton>}
+                {s.status === "scheduled" && <DangerButton onClick={() => cancel(s)} disabled={rowBusy(s.id)} loading={acting.isBusy(`${s.id}:cancel`)}>Cancel</DangerButton>}
               </div>
             ) : (
               <span key="a" />
@@ -288,8 +293,8 @@ export default function PtAdminPage() {
             <SecondaryButton onClick={() => setOpen(false)} disabled={saving}>
               Cancel
             </SecondaryButton>
-            <PrimaryButton onClick={book} disabled={saving || !draft.trainerId || !member || !draft.startTime}>
-              {saving ? "Booking…" : "Book"}
+            <PrimaryButton onClick={book} loading={saving} disabled={!draft.trainerId || !member || !draft.startTime}>
+              Book
             </PrimaryButton>
           </div>
         </div>

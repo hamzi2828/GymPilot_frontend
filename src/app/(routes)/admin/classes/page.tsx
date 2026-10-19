@@ -18,6 +18,8 @@ import {
   Spinner,
   Table,
   useConfirm,
+  useAsyncAction,
+  BusyLabel,
 } from "../_shared/ui";
 import { GYMFOLIO_API, apiGet, apiJson, apiForm, absoluteUrl, replaceParams } from "../_shared/api";
 import {
@@ -79,7 +81,10 @@ function ClassesAdminPageInner() {
   const [editing, setEditing] = useState<GymClass | null>(null);
   const [form, setForm] = useState<Partial<GymClass>>({});
   const [thumb, setThumb] = useState<File | null>(null);
-  const [saving, setSaving] = useState(false);
+  const saveAction = useAsyncAction();
+  const saving = saveAction.busy;
+  const removing = useAsyncAction();
+  const toggling = useAsyncAction();
   const [schedule, setSchedule] = useState<ScheduleRow[]>([]);
   const [trainers, setTrainers] = useState<InstructorOption[]>([]);
 
@@ -163,14 +168,13 @@ function ClassesAdminPageInner() {
       .catch((e) => alert(e instanceof Error ? e.message : "Could not open that class"));
   }, [urlId, editable]);
 
-  const save = async () => {
+  const save = () => saveAction.run(async () => {
     const problems = validateSchedule(schedule);
     if (problems.length) {
       alert(["Fix the timetable first:", ...problems].join("\n"));
       return;
     }
 
-    setSaving(true);
     try {
       const fd = new FormData();
       Object.entries(form).forEach(([k, v]) => {
@@ -206,10 +210,8 @@ function ClassesAdminPageInner() {
       await load();
     } catch (e) {
       alert(e instanceof Error ? e.message : "Save failed");
-    } finally {
-      setSaving(false);
     }
-  };
+  });
 
   const remove = async (c: GymClass) => {
     const answer = await ask({
@@ -218,13 +220,15 @@ function ClassesAdminPageInner() {
       confirmLabel: "Delete class",
     });
     if (answer === null) return;
-    try {
-      const res = await apiJson<{ message?: string }>(`${GYMFOLIO_API}/gym-classes/${c._id}`, "DELETE");
-      setNotice(res.message || `${c.name} was deleted.`);
-      await load();
-    } catch (e) {
-      alert(e instanceof Error ? e.message : "Delete failed");
-    }
+    await removing.run(c._id, async () => {
+      try {
+        const res = await apiJson<{ message?: string }>(`${GYMFOLIO_API}/gym-classes/${c._id}`, "DELETE");
+        setNotice(res.message || `${c.name} was deleted.`);
+        await load();
+      } catch (e) {
+        alert(e instanceof Error ? e.message : "Delete failed");
+      }
+    });
   };
 
   const toggleActive = async (c: GymClass) => {
@@ -237,13 +241,15 @@ function ClassesAdminPageInner() {
       });
       if (answer === null) return;
     }
-    try {
-      const res = await apiJson<{ message?: string }>(`${GYMFOLIO_API}/gym-classes/${c._id}/toggle-active`, "PATCH");
-      setNotice(res.message || null);
-      await load();
-    } catch (e) {
-      alert(e instanceof Error ? e.message : "Toggle failed");
-    }
+    await toggling.run(c._id, async () => {
+      try {
+        const res = await apiJson<{ message?: string }>(`${GYMFOLIO_API}/gym-classes/${c._id}/toggle-active`, "PATCH");
+        setNotice(res.message || null);
+        await load();
+      } catch (e) {
+        alert(e instanceof Error ? e.message : "Toggle failed");
+      }
+    });
   };
 
   return (
@@ -294,17 +300,25 @@ function ClassesAdminPageInner() {
             c.category || "—",
             c.difficulty || "—",
             c.capacity ?? "—",
-            <button key="b" onClick={() => toggleActive(c)} disabled={!editable} className="disabled:cursor-default">
-              <Badge color={c.isActive ? "green" : "neutral"}>
-                {c.isActive ? "Active" : "Inactive"}
-              </Badge>
+            <button
+              key="b"
+              onClick={() => toggleActive(c)}
+              disabled={!editable || toggling.isBusy(c._id)}
+              aria-busy={toggling.isBusy(c._id) || undefined}
+              className="relative disabled:cursor-default aria-busy:disabled:cursor-wait"
+            >
+              <BusyLabel busy={toggling.isBusy(c._id)}>
+                <Badge color={c.isActive ? "green" : "neutral"}>
+                  {c.isActive ? "Active" : "Inactive"}
+                </Badge>
+              </BusyLabel>
             </button>,
             editable ? (
               <div key="a" className="flex gap-2">
                 <SecondaryButton onClick={() => openEdit(c)} label={`Edit ${c.name}`}>
                   <FiEdit2 className="w-3.5 h-3.5" />
                 </SecondaryButton>
-                <DangerButton onClick={() => remove(c)} label={`Delete ${c.name}`}>
+                <DangerButton onClick={() => remove(c)} label={`Delete ${c.name}`} loading={removing.isBusy(c._id)}>
                   <FiTrash2 className="w-3.5 h-3.5" />
                 </DangerButton>
               </div>
@@ -318,7 +332,7 @@ function ClassesAdminPageInner() {
 
       <Pager page={page} pages={pages} total={total} onChange={setPage} disabled={loading} />
 
-      <Modal open={open} onClose={() => setOpen(false)} title={editing ? "Edit Class" : "New Class"} size="lg">
+      <Modal open={open} onClose={() => setOpen(false)} title={editing ? "Edit Class" : "New Class"} size="lg" busy={saving}>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <TextField label="Name" required value={form.name} onChange={(v) => setForm({ ...form, name: v })} />
           <TextField label="Slug" value={form.slug} onChange={(v) => setForm({ ...form, slug: v })} />
@@ -375,7 +389,7 @@ function ClassesAdminPageInner() {
         </div>
         <div className="flex justify-end gap-2 mt-6">
           <SecondaryButton onClick={() => setOpen(false)}>Cancel</SecondaryButton>
-          <PrimaryButton onClick={save} disabled={saving}>{saving ? "Saving..." : editing ? "Update" : "Create"}</PrimaryButton>
+          <PrimaryButton onClick={save} loading={saving}>{editing ? "Update" : "Create"}</PrimaryButton>
         </div>
       </Modal>
     </div>

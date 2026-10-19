@@ -6,7 +6,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { FiPlus } from "react-icons/fi";
-import { PageHeader, PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, SelectField, Badge, Spinner, Table, ErrorState } from "../_shared/ui";
+import { PageHeader, PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, SelectField, Badge, Spinner, Table, ErrorState, useAsyncAction } from "../_shared/ui";
 import { GYMFOLIO_API, apiGet, apiJson } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
 import { useGymToday } from "@/components/ThemeProvider";
@@ -64,7 +64,9 @@ export default function TimetableChangesPage() {
   const [trainers, setTrainers] = useState<TrainerOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const saveAction = useAsyncAction();
+  const saving = saveAction.busy;
+  const removing = useAsyncAction();
   const [notice, setNotice] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
   // A failed load is not "no changes", and a failed save belongs in the form
   // that was being filled in, not on the page behind it.
@@ -127,7 +129,7 @@ export default function TimetableChangesPage() {
     setOpen(true);
   };
 
-  const save = async () => {
+  const save = () => saveAction.run(async () => {
     if (!ready) return;
     // A cancellation is confirmed first: the bookings on it do not come back.
     if (cancelling && !confirming) {
@@ -135,7 +137,6 @@ export default function TimetableChangesPage() {
       setConfirming(true);
       return;
     }
-    setSaving(true);
     setNotice(null);
     setModalError("");
     const substitute = draft.what === "substitute";
@@ -157,19 +158,19 @@ export default function TimetableChangesPage() {
       await load();
     } catch (e) {
       setModalError(e instanceof Error ? e.message : "Could not save");
-    } finally {
-      setSaving(false);
     }
-  };
+  });
 
   const remove = async (x: Exception) => {
     if (!confirm("Remove this change? Bookings that were cancelled stay cancelled.")) return;
-    try {
-      await apiJson(`${GYMFOLIO_API}/class-exceptions/${x.id}`, "DELETE");
-      await load();
-    } catch (e) {
-      setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not remove" });
-    }
+    await removing.run(x.id, async () => {
+      try {
+        await apiJson(`${GYMFOLIO_API}/class-exceptions/${x.id}`, "DELETE");
+        await load();
+      } catch (e) {
+        setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not remove" });
+      }
+    });
   };
 
   return (
@@ -203,13 +204,13 @@ export default function TimetableChangesPage() {
               {x.kind === "substitute" && <p className="mt-1 text-xs text-neutral-600">{[x.instructor_name && `by ${x.instructor_name}`, x.room && `in ${x.room}`].filter(Boolean).join(", ")}</p>}
             </div>,
             <span key="n" className="text-xs text-neutral-600">{x.note}</span>,
-            editable ? <DangerButton key="a" onClick={() => remove(x)}>Remove</DangerButton> : <span key="a" />,
+            editable ? <DangerButton key="a" onClick={() => remove(x)} loading={removing.isBusy(x.id)}>Remove</DangerButton> : <span key="a" />,
           ])}
           empty="No timetable changes coming up."
         />
       )}
 
-      <Modal open={open} onClose={() => setOpen(false)} title={confirming ? "Cancel and tell the members?" : "Timetable change"} size="lg">
+      <Modal open={open} onClose={() => setOpen(false)} title={confirming ? "Cancel and tell the members?" : "Timetable change"} size="lg" busy={saving}>
         {confirming ? (
           <div className="rounded-lg border border-rose-200 bg-rose-50/60 px-4 py-4 text-sm text-rose-900">
             <p className="font-semibold">You are about to cancel {cancelSummary}.</p>
@@ -259,8 +260,8 @@ export default function TimetableChangesPage() {
               <SecondaryButton onClick={() => { setConfirming(false); setModalError(""); }} disabled={saving}>
                 Go back
               </SecondaryButton>
-              <DangerButton onClick={save} disabled={saving}>
-                {saving ? "Cancelling…" : draft.what === "day" ? "Yes, cancel every class" : "Yes, cancel it"}
+              <DangerButton onClick={save} loading={saving}>
+                {draft.what === "day" ? "Yes, cancel every class" : "Yes, cancel it"}
               </DangerButton>
             </>
           ) : (
@@ -268,8 +269,8 @@ export default function TimetableChangesPage() {
               <SecondaryButton onClick={() => setOpen(false)} disabled={saving}>
                 Close
               </SecondaryButton>
-              <PrimaryButton onClick={save} disabled={saving || !ready}>
-                {saving ? "Saving…" : cancelling ? "Continue" : "Save"}
+              <PrimaryButton onClick={save} loading={saving} disabled={!ready}>
+                {cancelling ? "Continue" : "Save"}
               </PrimaryButton>
             </>
           )}

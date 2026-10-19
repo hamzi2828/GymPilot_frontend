@@ -20,6 +20,7 @@ import {
   UpgradePlanLink,
   Select2,
   useConfirm,
+  useAsyncAction,
 } from "../_shared/ui";
 import { API_BASE, apiGet, apiJson, isPlanLimitError, replaceParams } from "../_shared/api";
 import {
@@ -301,7 +302,10 @@ function StaffAdminPageInner() {
   const [editing, setEditing] = useState<StaffMember | null>(null);
   const [draft, setDraft] = useState<Draft>(emptyDraft);
   const [shifts, setShifts] = useState<Shift[]>([]);
-  const [saving, setSaving] = useState(false);
+  const saveAction = useAsyncAction();
+  const saving = saveAction.busy;
+  // A row's status change or removal, keyed by person and action.
+  const acting = useAsyncAction();
   const [formErr, setFormErr] = useState<string | null>(null);
   const [formLimit, setFormLimit] = useState(false);
   // How a new staff member gets their first password, and "Set password"
@@ -482,7 +486,7 @@ function StaffAdminPageInner() {
     },
   });
 
-  const save = async () => {
+  const save = () => saveAction.run(async () => {
     if (!draft.firstName.trim() || !draft.lastName.trim()) {
       setFormErr("First and last name are both required.");
       return;
@@ -500,7 +504,6 @@ function StaffAdminPageInner() {
       return;
     }
 
-    setSaving(true);
     setFormErr(null);
     setFormLimit(false);
     try {
@@ -531,10 +534,8 @@ function StaffAdminPageInner() {
     } catch (e) {
       setFormErr(e instanceof Error ? e.message : "Could not save this staff member");
       setFormLimit(isPlanLimitError(e));
-    } finally {
-      setSaving(false);
     }
-  };
+  });
 
   const setStatus = async (member: StaffMember, isActive: boolean) => {
     if (!isActive) {
@@ -545,15 +546,17 @@ function StaffAdminPageInner() {
       });
       if (answer === null) return;
     }
-    try {
-      const res = await apiJson<{ message: string }>(`${API_BASE}/staff/${member.id}/status`, "PATCH", {
-        isActive,
-      });
-      setNotice(res.message);
-      await load();
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : "Could not change that status");
-    }
+    await acting.run(`${member.id}:status`, async () => {
+      try {
+        const res = await apiJson<{ message: string }>(`${API_BASE}/staff/${member.id}/status`, "PATCH", {
+          isActive,
+        });
+        setNotice(res.message);
+        await load();
+      } catch (e) {
+        setErr(e instanceof Error ? e.message : "Could not change that status");
+      }
+    });
   };
 
   const removeStaff = async (member: StaffMember) => {
@@ -563,14 +566,19 @@ function StaffAdminPageInner() {
       confirmLabel: "Remove from staff",
     });
     if (answer === null) return;
-    try {
-      const res = await apiJson<{ message: string }>(`${API_BASE}/staff/${member.id}`, "DELETE");
-      setNotice(res.message);
-      await load();
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : "Could not remove this staff member");
-    }
+    await acting.run(`${member.id}:remove`, async () => {
+      try {
+        const res = await apiJson<{ message: string }>(`${API_BASE}/staff/${member.id}`, "DELETE");
+        setNotice(res.message);
+        await load();
+      } catch (e) {
+        setErr(e instanceof Error ? e.message : "Could not remove this staff member");
+      }
+    });
   };
+
+  // A status change or removal is running for this person: the other waits.
+  const rowBusy = (id: string) => acting.isBusy(`${id}:status`) || acting.isBusy(`${id}:remove`);
 
   return (
     <div>
@@ -796,11 +804,11 @@ function StaffAdminPageInner() {
                             Username
                           </SecondaryButton>
                           {member.is_active ? (
-                            <DangerButton onClick={() => setStatus(member, false)}>Deactivate</DangerButton>
+                            <DangerButton onClick={() => setStatus(member, false)} loading={acting.isBusy(`${member.id}:status`)}>Deactivate</DangerButton>
                           ) : (
                             <>
-                              <SecondaryButton onClick={() => setStatus(member, true)}>Reactivate</SecondaryButton>
-                              <DangerButton onClick={() => removeStaff(member)}>Remove</DangerButton>
+                              <SecondaryButton onClick={() => setStatus(member, true)} disabled={rowBusy(member.id)} loading={acting.isBusy(`${member.id}:status`)}>Reactivate</SecondaryButton>
+                              <DangerButton onClick={() => removeStaff(member)} disabled={rowBusy(member.id)} loading={acting.isBusy(`${member.id}:remove`)}>Remove</DangerButton>
                             </>
                           )}
                         </div>
@@ -819,6 +827,7 @@ function StaffAdminPageInner() {
         onClose={() => setOpen(false)}
         title={editing ? `Edit ${editing.name}` : "Register staff"}
         size="xl"
+        busy={saving}
       >
         <div className="space-y-6">
           {/* Identity */}
@@ -1111,8 +1120,8 @@ function StaffAdminPageInner() {
 
           <div className="flex justify-end gap-2 pt-1">
             <SecondaryButton onClick={() => setOpen(false)}>Cancel</SecondaryButton>
-            <PrimaryButton onClick={save} disabled={saving}>
-              {saving ? "Saving…" : editing ? "Save changes" : "Register staff member"}
+            <PrimaryButton onClick={save} loading={saving}>
+              {editing ? "Save changes" : "Register staff member"}
             </PrimaryButton>
           </div>
         </div>

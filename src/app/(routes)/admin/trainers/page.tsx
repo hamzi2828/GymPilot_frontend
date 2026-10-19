@@ -18,6 +18,8 @@ import {
   Spinner,
   Table,
   useConfirm,
+  useAsyncAction,
+  BusyLabel,
 } from "../_shared/ui";
 import { GYMFOLIO_API, apiGet, apiJson, apiForm, absoluteUrl, replaceParams } from "../_shared/api";
 import {
@@ -105,7 +107,10 @@ function TrainersAdminPageInner() {
   const [editing, setEditing] = useState<Trainer | null>(null);
   const [form, setForm] = useState<Partial<Trainer>>({});
   const [img, setImg] = useState<File | null>(null);
-  const [saving, setSaving] = useState(false);
+  const saveAction = useAsyncAction();
+  const saving = saveAction.busy;
+  const removing = useAsyncAction();
+  const toggling = useAsyncAction();
   const [availability, setAvailability] = useState<ScheduleRow[]>([]);
 
   // Paged: the endpoint returns twenty at a time, and reading only the first
@@ -186,14 +191,13 @@ function TrainersAdminPageInner() {
       .catch((e) => alert(e instanceof Error ? e.message : "Could not open that trainer"));
   }, [urlId, editable]);
 
-  const save = async () => {
+  const save = () => saveAction.run(async () => {
     const problems = validateSchedule(availability);
     if (problems.length) {
       alert(["Fix the roster first:", ...problems].join("\n"));
       return;
     }
 
-    setSaving(true);
     try {
       const fd = new FormData();
       Object.entries(form).forEach(([k, v]) => {
@@ -240,30 +244,30 @@ function TrainersAdminPageInner() {
       await load();
     } catch (e) {
       alert(e instanceof Error ? e.message : "Save failed");
-    } finally {
-      setSaving(false);
     }
-  };
+  });
 
   const remove = async (t: Trainer) => {
     const answer = await ask({ title: `Delete ${t.name}?`, body: "Their trainer profile is deleted. This cannot be undone.", confirmLabel: "Delete trainer" });
     if (answer === null) return;
-    try {
-      await apiJson(`${GYMFOLIO_API}/trainers/${t._id}`, "DELETE");
-      await load();
-    } catch (e) {
-      alert(e instanceof Error ? e.message : "Delete failed");
-    }
+    await removing.run(t._id, async () => {
+      try {
+        await apiJson(`${GYMFOLIO_API}/trainers/${t._id}`, "DELETE");
+        await load();
+      } catch (e) {
+        alert(e instanceof Error ? e.message : "Delete failed");
+      }
+    });
   };
 
-  const toggleActive = async (t: Trainer) => {
+  const toggleActive = (t: Trainer) => toggling.run(t._id, async () => {
     try {
       await apiJson(`${GYMFOLIO_API}/trainers/${t._id}/toggle-active`, "PATCH");
       await load();
     } catch (e) {
       alert(e instanceof Error ? e.message : "Toggle failed");
     }
-  };
+  });
 
   return (
     <div>
@@ -305,17 +309,25 @@ function TrainersAdminPageInner() {
             t.experience ? `${t.experience} yrs` : "—",
             t.email || "—",
             <span key="p" className="text-xs text-neutral-600">{payLabel(t)}</span>,
-            <button key="b" onClick={() => toggleActive(t)} disabled={!editable} className="disabled:cursor-default">
-              <Badge color={t.isActive ? "green" : "neutral"}>
-                {t.isActive ? "Active" : "Inactive"}
-              </Badge>
+            <button
+              key="b"
+              onClick={() => toggleActive(t)}
+              disabled={!editable || toggling.isBusy(t._id)}
+              aria-busy={toggling.isBusy(t._id) || undefined}
+              className="relative disabled:cursor-default aria-busy:disabled:cursor-wait"
+            >
+              <BusyLabel busy={toggling.isBusy(t._id)}>
+                <Badge color={t.isActive ? "green" : "neutral"}>
+                  {t.isActive ? "Active" : "Inactive"}
+                </Badge>
+              </BusyLabel>
             </button>,
             editable ? (
               <div key="a" className="flex gap-2">
                 <SecondaryButton onClick={() => openEdit(t)} label={`Edit ${t.name}`}>
                   <FiEdit2 className="w-3.5 h-3.5" />
                 </SecondaryButton>
-                <DangerButton onClick={() => remove(t)} label={`Delete ${t.name}`}>
+                <DangerButton onClick={() => remove(t)} label={`Delete ${t.name}`} loading={removing.isBusy(t._id)}>
                   <FiTrash2 className="w-3.5 h-3.5" />
                 </DangerButton>
               </div>
@@ -329,7 +341,7 @@ function TrainersAdminPageInner() {
 
       <Pager page={page} pages={pages} total={total} onChange={setPage} disabled={loading} />
 
-      <Modal open={open} onClose={() => setOpen(false)} title={editing ? "Edit Trainer" : "New Trainer"} size="lg">
+      <Modal open={open} onClose={() => setOpen(false)} title={editing ? "Edit Trainer" : "New Trainer"} size="lg" busy={saving}>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <TextField label="Name" required value={form.name} onChange={(v) => setForm({ ...form, name: v })} />
           <TextField label="Role" required value={form.role} onChange={(v) => setForm({ ...form, role: v })} />
@@ -441,7 +453,7 @@ function TrainersAdminPageInner() {
         </div>
         <div className="flex justify-end gap-2 mt-6">
           <SecondaryButton onClick={() => setOpen(false)}>Cancel</SecondaryButton>
-          <PrimaryButton onClick={save} disabled={saving}>{saving ? "Saving..." : editing ? "Update" : "Create"}</PrimaryButton>
+          <PrimaryButton onClick={save} loading={saving}>{editing ? "Update" : "Create"}</PrimaryButton>
         </div>
       </Modal>
     </div>

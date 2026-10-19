@@ -5,7 +5,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { FiPlus } from "react-icons/fi";
-import { PageHeader, Card, PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, useConfirm, ErrorState, Spinner } from "../_shared/ui";
+import { PageHeader, Card, PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, useConfirm, ErrorState, Spinner, useAsyncAction } from "../_shared/ui";
 import { API_BASE, apiGet, apiJson } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
 import { useSiteSettings } from "@/components/ThemeProvider";
@@ -43,7 +43,9 @@ export default function LockersPage() {
   const [selected, setSelected] = useState<Locker | null>(null);
   const [member, setMember] = useState<MemberOption | null>(null);
   const [assign, setAssign] = useState({ until: "", fee: "" });
-  const [saving, setSaving] = useState(false);
+  // Keyed by which button started it, so that one shows the spinner.
+  const acting = useAsyncAction();
+  const saving = acting.busy;
   // Every save here starts from a dialog (add, or one locker), so a refusal
   // is shown in whichever is open.
   const [saveErr, setSaveErr] = useState<string | null>(null);
@@ -74,8 +76,7 @@ export default function LockersPage() {
     setMember(null);
   };
 
-  const run = async (fn: () => Promise<{ message?: string } | void>) => {
-    setSaving(true);
+  const run = (key: string, fn: () => Promise<{ message?: string } | void>) => acting.run(key, async () => {
     setNotice(null);
     setSaveErr(null);
     try {
@@ -85,10 +86,8 @@ export default function LockersPage() {
       await load();
     } catch (e) {
       setSaveErr(e instanceof Error ? e.message : "Something went wrong");
-    } finally {
-      setSaving(false);
     }
-  };
+  });
 
   const lockerName = (l: Locker) => `${l.zone ? `${l.zone}-` : ""}${l.number}`;
 
@@ -102,7 +101,7 @@ export default function LockersPage() {
       reason: { label: "What is wrong with it? (optional)", placeholder: "Broken lock, door will not close…" },
     });
     if (notes === null) return;
-    run(() => apiJson(`${API_BASE}/admin/lockers/${l.id}`, "PUT", { status: "maintenance", notes }));
+    run("maintenance", () => apiJson(`${API_BASE}/admin/lockers/${l.id}`, "PUT", { status: "maintenance", notes }));
   };
 
   const release = async (l: Locker) => {
@@ -112,7 +111,7 @@ export default function LockersPage() {
       confirmLabel: "Release locker",
     });
     if (answer === null) return;
-    run(() => apiJson<{ message: string }>(`${API_BASE}/admin/lockers/${l.id}/release`, "POST"));
+    run("release", () => apiJson<{ message: string }>(`${API_BASE}/admin/lockers/${l.id}/release`, "POST"));
   };
 
   const removeLocker = async (l: Locker) => {
@@ -122,7 +121,7 @@ export default function LockersPage() {
       confirmLabel: "Remove locker",
     });
     if (answer === null) return;
-    run(() => apiJson(`${API_BASE}/admin/lockers/${l.id}`, "DELETE"));
+    run("remove", () => apiJson(`${API_BASE}/admin/lockers/${l.id}`, "DELETE"));
   };
 
   const tone = (l: Locker) => (l.status === "maintenance" ? "border-neutral-300 bg-neutral-100 text-neutral-400" : l.status === "assigned" ? (l.overdue ? "border-rose-300 bg-rose-50 text-rose-800" : "border-neutral-900 bg-neutral-900 text-white") : "border-emerald-200 bg-emerald-50 text-emerald-800");
@@ -192,7 +191,7 @@ export default function LockersPage() {
           <TextField label={`Monthly fee${currency ? ` (${currency})` : ""} (0 = free)`} type="number" value={addDraft.fee} onChange={(v) => setAddDraft({ ...addDraft, fee: v })} />
           <div className="flex justify-end gap-2">
             <SecondaryButton onClick={() => setAddOpen(false)} disabled={saving}>Cancel</SecondaryButton>
-            <PrimaryButton onClick={() => run(async () => { const r = await apiJson<{ message: string }>(`${API_BASE}/admin/lockers`, "POST", { from: Number(addDraft.from), to: Number(addDraft.to), zone: addDraft.zone, fee: Number(addDraft.fee) || 0 }); setAddOpen(false); return r; })} disabled={saving}>Add</PrimaryButton>
+            <PrimaryButton onClick={() => run("add", async () => { const r = await apiJson<{ message: string }>(`${API_BASE}/admin/lockers`, "POST", { from: Number(addDraft.from), to: Number(addDraft.to), zone: addDraft.zone, fee: Number(addDraft.fee) || 0 }); setAddOpen(false); return r; })} loading={acting.isBusy("add")} disabled={saving}>Add</PrimaryButton>
           </div>
         </div>
       </Modal>
@@ -207,7 +206,7 @@ export default function LockersPage() {
                   {selected.until ? ` until ${selected.until}` : ""}
                   {selected.overdue && <span className="ml-1 font-semibold text-rose-600">(overdue)</span>}
                 </p>
-                {editable && <PrimaryButton onClick={() => release(selected)} disabled={saving}>Release</PrimaryButton>}
+                {editable && <PrimaryButton onClick={() => release(selected)} loading={acting.isBusy("release")} disabled={saving}>Release</PrimaryButton>}
               </>
             ) : (
               <>
@@ -219,7 +218,7 @@ export default function LockersPage() {
                       <TextField label="Until (optional)" type="date" value={assign.until} onChange={(v) => setAssign({ ...assign, until: v })} />
                       <TextField label={`Fee${currency ? ` (${currency})` : ""}`} type="number" value={assign.fee} onChange={(v) => setAssign({ ...assign, fee: v })} />
                     </div>
-                    <PrimaryButton onClick={() => run(() => apiJson<{ message: string }>(`${API_BASE}/admin/lockers/${selected.id}/assign`, "POST", { memberId: member?.id, until: assign.until || null, fee: assign.fee === "" ? undefined : Number(assign.fee) }))} disabled={saving || !member}>Assign</PrimaryButton>
+                    <PrimaryButton onClick={() => run("assign", () => apiJson<{ message: string }>(`${API_BASE}/admin/lockers/${selected.id}/assign`, "POST", { memberId: member?.id, until: assign.until || null, fee: assign.fee === "" ? undefined : Number(assign.fee) }))} loading={acting.isBusy("assign")} disabled={saving || !member}>Assign</PrimaryButton>
                   </>
                 )}
               </>
@@ -227,11 +226,11 @@ export default function LockersPage() {
             {editable && selected.status !== "assigned" && (
               <div className="flex flex-wrap gap-2 border-t border-neutral-100 pt-3">
                 {selected.status === "free" ? (
-                  <SecondaryButton onClick={() => markOutOfOrder(selected)} disabled={saving}>Mark out of order</SecondaryButton>
+                  <SecondaryButton onClick={() => markOutOfOrder(selected)} loading={acting.isBusy("maintenance")} disabled={saving}>Mark out of order</SecondaryButton>
                 ) : (
-                  <SecondaryButton onClick={() => run(() => apiJson(`${API_BASE}/admin/lockers/${selected.id}`, "PUT", { status: "free", notes: "" }))} disabled={saving}>Back in service</SecondaryButton>
+                  <SecondaryButton onClick={() => run("free", () => apiJson(`${API_BASE}/admin/lockers/${selected.id}`, "PUT", { status: "free", notes: "" }))} loading={acting.isBusy("free")} disabled={saving}>Back in service</SecondaryButton>
                 )}
-                <DangerButton onClick={() => removeLocker(selected)} disabled={saving}>Remove</DangerButton>
+                <DangerButton onClick={() => removeLocker(selected)} loading={acting.isBusy("remove")} disabled={saving}>Remove</DangerButton>
               </div>
             )}
           </div>
