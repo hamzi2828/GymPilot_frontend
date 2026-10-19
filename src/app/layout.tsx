@@ -4,6 +4,7 @@ import { Inter } from "next/font/google"; // Using Inter instead of Geist
 import ClientLayout from "@/components/ClientLayout";
 import ThemeProvider from "@/components/ThemeProvider";
 import SiteJsonLd from "@/components/SiteJsonLd";
+import NavigationProgress from "@/components/NavigationProgress";
 import { LanguageProvider } from "@/i18n/LanguageProvider";
 import { getSiteSettings } from "@/helper/siteMetadata";
 import "./globals.css";
@@ -70,6 +71,7 @@ export default async function RootLayout({
     <html lang="en" dir="ltr">
       <body className={`${inter.variable} antialiased bg-white text-gray-900 min-h-screen`}>
         <SiteJsonLd settings={settings} />
+        <NavigationProgress />
         <ThemeProvider>
           <LanguageProvider>
             <ClientLayout>
