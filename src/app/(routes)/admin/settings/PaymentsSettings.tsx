@@ -220,10 +220,11 @@ export default function PaymentsSettings<T extends PaymentFields>({
 
   const choose = (id: string) => {
     const next: Record<string, unknown> = { ...all, onlinePayments: { ...(all.onlinePayments || {}), provider: id } };
-    // Only one takes payments: the chosen one is switched on, the rest off.
-    for (const g of list) {
-      if (all[g.id] || g.id === id) next[g.id] = { ...configOf(g.id), enabled: g.id === id };
-    }
+    // The chosen gateway takes every new online payment (the server goes by
+    // onlinePayments.provider). The others are left as they are rather than
+    // switched off: members still on a Stripe subscription renew through
+    // Stripe's webhook, which stops being recorded once Stripe is off.
+    if (list.some((g) => g.id === id)) next[id] = { ...configOf(id), enabled: true };
     setSettings(next as unknown as T);
   };
 
