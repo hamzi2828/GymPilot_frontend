@@ -24,7 +24,7 @@ const SESSION_END_CODES = new Set(["TOKEN_MISSING", "TOKEN_INVALID", "TOKEN_WRON
 export class ApiError extends Error {
   status: number;
   code?: string;
-  /** The figures behind a refusal, when the backend sent any (CREDIT_EXCEEDS_PRICE). */
+  /** The figures behind a refusal, when the backend sent any (CREDIT_EXCEEDS_PRICE, CREDIT_CURRENCY_MISMATCH). */
   details?: Record<string, unknown>;
   /** The form field a refusal is about, when the backend named one (SECRET_REQUIRED: "smtp.pass"). */
   field?: string;

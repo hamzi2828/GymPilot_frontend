@@ -467,12 +467,44 @@ function PackageOrdersAdminPageInner() {
   // CREDIT_EXCEEDS_PRICE, with the figures) until the desk has agreed to it:
   // this asks, and sends the change again with `forfeitCredit`. Backing out
   // opens the refund form with the credit filled in, the other way through.
+  //
+  // A membership paid in the gym's old currency cannot have its unused days
+  // taken off a price in the new one at all, there being no exchange rate:
+  // 409 CREDIT_CURRENCY_MISMATCH, `details: { credit, currency (the old one),
+  // priceCurrency }`, asked about and sent again the same way.
   const changePackage = (o: PackageOrder) =>
     run("Package changed.", async () => {
       const body = { packageId: draft.packageId, paymentMethod: draft.paymentMethod };
       try {
         return await post(o, "change-package", body);
       } catch (e) {
+        if (e instanceof ApiError && e.code === "CREDIT_CURRENCY_MISMATCH" && e.details) {
+          const paidIn = String(e.details.currency || o.payment.currency || "").toUpperCase();
+          const sellsIn = String(e.details.priceCurrency || "").toUpperCase() || "another currency";
+          const credit = money(Number(e.details.credit) || 0, paidIn);
+          const chosen = packages.find((p) => p._id === draft.packageId)?.name || "the new package";
+          const answer = await ask({
+            title: "Change without the credit?",
+            body: (
+              <>
+                <p>
+                  The unused <strong className="text-neutral-900">{credit}</strong> can&apos;t be moved to a {sellsIn} package. Change without credit?
+                </p>
+                <p className="mt-3">
+                  To give the money back instead, go back, refund the {credit} and then assign {chosen}. If you continue, {chosen} is charged in full and the {credit} is not paid back.
+                </p>
+              </>
+            ),
+            confirmLabel: `Change and give up ${credit}`,
+            cancelLabel: "Go back and refund first",
+          });
+          if (answer === null) {
+            setDraft((d) => ({ ...d, amount: String(e.details?.credit ?? ""), reason: `Unused days, before changing to ${chosen}` }));
+            setAction("refund");
+            return null;
+          }
+          return post(o, "change-package", { ...body, forfeitCredit: true });
+        }
         if (!(e instanceof ApiError) || e.code !== "CREDIT_EXCEEDS_PRICE" || !e.details) throw e;
         const sum = (n: unknown) => money(Number(n) || 0, String(e.details?.currency || o.payment.currency));
         const credit = sum(e.details.credit);
