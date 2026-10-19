@@ -79,7 +79,7 @@ const BILLING_DEFAULTS = {
   reminderDaysBefore: [3],
   dueDayReminder: true,
   lastDayAfterDue: 3,
-  sendVia: { email: true, sms: false, whatsapp: false, push: true },
+  sendVia: { email: true, sms: false, whatsapp: true, push: true },
 };
 
 // Used only while the API cannot list its gateways (an older API, which has
