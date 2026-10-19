@@ -10,6 +10,7 @@
 // (the page passes it in): it has more to explain than a list of fields.
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { Card, PrimaryButton, SecondaryButton, TextField, SelectField, Toggle, Badge, useAsyncAction } from "../_shared/ui";
 import { API_BASE, ApiError, apiGet, apiJson, isMaskedSecret } from "../_shared/api";
 import { countryByCode } from "@/data/countries";
@@ -29,6 +30,8 @@ export interface GatewayField {
 
 export interface GatewayCapabilities {
   checkout?: boolean;
+  /** Members pay by bank transfer and upload the receipt for staff to check (the "generic" gateway). */
+  receiptUpload?: boolean;
   paymentLinks?: boolean;
   savedCards?: boolean;
   autoCharge?: boolean;
@@ -79,8 +82,8 @@ const BILLING_DEFAULTS = {
   sendVia: { email: true, sms: false, whatsapp: false, push: true },
 };
 
-// Used only while the API cannot list its gateways (an older API): the two it
-// has today, with the fields the spec gives them.
+// Used only while the API cannot list its gateways (an older API, which has
+// none but these two), with the fields the spec gives them.
 function builtInGateways(settings: PaymentFields & Record<string, unknown>): Gateway[] {
   const safepay = (settings.safepay || {}) as GatewayConfig;
   const stripe = settings.stripe || {};
@@ -122,12 +125,18 @@ function whereLine(g: Gateway) {
   return (g.countries || []).map((c) => countryByCode(c)?.name || c).join(", ");
 }
 
+/** A gateway with no checkout of its own: bank transfer, and a receipt staff check. */
+function receiptOnly(g: Gateway | null) {
+  return !!g && g.capabilities?.checkout === false && !!g.capabilities?.receiptUpload;
+}
+
 /** What a gateway lets members do, as short chips. */
 function supports(g: Gateway): string[] {
   const c = g.capabilities || {};
   const pk = (g.countries || []).some((x) => x.toUpperCase() === "PK");
   const out: string[] = [];
   if (c.checkout !== false) out.push(worldwide(g) ? "Cards worldwide" : "Cards");
+  if (c.receiptUpload) out.push("Bank transfer + receipt");
   if (c.wallets) out.push(...(pk ? ["JazzCash", "Easypaisa"] : ["Mobile wallets"]));
   if (c.bankApps) out.push(pk ? "Any bank app (Raast)" : "Bank apps");
   if (c.paymentLinks) out.push("Payment links");
@@ -300,7 +309,9 @@ export default function PaymentsSettings<T extends PaymentFields>({
                   </div>
                   <div className="flex shrink-0 flex-col items-end gap-1">
                     {active && <span className="rounded bg-neutral-900 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">Selected</span>}
-                    <Badge color={g.configured ? "green" : "neutral"}>{g.configured ? "Keys saved" : "Not set up"}</Badge>
+                    <Badge color={g.configured ? "green" : "neutral"}>
+                      {receiptOnly(g) ? (g.configured ? "Bank account ready" : "No bank account yet") : g.configured ? "Keys saved" : "Not set up"}
+                    </Badge>
                   </div>
                 </div>
                 <div className="mt-3 flex flex-wrap gap-1.5">
@@ -336,7 +347,56 @@ export default function PaymentsSettings<T extends PaymentFields>({
       {/* ---- The chosen gateway's own form ---- */}
       {selected?.id === "stripe" && stripePanel}
 
-      {selected && selected.id !== "stripe" && (
+      {selected && receiptOnly(selected) && (
+        <Card className="p-6">
+          <Heading title="Bank transfer with receipt" hint="No gateway account and no card fees: members pay straight into your own bank accounts, and your staff confirm each payment." />
+
+          <div className={`mb-5 rounded-lg border px-4 py-3 text-sm ${selected.configured ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-amber-200 bg-amber-50 text-amber-900"}`}>
+            {selected.configured ? (
+              "Ready: payment links show your bank accounts, and members can upload their receipts."
+            ) : (
+              <>
+                Add at least one bank account, with its QR code if you have one, so members know where to pay.{" "}
+                <Link href="/admin/settings?tab=banks" className="font-semibold underline">
+                  Go to Banks
+                </Link>
+              </>
+            )}
+          </div>
+
+          <ol className="list-decimal space-y-1.5 pl-5 text-sm text-neutral-700">
+            <li>Before the due date, members get a payment link by email and WhatsApp with the package, the amount, the due date and the last day to pay.</li>
+            <li>
+              The link shows the bank accounts and QR codes you keep under{" "}
+              <Link href="/admin/settings?tab=banks" className="font-semibold underline">
+                Banks
+              </Link>
+              .
+            </li>
+            <li>The member transfers the money from any bank app and uploads a screenshot of the receipt on the same page.</li>
+            <li>
+              Your staff check it under{" "}
+              <Link href="/admin/package-orders?paymentStatus=processing&paymentMethod=bank_transfer" className="font-semibold underline">
+                Package Orders → Payments to verify
+              </Link>
+              : approving renews the membership and sends a receipt; rejecting, with a reason, lets the member upload a new one.
+            </li>
+          </ol>
+
+          <div className="mt-5 flex flex-wrap items-center gap-3">
+            <SecondaryButton onClick={() => test(selected.id)} loading={tester.busy} disabled={saving}>
+              Check bank accounts
+            </SecondaryButton>
+          </div>
+          {testResult && (
+            <p role={testResult.ok ? "status" : "alert"} className={`mt-3 rounded-lg px-3 py-2 text-sm ${testResult.ok ? "bg-emerald-50 text-emerald-800" : "bg-rose-50 text-rose-700"}`}>
+              {testResult.text}
+            </p>
+          )}
+        </Card>
+      )}
+
+      {selected && selected.id !== "stripe" && !receiptOnly(selected) && (
         <Card className="p-6">
           <Heading
             title={`${selected.label} settings`}
@@ -447,8 +507,10 @@ export default function PaymentsSettings<T extends PaymentFields>({
         <Heading
           title="Payment reminders"
           hint={
-            selected?.capabilities?.paymentLinks
-              ? `Before a membership falls due, on the day and on the last day to pay, members get a message with a link to pay online through ${selected.label}. Your bank details go with it when you have bank accounts set up.`
+            receiptOnly(selected)
+              ? "Before a membership falls due, on the day and on the last day to pay, members get a message with a link to your bank details, where they upload their receipt."
+              : selected?.capabilities?.paymentLinks
+              ? `Before a membership falls due, on the day and on the last day to pay, members get a message with a link to pay online through ${selected.label}. The link also offers your bank accounts for a transfer, when you have them set up.`
               : "Before a membership falls due, on the day and on the last day to pay, members get a reminder. A payment link is added once your gateway supports payment links."
           }
         />
