@@ -7,7 +7,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { PageHeader, Card, PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, TextArea, SelectField, Toggle, Badge, Spinner, useConfirm, ErrorState, useLatestRequest, useAsyncAction } from "../_shared/ui";
+import { PageHeader, Card, PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, TextArea, SelectField, Toggle, Badge, Spinner, useConfirm, ErrorState, useLatestRequest, useAsyncAction, useRequestId } from "../_shared/ui";
 import { API_BASE, apiGet, apiJson } from "../_shared/api";
 import { downloadExport } from "../reports/download";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
@@ -186,6 +186,12 @@ export default function PosPage() {
   const [category, setCategory] = useState("");
   const checkingOut = useAsyncAction();
   const busy = checkingOut.busy;
+  // Sent with each sale as its request_id, so "Take payment" pressed again
+  // after an answer that never arrived records the sale once: the server
+  // answers a repeated id with the first sale, marked `repeated`. The same id
+  // while the basket, discount, payment method and member stay as they were;
+  // a new one once a sale has gone through.
+  const requestId = useRequestId();
   const [receipt, setReceipt] = useState<Sale | null>(null);
   const [notice, setNotice] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
   const [sales, setSales] = useState<SalesResponse | null>(null);
@@ -320,14 +326,26 @@ export default function PosPage() {
   const checkout = () => checkingOut.run(async () => {
     setNotice(null);
     setCheckoutErr(null);
+    // What makes it the same sale. The cash received is left out: typing a
+    // different amount before pressing again does not make a second sale.
+    const sale = {
+      items: basket.map((x) => ({ productId: x.product.id, quantity: x.quantity })),
+      discount: Number(discount) || 0,
+      paymentMethod: method,
+      memberId: member?.id || undefined,
+    };
     try {
-      const res = await apiJson<{ data: Sale }>(`${POS_API}/sales`, "POST", {
-        items: basket.map((x) => ({ productId: x.product.id, quantity: x.quantity })),
-        discount: Number(discount) || 0,
-        paymentMethod: method,
+      const res = await apiJson<{ data: Sale; repeated?: boolean }>(`${POS_API}/sales`, "POST", {
+        ...sale,
         tendered: cashGiven ?? undefined,
-        memberId: member?.id || undefined,
+        request_id: requestId.for("sale", sale),
       });
+      requestId.reset();
+      // The sale an earlier press already recorded, whose answer was lost:
+      // its own receipt, said to be that one rather than a second sale.
+      if (res.repeated) {
+        setNotice({ tone: "ok", text: `${res.data.receipt_number} was already recorded on the first try — this is its receipt, and nothing was charged twice.` });
+      }
       setReceipt(res.data);
       setBasket([]);
       setDiscount("0");
