@@ -321,8 +321,14 @@ export default function KioskPage() {
           setToken(saved);
           setOperator(res.user);
           loadRecent(saved);
-        } else {
+        } else if (res.http_status === 401 || res.http_status === 403) {
+          // The server refused this desk's sign-in itself: back to the form.
           localStorage.removeItem(TOKEN_KEY);
+        } else {
+          // A server error or a rate limit says nothing about the sign-in,
+          // as on the heartbeat: the kiosk keeps it, and the heartbeat asks
+          // again and fills in the account once the server answers.
+          setToken(saved);
         }
       })
       .finally(() => setBooting(false));
