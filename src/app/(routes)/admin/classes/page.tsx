@@ -59,6 +59,10 @@ interface GymClass {
   schedule?: ScheduleRow[];
 }
 
+// What switching a class off does, said before it is done.
+const DEACTIVATE_BODY =
+  "The class comes off the timetable until you activate it again. Upcoming bookings for it are cancelled, any credits are returned, and the members are told.";
+
 const difficulties = ["Beginner", "Intermediate", "Advanced", "All Levels"];
 const categories = ["Yoga", "Cardio", "Strength", "Boxing", "HIIT", "Dance", "Martial Arts", "Other"];
 
@@ -168,50 +172,66 @@ function ClassesAdminPageInner() {
       .catch((e) => alert(e instanceof Error ? e.message : "Could not open that class"));
   }, [urlId, editable]);
 
-  const save = () => saveAction.run(async () => {
+  // The same question the row's Active badge asks before switching a class
+  // off: an edit that unticks Active cancels its upcoming bookings as well.
+  const confirmDeactivate = (name: string) =>
+    ask({
+      title: `Deactivate ${name}?`,
+      body: DEACTIVATE_BODY,
+      confirmLabel: "Deactivate class",
+    });
+
+  const save = async () => {
+    if (saving) return;
     const problems = validateSchedule(schedule);
     if (problems.length) {
       alert(["Fix the timetable first:", ...problems].join("\n"));
       return;
     }
-
-    try {
-      const fd = new FormData();
-      Object.entries(form).forEach(([k, v]) => {
-        // Sent as JSON below; String(array) would post "[object Object]".
-        if (k === "schedule") return;
-        if (v === undefined || v === null) return;
-        if (typeof v === "boolean") fd.append(k, String(v));
-        else fd.append(k, String(v));
-      });
-      // Always sent, so clearing every row really does clear the timetable.
-      fd.append(
-        "schedule",
-        JSON.stringify(
-          schedule.map((row) => ({
-            day: row.day,
-            startTime: row.startTime,
-            endTime: row.endTime,
-            instructor: row.instructor || undefined,
-            instructorName: row.instructorName || "",
-          }))
-        )
-      );
-      if (thumb) fd.append("thumbnail", thumb);
-      if (editing) {
-        // An edit that takes the class off the timetable cancels its upcoming
-        // bookings; the server's message says how many.
-        const res = await apiForm<{ message?: string; cancelled_bookings?: number }>(`${GYMFOLIO_API}/gym-classes/${editing._id}`, "PUT", fd);
-        setNotice(res.cancelled_bookings ? res.message || null : null);
-      } else {
-        await apiForm(`${GYMFOLIO_API}/gym-classes`, "POST", fd);
-      }
-      setOpen(false);
-      await load();
-    } catch (e) {
-      alert(e instanceof Error ? e.message : "Save failed");
+    // Asked before the save starts, so Update is not left spinning behind it.
+    if (editing?.isActive && !form.isActive) {
+      const answer = await confirmDeactivate(form.name || editing.name);
+      if (answer === null) return;
     }
-  });
+    await saveAction.run(async () => {
+      try {
+        const fd = new FormData();
+        Object.entries(form).forEach(([k, v]) => {
+          // Sent as JSON below; String(array) would post "[object Object]".
+          if (k === "schedule") return;
+          if (v === undefined || v === null) return;
+          if (typeof v === "boolean") fd.append(k, String(v));
+          else fd.append(k, String(v));
+        });
+        // Always sent, so clearing every row really does clear the timetable.
+        fd.append(
+          "schedule",
+          JSON.stringify(
+            schedule.map((row) => ({
+              day: row.day,
+              startTime: row.startTime,
+              endTime: row.endTime,
+              instructor: row.instructor || undefined,
+              instructorName: row.instructorName || "",
+            }))
+          )
+        );
+        if (thumb) fd.append("thumbnail", thumb);
+        if (editing) {
+          // An edit that takes the class off the timetable cancels its upcoming
+          // bookings; the server's message says how many.
+          const res = await apiForm<{ message?: string; cancelled_bookings?: number }>(`${GYMFOLIO_API}/gym-classes/${editing._id}`, "PUT", fd);
+          setNotice(res.cancelled_bookings ? res.message || null : null);
+        } else {
+          await apiForm(`${GYMFOLIO_API}/gym-classes`, "POST", fd);
+        }
+        setOpen(false);
+        await load();
+      } catch (e) {
+        alert(e instanceof Error ? e.message : "Save failed");
+      }
+    });
+  };
 
   const remove = async (c: GymClass) => {
     const answer = await ask({
@@ -234,11 +254,7 @@ function ClassesAdminPageInner() {
   const toggleActive = async (c: GymClass) => {
     // Switching a class back on needs no question; switching it off does.
     if (c.isActive) {
-      const answer = await ask({
-        title: `Deactivate ${c.name}?`,
-        body: "The class comes off the timetable until you activate it again. Upcoming bookings for it are cancelled, any credits are returned, and the members are told.",
-        confirmLabel: "Deactivate class",
-      });
+      const answer = await confirmDeactivate(c.name);
       if (answer === null) return;
     }
     await toggling.run(c._id, async () => {
