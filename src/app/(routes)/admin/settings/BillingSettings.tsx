@@ -43,7 +43,10 @@ import {
   formatMoney,
   formatDate,
   daysLeftLabel,
-  payProviderOf,
+  payWithOf,
+  dueKey,
+  rememberDue,
+  recalledDue,
   STATUS_LABELS,
   type BillingCycle,
   type BillingPlan,
@@ -69,11 +72,6 @@ const CONFIRM_ATTEMPTS = 6;
 const CONFIRM_EVERY_MS = 3000;
 const PAID_ATTEMPTS = 10;
 
-// The due date before the owner left for Safepay, to tell on the way back
-// whether the payment has been recorded yet. Per tab, and only a nicety:
-// without it the first read back is taken as "before".
-const PAY_FROM_KEY = "gymspilotpro.billing.payFrom";
-
 type Notice = { tone: "ok" | "warn" | "error"; text: string };
 
 const NOTICE_STYLES: Record<Notice["tone"], string> = {
@@ -84,41 +82,9 @@ const NOTICE_STYLES: Record<Notice["tone"], string> = {
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// A Stripe subscription in one of these is still charging the gym.
-const STRIPE_LIVE: SubscriptionStatus[] = ["trialing", "active", "past_due"];
-
 /** Paid for through Stripe, and Stripe has said so. */
 function isSubscribed(sub: BillingSubscription | null) {
   return !!sub && sub.hasStripeSubscription && (sub.status === "active" || sub.status === "trialing");
-}
-
-/** How this gym pays now: the chosen way, or Stripe while a Stripe subscription still bills it. */
-function payWithOf(sub: BillingSubscription): PayProvider {
-  if (sub.stripeConfigured && sub.hasStripeSubscription && STRIPE_LIVE.includes(sub.status)) return "stripe";
-  return payProviderOf(sub);
-}
-
-/** The date a payment moves forward: compared before and after paying. */
-function dueKey(sub: BillingSubscription | null) {
-  return (sub && (sub.pay?.due_date || sub.currentPeriodEnd)) || "";
-}
-
-function rememberDue(sub: BillingSubscription) {
-  try {
-    sessionStorage.setItem(PAY_FROM_KEY, dueKey(sub));
-  } catch {
-    /* storage off: the page goes by its first read instead */
-  }
-}
-
-function recalledDue(): string | null {
-  try {
-    const value = sessionStorage.getItem(PAY_FROM_KEY);
-    sessionStorage.removeItem(PAY_FROM_KEY);
-    return value;
-  } catch {
-    return null;
-  }
 }
 
 function periodLabel(sub: BillingSubscription, payWith: PayProvider) {

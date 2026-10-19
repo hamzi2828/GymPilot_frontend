@@ -6,15 +6,29 @@
 //
 // A lapsed subscription (SUBSCRIPTION_INACTIVE, `renewable`) is the one case
 // the gym can fix from here: the API still lets its owner sign in and pay, so
-// this page offers exactly that. Stripe then sends them back with
-// ?billing=success, and the page waits for the webhook to switch the gym
-// back on before reloading into the admin's Billing tab.
+// this page offers exactly that, the way the super admin chose that gyms pay
+// GymsPilotPro: Stripe or Safepay, which send them back with ?billing=success
+// or ?paid=1 (the page then waits for the webhook to switch the gym back on
+// before reloading into the admin's Billing tab); a bank transfer, whose
+// receipt is uploaded here for GymsPilotPro to approve; or, with no online
+// payment, who to contact.
 
 import { useEffect, useState } from "react";
 import { login, verifyTwoFactor, type LoginResponse } from "@/app/(routes)/authentication/service/authService";
 import { getCurrentUser, removeToken, setRole, setToken } from "@/helper/helper";
 import { API_BASE } from "@/app/(routes)/admin/_shared/api";
-import { openPortal, startCheckout } from "@/app/(routes)/admin/settings/billingApi";
+import {
+  formatMoney,
+  getSubscription,
+  openPortal,
+  payWithOf,
+  rememberDue,
+  startCheckout,
+  startPay,
+  type BillingSubscription,
+  type PayProvider,
+} from "@/app/(routes)/admin/settings/billingApi";
+import { AmountDue, PlatformBankAccounts, ReceiptUpload } from "@/app/(routes)/admin/settings/PlatformPay";
 import Spinner from "@/components/ui/Spinner";
 import useAsyncAction from "@/components/ui/useAsyncAction";
 
@@ -40,7 +54,7 @@ const RENEWABLE_BODY =
 const REACTIVATE_EVERY_MS = 4000;
 const REACTIVATE_TIMEOUT_MS = 3 * 60 * 1000;
 
-type Phase = "idle" | "signin" | "code" | "reactivating" | "slow";
+type Phase = "idle" | "signin" | "code" | "reactivating" | "slow" | "bank";
 
 const inputClass =
   "mt-1 w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 focus:border-neutral-900 focus:outline-none";
@@ -61,11 +75,14 @@ function RenewPanel() {
   const { busy, run, leave } = useAsyncAction();
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
+  // Paying by bank transfer: the subscription, with GymsPilotPro's accounts.
+  const [bankSub, setBankSub] = useState<BillingSubscription | null>(null);
 
-  // Where Stripe sent us back from, and whether a session is already here.
+  // Where Stripe or Safepay sent us back from, and whether a session is already here.
   useEffect(() => {
-    const outcome = new URLSearchParams(window.location.search).get("billing");
-    if (outcome === "success") setPhase("reactivating");
+    const params = new URLSearchParams(window.location.search);
+    const outcome = params.get("billing");
+    if (outcome === "success" || params.get("paid") === "1") setPhase("reactivating");
     else if (outcome === "cancelled") setInfo("Checkout was cancelled — nothing was charged.");
     setSignedIn(!!getCurrentUser());
   }, []);
@@ -113,20 +130,52 @@ function RenewPanel() {
     setPassword("");
   };
 
-  // Signed in: straight to Stripe. A gym Stripe already bills (a card that
-  // kept failing) goes to the portal to fix the card instead.
+  // The stored session has ended; sign in afresh.
+  const sessionEnded = () => {
+    removeToken();
+    setSignedIn(false);
+    setPhase("signin");
+    setError("Your session has ended. Please sign in again.");
+  };
+
+  // Signed in: on to paying, the way GymsPilotPro is paid. With Stripe, a gym
+  // Stripe already bills (a card that kept failing) goes to the portal to fix
+  // the card instead. An API that cannot say how (an older one) means Stripe.
   const startRenewal = async () => {
     setError(null);
+    setInfo(null);
     try {
-      let res = await startCheckout();
-      if (res.status === 401) {
-        // The stored session has ended; sign in afresh.
-        removeToken();
-        setSignedIn(false);
-        setPhase("signin");
-        setError("Your session has ended. Please sign in again.");
+      let how: PayProvider = "stripe";
+      const current = await getSubscription({ usage: false }).catch(() => null);
+      if (current?.status === 401) return sessionEnded();
+      if (current?.ok && current.data) how = payWithOf(current.data);
+
+      if (how === "generic" && current?.data) {
+        setBankSub(current.data);
+        setPhase("bank");
         return;
       }
+      if (how === "none") {
+        const email = current?.data?.contactEmail;
+        setInfo(`To renew, contact GymsPilotPro${email ? `: ${email}` : " support"}.`);
+        return;
+      }
+      if (how === "safepay") {
+        const res = await startPay();
+        if (res.ok && res.data?.url) {
+          if (current?.data) rememberDue(current.data);
+          leave();
+          window.location.assign(res.data.url);
+          return;
+        }
+        if (res.status === 401) return sessionEnded();
+        if (res.status === 403) setError("Only the gym's owner or an admin with Settings access can renew.");
+        else setError(res.message || "Could not start the payment. Please try again.");
+        return;
+      }
+
+      let res = await startCheckout();
+      if (res.status === 401) return sessionEnded();
       if (res.code === "ALREADY_SUBSCRIBED") res = await openPortal();
       if (res.ok && res.data?.url) {
         leave();
@@ -210,6 +259,30 @@ function RenewPanel() {
           Check again
         </button>
         <p className="mt-2 text-xs">Still showing this in a few minutes? Contact GymsPilotPro support.</p>
+      </div>
+    );
+  }
+
+  if (phase === "bank" && bankSub) {
+    const pay = bankSub.pay;
+    const currency = pay?.currency || bankSub.currency;
+    return (
+      <div className="mt-8 space-y-5 rounded-xl border border-neutral-200 bg-white p-5 text-left">
+        <AmountDue
+          label="Send by bank transfer"
+          amount={formatMoney(pay && pay.amount_due > 0 ? pay.amount_due : bankSub.amount, currency)}
+          dueDate={pay?.due_date || bankSub.currentPeriodEnd}
+        />
+        <PlatformBankAccounts accounts={pay?.bank_accounts || []} contactEmail={bankSub.contactEmail} />
+        <div className="border-t border-neutral-100 pt-5">
+          <p className="mb-3 text-sm font-semibold text-neutral-900">Then upload the receipt</p>
+          <ReceiptUpload
+            request={pay?.pending_request}
+            currency={currency}
+            onSent={(next) => setBankSub((s) => (s && s.pay ? { ...s, pay: { ...s.pay, pending_request: next } } : s))}
+          />
+        </div>
+        <p className="text-xs text-neutral-500">Everything comes back as soon as GymsPilotPro confirms it.</p>
       </div>
     );
   }

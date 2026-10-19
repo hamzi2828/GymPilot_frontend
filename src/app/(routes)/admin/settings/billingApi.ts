@@ -73,11 +73,52 @@ export interface BillingPay {
   pending_request?: PendingPayRequest | null;
 }
 
-/** The way this gym pays, read from an older API (no `pay`) as it worked there: Stripe or nothing. */
+/** The way the super admin chose; from an older API (no `pay`) as it worked there: Stripe or nothing. */
 export function payProviderOf(sub: BillingSubscription): PayProvider {
   const provider = sub.pay?.provider;
   if (provider === "safepay" || provider === "stripe" || provider === "generic" || provider === "none") return provider;
   return sub.stripeConfigured ? "stripe" : "none";
+}
+
+// A Stripe subscription in one of these is still charging the gym.
+const STRIPE_LIVE: SubscriptionStatus[] = ["trialing", "active", "past_due"];
+
+/**
+ * How this gym pays now: the chosen way, or Stripe while a Stripe
+ * subscription still bills it -- paying another way too would charge it twice.
+ */
+export function payWithOf(sub: BillingSubscription): PayProvider {
+  if (sub.stripeConfigured && sub.hasStripeSubscription && STRIPE_LIVE.includes(sub.status)) return "stripe";
+  return payProviderOf(sub);
+}
+
+// The due date before the owner left for Safepay, to tell on the way back
+// whether the payment has been recorded yet. Per tab, and only a nicety:
+// without it the first read back is taken as "before".
+const PAY_FROM_KEY = "gymspilotpro.billing.payFrom";
+
+/** The date a payment moves forward: compared before and after paying. */
+export function dueKey(sub: BillingSubscription | null) {
+  return (sub && (sub.pay?.due_date || sub.currentPeriodEnd)) || "";
+}
+
+export function rememberDue(sub: BillingSubscription) {
+  try {
+    sessionStorage.setItem(PAY_FROM_KEY, dueKey(sub));
+  } catch {
+    /* storage off: the Billing tab goes by its first read instead */
+  }
+}
+
+/** The due date rememberDue kept, once: it is forgotten as it is read. */
+export function recalledDue(): string | null {
+  try {
+    const value = sessionStorage.getItem(PAY_FROM_KEY);
+    sessionStorage.removeItem(PAY_FROM_KEY);
+    return value;
+  } catch {
+    return null;
+  }
 }
 
 /** A plan on sale, as the Billing tab's plan picker shows it. Limits of 0 are unlimited. */
