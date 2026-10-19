@@ -28,6 +28,7 @@ import { ApiError, GYMFOLIO_API, apiGet, apiJson, absoluteUrl, openFileInNewTab,
 import { usePermissions } from "@/components/admin/PermissionsProvider";
 import { MemberPicker, type MemberOption } from "../_ops/MemberPicker";
 import { Pager, pageCount } from "../_ops/lists";
+import { PayLinkPanel, payLinkAllowed } from "../_ops/PayLink";
 
 const PAGE_SIZE = 50;
 
@@ -121,11 +122,16 @@ const METHOD_LABELS: Record<string, string> = {
   jazzcash: "JazzCash",
   easypaisa: "Easypaisa",
   wallet: "Other mobile wallet",
+  // Paid online through the gym's chosen gateway (a payment link, Safepay).
+  online: "Online",
+  safepay: "Online (Safepay)",
 };
-// What the desk records by hand: every method but Stripe, which is only ever
-// paid through online checkout (the API refuses it here with a 422).
+// Only ever paid through the gym's gateway, never recorded at the desk.
+const ONLINE_ONLY_METHODS = ["stripe", "online", "safepay"];
+// What the desk records by hand: every method but the online ones (the API
+// refuses those here with a 422).
 const DESK_METHOD_OPTIONS = Object.entries(METHOD_LABELS)
-  .filter(([value]) => value !== "stripe")
+  .filter(([value]) => !ONLINE_ONLY_METHODS.includes(value))
   .map(([value, label]) => ({ value, label }));
 // Stripe subscription statuses that never charge again on their own (the
 // backend's reminderJobs reads them the same way).
@@ -135,7 +141,7 @@ const PAYMENT_STATUSES = ["pending", "processing", "paid", "failed", "refunded"]
 
 // hasDues: "1" lists only orders with money still owed on them.
 type Filters = { search: string; status: string; paymentStatus: string; paymentMethod: string; hasDues: string };
-type PanelAction = "" | "status" | "freeze" | "cancel" | "renew" | "change" | "reject" | "refund" | "payment" | "terms";
+type PanelAction = "" | "status" | "freeze" | "cancel" | "renew" | "change" | "reject" | "refund" | "payment" | "terms" | "paylink";
 type Terms = { startDate?: string | null; endDate?: string | null; discountAmount?: number; discountNote?: string; amount?: number; balanceDue?: number };
 // Refusals that mean the order is no longer as this page shows it: a
 // colleague confirmed the transfer first or is doing so now, or it has since
@@ -684,7 +690,10 @@ function PackageOrdersAdminPageInner() {
                       {fmtDate(o.subscription?.startDate)} → {fmtDate(o.subscription?.endDate)}
                     </td>
                     <td className="px-4 py-3 align-top">
-                      <SecondaryButton onClick={() => openAction(o, "status")}>{manage ? "Manage" : "View"}</SecondaryButton>
+                      <div className="flex flex-wrap justify-end gap-2">
+                        {manage && payLinkAllowed(o) && <SecondaryButton onClick={() => openAction(o, "paylink")}>Payment link</SecondaryButton>}
+                        <SecondaryButton onClick={() => openAction(o, "status")}>{manage ? "Manage" : "View"}</SecondaryButton>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -953,7 +962,7 @@ function PackageOrdersAdminPageInner() {
                 {selected.payment.status === "paid" && (selected.payment.balanceDue || 0) > 0 && (
                   <PrimaryButton
                     onClick={() => {
-                      setDraft({ ...draft, payAmount: String(selected.payment.balanceDue ?? ""), payMethod: selected.payment.method === "stripe" ? "cash" : selected.payment.method, payNote: "" });
+                      setDraft({ ...draft, payAmount: String(selected.payment.balanceDue ?? ""), payMethod: ONLINE_ONLY_METHODS.includes(selected.payment.method) ? "cash" : selected.payment.method, payNote: "" });
                       setAction("payment");
                     }}
                   >
@@ -1008,10 +1017,13 @@ function PackageOrdersAdminPageInner() {
                     Undo cancellation
                   </SecondaryButton>
                 )}
+                {payLinkAllowed(selected) && <SecondaryButton onClick={() => setAction("paylink")}>Payment link</SecondaryButton>}
                 {selected.status !== "cancelled" && selected.status !== "expired" && <DangerButton onClick={() => setAction("cancel")}>Cancel</DangerButton>}
                 {selected.payment.status === "paid" && <DangerButton onClick={() => setAction("refund")}>Refund</DangerButton>}
               </div>
             )}
+
+            {manage && action === "paylink" && payLinkAllowed(selected) && <PayLinkPanel orderId={selected._id} />}
 
             {action === "refund" && (
               <div className="grid gap-3 sm:grid-cols-2 rounded-lg border border-rose-200 p-4">

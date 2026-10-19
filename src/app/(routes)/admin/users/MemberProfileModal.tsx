@@ -1,11 +1,14 @@
 "use client";
 
 // A member's full record: details, health and emergency contact, documents,
-// the signed agreement, tags and the notes staff keep.
+// the signed agreement, tags and the notes staff keep, and their unpaid
+// orders with a payment link for each.
 
 import { useCallback, useEffect, useState } from "react";
 import { Modal, PrimaryButton, SecondaryButton, DangerButton, TextField, TextArea, SelectField, Badge, Spinner, useConfirm, useAsyncAction, ErrorState, BusyLabel } from "../_shared/ui";
-import { API_BASE, apiGet, apiJson, apiForm, absoluteUrl } from "../_shared/api";
+import { API_BASE, GYMFOLIO_API, apiGet, apiJson, apiForm, absoluteUrl } from "../_shared/api";
+import { usePermissions } from "@/components/admin/PermissionsProvider";
+import { PayLinkPanel, payLinkAllowed } from "../_ops/PayLink";
 
 interface Profile {
   id: string;
@@ -40,7 +43,23 @@ interface Profile {
   lastVisit: string | null;
 }
 
-type TabKey = "details" | "health" | "documents" | "notes";
+type TabKey = "details" | "health" | "documents" | "notes" | "payments";
+
+// An order as GET /package-orders lists it: only what the Payments tab shows.
+interface UnpaidOrder {
+  _id: string;
+  orderNumber: string;
+  status: string;
+  userId?: { _id: string } | string | null;
+  packageDetails?: { name?: string };
+  payment: { amount: number; currency: string; status: string; method: string };
+  metadata?: { dueDate?: string | null; lastDay?: string | null };
+  createdAt: string;
+}
+
+function ownerOf(order: UnpaidOrder) {
+  return order.userId && typeof order.userId === "object" ? order.userId._id : order.userId || null;
+}
 
 function dateInput(v?: string | null) {
   return v ? String(v).slice(0, 10) : "";
@@ -56,6 +75,13 @@ function dayLabel(value: string) {
 
 export default function MemberProfileModal({ userId, onClose, onSaved }: { userId: string | null; onClose: () => void; onSaved?: () => void }) {
   const [tab, setTab] = useState<TabKey>("details");
+  const { can } = usePermissions();
+  const seesOrders = can("package-orders", "view");
+  const managesOrders = can("package-orders", "manage");
+  // Payments tab: the member's orders not yet paid, and the one whose link is open.
+  const [unpaid, setUnpaid] = useState<UnpaidOrder[] | null>(null);
+  const [unpaidErr, setUnpaidErr] = useState<string | null>(null);
+  const [linkFor, setLinkFor] = useState<string | null>(null);
   const { ask, dialog: confirmDialog } = useConfirm();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(false);
@@ -100,8 +126,27 @@ export default function MemberProfileModal({ userId, onClose, onSaved }: { userI
     setTab("details");
     setNotice(null);
     setProfile(null);
+    setUnpaid(null);
+    setLinkFor(null);
     load();
   }, [load]);
+
+  // Every order of theirs the list gives, kept to the unpaid ones. Checked
+  // against the member here as well, whatever the list was asked.
+  const loadUnpaid = useCallback(async () => {
+    if (!userId) return;
+    try {
+      const r = await apiGet<{ data?: UnpaidOrder[] }>(`${GYMFOLIO_API}/package-orders?userId=${encodeURIComponent(userId)}&limit=100&sort=-createdAt`);
+      setUnpaid((r.data || []).filter((o) => ownerOf(o) === userId && payLinkAllowed(o)));
+      setUnpaidErr(null);
+    } catch (e) {
+      setUnpaidErr(e instanceof Error ? e.message : "Could not load their orders");
+    }
+  }, [userId]);
+
+  useEffect(() => {
+    if (tab === "payments" && unpaid === null) loadUnpaid();
+  }, [tab, unpaid, loadUnpaid]);
 
   if (!userId) return null;
 
@@ -244,7 +289,7 @@ export default function MemberProfileModal({ userId, onClose, onSaved }: { userI
 
           <div className="mt-5 border-b border-neutral-200">
             <div className="-mb-px flex gap-1 overflow-x-auto">
-              {([["details", "Details"], ["health", "Health"], ["documents", "Documents"], ["notes", "Notes & agreement"]] as [TabKey, string][]).map(([key, label]) => (
+              {([["details", "Details"], ["health", "Health"], ["documents", "Documents"], ["notes", "Notes & agreement"], ...(seesOrders ? [["payments", "Payments"]] : [])] as [TabKey, string][]).map(([key, label]) => (
                 <button key={key} type="button" onClick={() => setTab(key)} className={`whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium ${tab === key ? "border-neutral-900 text-neutral-900" : "border-transparent text-neutral-500 hover:text-neutral-800"}`}>
                   {label}
                 </button>
@@ -365,11 +410,48 @@ export default function MemberProfileModal({ userId, onClose, onSaved }: { userI
             </div>
           )}
 
+          {tab === "payments" && (
+            <div className="mt-4 space-y-3">
+              {unpaid === null && !unpaidErr ? (
+                <Spinner />
+              ) : unpaidErr && !unpaid ? (
+                <ErrorState message={unpaidErr} onRetry={loadUnpaid} />
+              ) : !unpaid || unpaid.length === 0 ? (
+                <p className="text-sm text-neutral-500">Nothing unpaid. Orders waiting for payment show here, each with a payment link to send.</p>
+              ) : (
+                unpaid.map((o) => (
+                  <div key={o._id} className="rounded-lg border border-neutral-200 p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="min-w-0 text-sm">
+                        <p className="font-semibold text-neutral-900">
+                          {o.packageDetails?.name || "Membership"} · {(o.payment.currency || "").toUpperCase()} {Number(o.payment.amount || 0).toLocaleString()}
+                        </p>
+                        <p className="text-xs text-neutral-500">
+                          {o.orderNumber} · {o.payment.status === "failed" ? "payment failed" : "awaiting payment"}
+                          {o.metadata?.dueDate ? ` · due ${dayLabel(o.metadata.dueDate)}` : ""}
+                          {o.metadata?.lastDay ? ` · last day ${dayLabel(o.metadata.lastDay)}` : ""}
+                        </p>
+                      </div>
+                      {managesOrders && (
+                        <SecondaryButton onClick={() => setLinkFor(linkFor === o._id ? null : o._id)}>{linkFor === o._id ? "Hide link" : "Payment link"}</SecondaryButton>
+                      )}
+                    </div>
+                    {managesOrders && linkFor === o._id && (
+                      <div className="mt-3">
+                        <PayLinkPanel orderId={o._id} />
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+
           <div className="mt-6 flex justify-end gap-2">
             <SecondaryButton onClick={onClose} disabled={saving}>
               Close
             </SecondaryButton>
-            {tab !== "documents" && (
+            {tab !== "documents" && tab !== "payments" && (
               <PrimaryButton onClick={save} loading={saveAction.isBusy("profile")} disabled={saving}>
                 Save
               </PrimaryButton>
