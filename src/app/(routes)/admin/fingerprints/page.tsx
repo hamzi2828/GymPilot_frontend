@@ -22,6 +22,7 @@ import {
   Modal,
   SecondaryButton,
   DangerButton,
+  useAsyncAction,
 } from "../_shared/ui";
 import { ATTENDANCE_API, ApiError, apiGet, apiJson } from "../_shared/api";
 
@@ -113,7 +114,8 @@ export default function FingerprintsPage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [pending, setPending] = useState<Pending | null>(null);
-  const [removing, setRemoving] = useState(false);
+  const removeAction = useAsyncAction();
+  const removing = removeAction.busy;
   const [removeError, setRemoveError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -159,10 +161,9 @@ export default function FingerprintsPage() {
     setRemoveError(null);
   };
 
-  const confirmRemove = async () => {
+  const confirmRemove = () => removeAction.run(async () => {
     if (!pending) return;
     const { person, finger } = pending;
-    setRemoving(true);
     setRemoveError(null);
     // The finger goes in the path rather than the query: the audit trail
     // keeps the path, and should say which finger went.
@@ -178,10 +179,8 @@ export default function FingerprintsPage() {
       setRemoveError(e instanceof Error ? e.message : "Could not remove the fingerprint");
       // Already gone -- someone else got there first. The list is stale.
       if (e instanceof ApiError && e.status === 404) load();
-    } finally {
-      setRemoving(false);
     }
-  };
+  });
 
   if (!allowed) {
     return (
@@ -249,7 +248,8 @@ export default function FingerprintsPage() {
               setPage(1);
               setShow("unreadable");
             }}
-            className="shrink-0 rounded-lg border border-rose-200 bg-white px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-50"
+            disabled={loading}
+            className="shrink-0 rounded-lg border border-rose-200 bg-white px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
           >
             Show them
           </button>
@@ -390,6 +390,7 @@ export default function FingerprintsPage() {
         onClose={close}
         title={pending && !pending.finger ? "Remove all fingerprints" : "Remove fingerprint"}
         size="sm"
+        busy={removing}
       >
         {pending && (
           <div>
@@ -421,8 +422,8 @@ export default function FingerprintsPage() {
               <SecondaryButton onClick={close} disabled={removing}>
                 Cancel
               </SecondaryButton>
-              <DangerButton onClick={confirmRemove} disabled={removing}>
-                {removing ? "Removing…" : pending.finger ? "Remove finger" : "Remove all"}
+              <DangerButton onClick={confirmRemove} loading={removing}>
+                {pending.finger ? "Remove finger" : "Remove all"}
               </DangerButton>
             </div>
           </div>

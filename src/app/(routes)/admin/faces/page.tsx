@@ -23,6 +23,7 @@ import {
   Modal,
   SecondaryButton,
   DangerButton,
+  useAsyncAction,
 } from "../_shared/ui";
 import { ATTENDANCE_API, ApiError, apiGet, apiJson } from "../_shared/api";
 
@@ -103,7 +104,8 @@ export default function FacesPage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [pending, setPending] = useState<Face | null>(null);
-  const [removing, setRemoving] = useState(false);
+  const removeAction = useAsyncAction();
+  const removing = removeAction.busy;
   const [removeError, setRemoveError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -150,9 +152,8 @@ export default function FacesPage() {
     setRemoveError(null);
   };
 
-  const confirmRemove = async () => {
+  const confirmRemove = () => removeAction.run(async () => {
     if (!pending) return;
-    setRemoving(true);
     setRemoveError(null);
     try {
       const res = await apiJson<{ message?: string }>(`${ATTENDANCE_API}/faces/${pending.person_type}/${pending.person_id}`, "DELETE");
@@ -164,10 +165,8 @@ export default function FacesPage() {
       // Already gone -- someone else got there first, or the member deleted
       // it themselves. The list is stale.
       if (e instanceof ApiError && e.status === 404) load();
-    } finally {
-      setRemoving(false);
     }
-  };
+  });
 
   if (!allowed) {
     return (
@@ -232,7 +231,8 @@ export default function FacesPage() {
               setPage(1);
               setShow("unreadable");
             }}
-            className="shrink-0 rounded-lg border border-rose-200 bg-white px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-50"
+            disabled={loading}
+            className="shrink-0 rounded-lg border border-rose-200 bg-white px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
           >
             Show them
           </button>
@@ -345,7 +345,7 @@ export default function FacesPage() {
 
       {!loading && !error && <Pager page={page} pages={pages} total={total} onChange={setPage} />}
 
-      <Modal open={!!pending} onClose={close} title="Remove face" size="sm">
+      <Modal open={!!pending} onClose={close} title="Remove face" size="sm" busy={removing}>
         {pending && (
           <div>
             <p className="text-sm text-neutral-800">
@@ -365,8 +365,8 @@ export default function FacesPage() {
               <SecondaryButton onClick={close} disabled={removing}>
                 Cancel
               </SecondaryButton>
-              <DangerButton onClick={confirmRemove} disabled={removing}>
-                {removing ? "Removing…" : "Remove face"}
+              <DangerButton onClick={confirmRemove} loading={removing}>
+                Remove face
               </DangerButton>
             </div>
           </div>

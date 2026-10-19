@@ -11,7 +11,7 @@
 // on the page is formatted by the server.
 
 import { useEffect, useState } from "react";
-import { Modal, PrimaryButton, SecondaryButton, DangerButton, TextArea, Toggle, Spinner } from "../_shared/ui";
+import { Modal, PrimaryButton, SecondaryButton, DangerButton, TextArea, Toggle, Spinner, useAsyncAction } from "../_shared/ui";
 import { ATTENDANCE_API, apiGet, apiJson } from "../_shared/api";
 
 /** What a correction needs to know about a punch-log row. */
@@ -92,7 +92,8 @@ export function EditTimesModal({
   const [checkIn, setCheckIn] = useState(initialIn);
   const [checkOut, setCheckOut] = useState(initialOut);
   const [note, setNote] = useState("");
-  const [saving, setSaving] = useState(false);
+  const saveAction = useAsyncAction();
+  const saving = saveAction.busy;
   const [error, setError] = useState<string | null>(null);
 
   // The visit stays on the day it is filed under; the server refuses anything
@@ -103,7 +104,7 @@ export function EditTimesModal({
   // Wall-clock strings of one shape compare in time order.
   const checkInMax = nowAtGym && nowAtGym < dayEnd ? nowAtGym : dayEnd;
 
-  const save = async () => {
+  const save = () => saveAction.run(async () => {
     const body: Record<string, string> = { note: note.trim() };
     if (checkIn && checkIn !== initialIn) body.checkInAt = checkIn;
     if (checkOut && checkOut !== initialOut) body.checkOutAt = checkOut;
@@ -117,20 +118,17 @@ export function EditTimesModal({
       return;
     }
 
-    setSaving(true);
     setError(null);
     try {
       const res = await apiJson<CorrectionResponse>(`${ATTENDANCE_API}/records/${record.id}`, "PATCH", body);
       onSaved(res.message || "Visit times updated.");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not update that visit.");
-    } finally {
-      setSaving(false);
     }
-  };
+  });
 
   return (
-    <Modal open onClose={onClose} title={`Edit times · ${record.person_name}`} size="sm">
+    <Modal open onClose={onClose} title={`Edit times · ${record.person_name}`} size="sm" busy={saving}>
       <div className="space-y-4">
         <p className="text-[13px] text-neutral-600">
           {record.date_label} · recorded {record.check_in_time || "—"} → {record.check_out_time || "no check-out"}
@@ -182,8 +180,8 @@ export function EditTimesModal({
           <SecondaryButton onClick={onClose} disabled={saving}>
             Cancel
           </SecondaryButton>
-          <PrimaryButton onClick={save} disabled={saving}>
-            {saving ? "Saving…" : "Save times"}
+          <PrimaryButton onClick={save} loading={saving}>
+            Save times
           </PrimaryButton>
         </div>
       </div>
@@ -205,15 +203,15 @@ export function VoidVisitModal({
   onVoided: (message: string) => void;
 }) {
   const [reason, setReason] = useState("");
-  const [saving, setSaving] = useState(false);
+  const saveAction = useAsyncAction();
+  const saving = saveAction.busy;
   const [error, setError] = useState<string | null>(null);
 
-  const submit = async () => {
+  const submit = () => saveAction.run(async () => {
     if (!reason.trim()) {
       setError("Add a reason for voiding this visit.");
       return;
     }
-    setSaving(true);
     setError(null);
     try {
       const res = await apiJson<CorrectionResponse>(`${ATTENDANCE_API}/records/${record.id}/void`, "POST", {
@@ -222,13 +220,11 @@ export function VoidVisitModal({
       onVoided(res.message || "Visit voided.");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not void that visit.");
-    } finally {
-      setSaving(false);
     }
-  };
+  });
 
   return (
-    <Modal open onClose={onClose} title={`Void visit · ${record.person_name}`} size="sm">
+    <Modal open onClose={onClose} title={`Void visit · ${record.person_name}`} size="sm" busy={saving}>
       <div className="space-y-4">
         <p className="text-[13px] text-neutral-600">
           {record.date_label} · {record.check_in_time || "—"} → {record.check_out_time || "no check-out"}
@@ -247,8 +243,8 @@ export function VoidVisitModal({
           <SecondaryButton onClick={onClose} disabled={saving}>
             Cancel
           </SecondaryButton>
-          <DangerButton onClick={submit} disabled={saving}>
-            {saving ? "Voiding…" : "Void visit"}
+          <DangerButton onClick={submit} loading={saving}>
+            Void visit
           </DangerButton>
         </div>
       </div>
@@ -318,7 +314,8 @@ export function DeskSettingsModal({ onClose, onSaved }: { onClose: () => void; o
   // The entry rules as last saved, and as edited.
   const [savedRefuse, setSavedRefuse] = useState<RefuseEntry | null>(null);
   const [refuse, setRefuse] = useState<RefuseEntry | null>(null);
-  const [saving, setSaving] = useState(false);
+  const saveAction = useAsyncAction();
+  const saving = saveAction.busy;
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -356,8 +353,7 @@ export function DeskSettingsModal({ onClose, onSaved }: { onClose: () => void; o
   const refuseChanged = !!refuse && !!savedRefuse && REFUSE_FIELDS.some((field) => refuse[field.key] !== savedRefuse[field.key]);
   const changed = (saved !== null && saved !== scanOut) || voiceChanged || refuseChanged;
 
-  const save = async () => {
-    setSaving(true);
+  const save = () => saveAction.run(async () => {
     setError(null);
     try {
       const body: Record<string, unknown> = {};
@@ -376,13 +372,11 @@ export function DeskSettingsModal({ onClose, onSaved }: { onClose: () => void; o
       onSaved(res.message || "Attendance settings saved.");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not save the attendance settings.");
-    } finally {
-      setSaving(false);
     }
-  };
+  });
 
   return (
-    <Modal open onClose={onClose} title="Front desk settings" size="sm">
+    <Modal open onClose={onClose} title="Front desk settings" size="sm" busy={saving}>
       {loading ? (
         <Spinner />
       ) : (
@@ -465,8 +459,8 @@ export function DeskSettingsModal({ onClose, onSaved }: { onClose: () => void; o
             <SecondaryButton onClick={onClose} disabled={saving}>
               Cancel
             </SecondaryButton>
-            <PrimaryButton onClick={save} disabled={saving || saved === null || !changed}>
-              {saving ? "Saving…" : "Save"}
+            <PrimaryButton onClick={save} loading={saving} disabled={saved === null || !changed}>
+              Save
             </PrimaryButton>
           </div>
         </div>

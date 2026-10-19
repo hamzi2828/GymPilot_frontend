@@ -23,6 +23,7 @@ import {
   SecondaryButton,
   DangerButton,
   useConfirm,
+  useAsyncAction,
 } from "../_shared/ui";
 import { API_BASE, apiGet, apiJson } from "../_shared/api";
 
@@ -89,7 +90,8 @@ export default function DeskAppPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [code, setCode] = useState<LinkCode | null>(null);
-  const [making, setMaking] = useState(false);
+  const makeAction = useAsyncAction();
+  const making = makeAction.busy;
   const [codeError, setCodeError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [now, setNow] = useState(() => Date.now());
@@ -97,7 +99,7 @@ export default function DeskAppPage() {
   const [linkedDevice, setLinkedDevice] = useState<string | null>(null);
 
   const [notice, setNotice] = useState<string | null>(null);
-  const [unlinking, setUnlinking] = useState<string | null>(null);
+  const unlinking = useAsyncAction();
 
   // Desks already signed in when the code was made, so a new one stands out.
   const knownDesks = useRef<Set<string>>(new Set());
@@ -143,8 +145,7 @@ export default function DeskAppPage() {
     return () => clearInterval(t);
   }, [watching, load]);
 
-  async function getCode() {
-    setMaking(true);
+  const getCode = () => makeAction.run(async () => {
     setCodeError(null);
     setCopied(false);
     setLinkedDevice(null);
@@ -157,10 +158,8 @@ export default function DeskAppPage() {
       if (res.data.granted_app_access) load(true);
     } catch (e) {
       setCodeError(e instanceof Error ? e.message : "Could not make a link code");
-    } finally {
-      setMaking(false);
     }
-  }
+  });
 
   async function copyCode() {
     if (!code) return;
@@ -183,16 +182,15 @@ export default function DeskAppPage() {
     });
     if (answer === null) return;
 
-    setUnlinking(desk.id);
-    try {
-      await apiJson(`${DESK_LINK_API}/desks/${desk.id}/unlink`, "POST");
-      setNotice(`${name} has been unlinked.`);
-      await load(true);
-    } catch (e) {
-      setNotice(e instanceof Error ? e.message : "Could not unlink that desk");
-    } finally {
-      setUnlinking(null);
-    }
+    await unlinking.run(desk.id, async () => {
+      try {
+        await apiJson(`${DESK_LINK_API}/desks/${desk.id}/unlink`, "POST");
+        setNotice(`${name} has been unlinked.`);
+        await load(true);
+      } catch (e) {
+        setNotice(e instanceof Error ? e.message : "Could not unlink that desk");
+      }
+    });
   }
 
   const desks = overview?.desks || [];
@@ -344,12 +342,12 @@ export default function DeskAppPage() {
 
               <div className="mt-4">
                 {!code || expired || linkedDevice ? (
-                  <PrimaryButton onClick={getCode} disabled={making}>
-                    {making ? "Getting a code…" : code ? "Get a new code" : "Get link code"}
+                  <PrimaryButton onClick={getCode} loading={making}>
+                    {code ? "Get a new code" : "Get link code"}
                   </PrimaryButton>
                 ) : (
-                  <SecondaryButton onClick={getCode} disabled={making}>
-                    {making ? "Getting a code…" : "Get a new code"}
+                  <SecondaryButton onClick={getCode} loading={making}>
+                    Get a new code
                   </SecondaryButton>
                 )}
               </div>
@@ -395,8 +393,8 @@ export default function DeskAppPage() {
                       {formatWhen(desk.last_seen_at)}
                     </p>
                   </div>
-                  <DangerButton onClick={() => unlink(desk)} disabled={unlinking === desk.id}>
-                    {unlinking === desk.id ? "Unlinking…" : "Unlink"}
+                  <DangerButton onClick={() => unlink(desk)} loading={unlinking.isBusy(desk.id)}>
+                    Unlink
                   </DangerButton>
                 </li>
               ))}

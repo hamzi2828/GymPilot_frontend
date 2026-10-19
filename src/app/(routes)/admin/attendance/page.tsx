@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FiDownload, FiRefreshCw, FiSearch, FiSettings, FiX } from "react-icons/fi";
-import { PageHeader, Card, Modal, SecondaryButton, Spinner, EmptyState, Select2, useLatestRequest } from "../_shared/ui";
+import { PageHeader, Card, Modal, SecondaryButton, Spinner, EmptyState, Select2, useLatestRequest, useAsyncAction } from "../_shared/ui";
 import { ATTENDANCE_API, apiGet, csvField } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
 import {
@@ -553,7 +553,9 @@ export default function AttendanceAdminPage() {
   const [limit, setLimit] = useState(25);
 
   const [loading, setLoading] = useState(true);
-  const [exporting, setExporting] = useState(false);
+  const exportAction = useAsyncAction();
+  const exporting = exportAction.busy;
+  const refreshing = useAsyncAction();
   const [err, setErr] = useState<string | null>(null);
 
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
@@ -798,14 +800,13 @@ export default function AttendanceAdminPage() {
   // Export covers the WHOLE filtered range — every page, in the same order,
   // under the same filters — not just the rows on screen. It walks the same
   // endpoint the table reads, so a spreadsheet cannot disagree with it.
-  const exportCsv = async () => {
+  const exportCsv = () => exportAction.run(async () => {
     // Quoted, and never a formula (see csvField).
     const escape = csvField;
     const pageSize = 500; // the server's own ceiling per page
     let header: string[];
     let lines: string[][];
 
-    setExporting(true);
     setErr(null);
     try {
       if (tab === "live") {
@@ -883,8 +884,6 @@ export default function AttendanceAdminPage() {
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Could not export attendance.");
       return;
-    } finally {
-      setExporting(false);
     }
 
     const csv = [header, ...lines].map((row) => row.map(escape).join(",")).join("\r\n");
@@ -896,7 +895,7 @@ export default function AttendanceAdminPage() {
       tab === "live" ? `attendance-today-${live?.today || today}.csv` : `attendance-${tab}-${from || today}-to-${to || today}.csv`;
     anchor.click();
     URL.revokeObjectURL(url);
-  };
+  });
 
   const statusOptions = STATUS_OPTIONS.filter(
     (option) => !option.group || personType === "all" || option.group === personType
@@ -916,15 +915,15 @@ export default function AttendanceAdminPage() {
             )}
             <SecondaryButton
               onClick={exportCsv}
+              loading={exporting}
               disabled={
                 loading ||
-                exporting ||
                 (tab === "live" ? !live?.records.length : tab === "log" ? !records.length : !people.length)
               }
             >
-              <FiDownload className="mr-1.5 h-4 w-4" /> {exporting ? "Exporting…" : "Export CSV"}
+              <FiDownload className="mr-1.5 h-4 w-4" /> Export CSV
             </SecondaryButton>
-            <SecondaryButton onClick={load} disabled={loading}>
+            <SecondaryButton onClick={() => refreshing.run(load)} loading={refreshing.busy} disabled={loading}>
               <FiRefreshCw className={`mr-1.5 h-4 w-4 ${loading ? "animate-spin" : ""}`} /> Refresh
             </SecondaryButton>
           </>
@@ -943,7 +942,8 @@ export default function AttendanceAdminPage() {
                   key={preset.id}
                   type="button"
                   onClick={() => applyPreset(preset)}
-                  className={`h-8 rounded-lg px-3 text-[13px] font-medium transition-colors ${
+                  disabled={loading}
+                  className={`h-8 rounded-lg px-3 text-[13px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
                     activePreset === preset.id
                       ? "bg-neutral-900 text-white"
                       : "border border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900"
@@ -964,7 +964,8 @@ export default function AttendanceAdminPage() {
               <button
                 type="button"
                 onClick={resetFilters}
-                className="inline-flex h-8 items-center gap-1 rounded-lg px-2 text-[12px] font-medium text-neutral-500 hover:bg-neutral-50 hover:text-neutral-800"
+                disabled={loading}
+                className="inline-flex h-8 items-center gap-1 rounded-lg px-2 text-[12px] font-medium text-neutral-500 hover:bg-neutral-50 hover:text-neutral-800 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <FiX className="h-3.5 w-3.5" /> Clear filters
               </button>
@@ -1187,7 +1188,8 @@ export default function AttendanceAdminPage() {
           <button
             type="button"
             onClick={() => showMissed(presence !== "missed")}
-            className="h-8 rounded-lg border border-amber-300 bg-white px-3 text-[13px] font-medium text-amber-900 hover:bg-amber-50"
+            disabled={loading}
+            className="h-8 rounded-lg border border-amber-300 bg-white px-3 text-[13px] font-medium text-amber-900 hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {presence === "missed" ? "Show all visits" : "Show them"}
           </button>
@@ -1226,7 +1228,8 @@ export default function AttendanceAdminPage() {
               setTab(entry.id);
               setPage(1);
             }}
-            className={`-mb-px border-b-2 px-4 py-2.5 text-sm font-medium transition-colors ${
+            disabled={loading && tab !== entry.id}
+            className={`-mb-px border-b-2 px-4 py-2.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
               tab === entry.id
                 ? "border-[var(--accent)] text-neutral-900"
                 : "border-transparent text-neutral-500 hover:text-neutral-800"
