@@ -3,6 +3,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useId, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
+import SearchableSelect, { type SearchableSelectOption } from "@/components/ui/SearchableSelect";
 import { BILLING_PATH, newRequestId } from "./api";
 
 export function PageHeader({
@@ -251,31 +252,17 @@ export function TextArea({
 // ---------------------------------------------------------------------------
 // Select2
 //
-// A searchable dropdown in the shape of the jQuery plugin of the same name,
-// built natively rather than pulled in: Select2 needs jQuery and mutates the
-// DOM under React, which fights the render cycle on every re-render.
-//
-// Two decisions worth knowing about:
-//
-//   * The panel is PORTALLED to <body> at fixed coordinates rather than
-//     absolutely positioned inside the field. Several of these live inside a
-//     modal whose body scrolls (`overflow-y-auto`), and an in-flow dropdown is
-//     clipped by it -- the list would be cut off exactly where it matters.
-//
-//   * The search box only appears once a list is long enough to need it.
-//     Typing to filter three options is slower than reading them.
+// The panel's searchable dropdown, in the shape of the jQuery plugin of the
+// same name: the site-wide SearchableSelect (components/ui) in the panel's
+// look, which also marks a dialog it sits in as touched when a choice is
+// made. Every list opens with its search box; see SearchableSelect for how it
+// behaves.
 // ---------------------------------------------------------------------------
 
-export interface SelectOption {
-  value: string;
-  label: string;
-  // Second line under the label -- an email beside a name, a count beside a
-  // status. Searched along with the label.
-  hint?: string;
-}
+export type SelectOption = SearchableSelectOption;
 
-// Above this many options, a search box appears.
-const SEARCH_THRESHOLD = 7;
+const TRIGGER_FOCUS =
+  "focus:outline-none focus-visible:border-[var(--accent)] focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--accent)_25%,transparent)]";
 
 export function Select2({
   value,
@@ -285,9 +272,10 @@ export function Select2({
   searchPlaceholder = "Search…",
   allowClear = false,
   disabled = false,
-  searchable,
+  searchable = true,
   size = "md",
   ariaLabel,
+  busy,
 }: {
   value: string | undefined;
   onChange: (v: string) => void;
@@ -296,275 +284,40 @@ export function Select2({
   searchPlaceholder?: string;
   allowClear?: boolean;
   disabled?: boolean;
+  /** False drops the search box. Every list has one by default. */
   searchable?: boolean;
   size?: "sm" | "md";
   ariaLabel?: string;
+  /** Something the last pick started is still running (aria-busy). */
+  busy?: boolean;
 }) {
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
-  const [active, setActive] = useState(0);
-  const [coords, setCoords] = useState<{
-    top: number;
-    left: number;
-    width: number;
-    maxHeight: number;
-    flipped: boolean;
-  } | null>(null);
-
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const panelRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const listRef = useRef<HTMLDivElement>(null);
-  const listboxId = useId();
   const markDialogTouched = useContext(DialogTouchedContext);
-
-  const selected = useMemo(() => options.find((o) => o.value === value) || null, [options, value]);
-  const showSearch = searchable ?? options.length > SEARCH_THRESHOLD;
-
-  const filtered = useMemo(() => {
-    const term = query.trim().toLowerCase();
-    if (!term) return options;
-    return options.filter(
-      (option) =>
-        option.label.toLowerCase().includes(term) || (option.hint || "").toLowerCase().includes(term)
-    );
-  }, [options, query]);
-
-  // Measured from the trigger every time it opens, and again on scroll: a
-  // fixed panel does not follow its field on its own.
-  const place = useCallback(() => {
-    const node = triggerRef.current;
-    if (!node) return;
-
-    const rect = node.getBoundingClientRect();
-    const below = window.innerHeight - rect.bottom - 12;
-    const above = rect.top - 12;
-    const flipped = below < 200 && above > below;
-
-    setCoords({
-      top: flipped ? rect.top - 6 : rect.bottom + 6,
-      left: rect.left,
-      width: rect.width,
-      maxHeight: Math.max(160, Math.min(300, flipped ? above : below)),
-      flipped,
-    });
-  }, []);
-
-  useEffect(() => {
-    if (!open) return;
-
-    place();
-
-    const reposition = () => place();
-    // Capture phase: the field may sit inside a scrolling modal body, whose
-    // scroll events do not bubble to window.
-    window.addEventListener("scroll", reposition, true);
-    window.addEventListener("resize", reposition);
-
-    const onPointerDown = (event: MouseEvent) => {
-      const target = event.target as Node;
-      if (panelRef.current?.contains(target) || triggerRef.current?.contains(target)) return;
-      setOpen(false);
-    };
-    document.addEventListener("mousedown", onPointerDown);
-
-    return () => {
-      window.removeEventListener("scroll", reposition, true);
-      window.removeEventListener("resize", reposition);
-      document.removeEventListener("mousedown", onPointerDown);
-    };
-  }, [open, place]);
-
-  // Opening starts from the current selection, so Enter without touching
-  // anything is a no-op rather than a silent change to the first option.
-  useEffect(() => {
-    if (!open) return;
-    setQuery("");
-    const index = options.findIndex((option) => option.value === value);
-    setActive(index >= 0 ? index : 0);
-    const focus = requestAnimationFrame(() => (inputRef.current || listRef.current)?.focus());
-    return () => cancelAnimationFrame(focus);
-  }, [open, options, value]);
-
-  useEffect(() => {
-    if (open) setActive(0);
-  }, [query, open]);
-
-  useEffect(() => {
-    if (!open) return;
-    const node = listRef.current?.querySelector(`[data-index="${active}"]`);
-    if (node) (node as HTMLElement).scrollIntoView({ block: "nearest" });
-  }, [active, open]);
-
-  const commit = (option: SelectOption) => {
-    markDialogTouched?.();
-    onChange(option.value);
-    setOpen(false);
-    triggerRef.current?.focus();
-  };
-
-  const onKeyDown = (event: React.KeyboardEvent) => {
-    if (!open) {
-      if (event.key === "Enter" || event.key === " " || event.key === "ArrowDown") {
-        event.preventDefault();
-        setOpen(true);
-      }
-      return;
-    }
-
-    if (event.key === "ArrowDown") {
-      event.preventDefault();
-      setActive((i) => Math.min(filtered.length - 1, i + 1));
-    } else if (event.key === "ArrowUp") {
-      event.preventDefault();
-      setActive((i) => Math.max(0, i - 1));
-    } else if (event.key === "Home") {
-      event.preventDefault();
-      setActive(0);
-    } else if (event.key === "End") {
-      event.preventDefault();
-      setActive(filtered.length - 1);
-    } else if (event.key === "Enter") {
-      event.preventDefault();
-      if (filtered[active]) commit(filtered[active]);
-    } else if (event.key === "Escape") {
-      // Marked as used, so a dialog this field sits in closes the list only.
-      event.preventDefault();
-      setOpen(false);
-      triggerRef.current?.focus();
-    } else if (event.key === "Tab") {
-      // Back to the field first: Tab then moves on from where the field is,
-      // not from the panel, which is drawn at the end of the page.
-      setOpen(false);
-      triggerRef.current?.focus();
-    }
-  };
-
   const height = size === "sm" ? "h-8 text-[13px]" : "h-9 text-sm";
 
   return (
-    <>
-      <button
-        ref={triggerRef}
-        type="button"
-        role="combobox"
-        aria-expanded={open}
-        aria-haspopup="listbox"
-        aria-controls={open ? listboxId : undefined}
-        aria-label={ariaLabel}
-        disabled={disabled}
-        onClick={() => setOpen((v) => !v)}
-        onKeyDown={onKeyDown}
-        className={`flex w-full items-center gap-2 rounded-lg border bg-white px-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${height} ${
+    <SearchableSelect
+      look="admin"
+      value={value}
+      onChange={(next) => {
+        markDialogTouched?.();
+        onChange(next);
+      }}
+      options={options}
+      placeholder={placeholder}
+      searchPlaceholder={searchPlaceholder}
+      allowClear={allowClear}
+      disabled={disabled}
+      searchable={searchable}
+      ariaLabel={ariaLabel}
+      busy={busy}
+      className={({ open }) =>
+        `rounded-lg border bg-white px-3 ${height} ${
           open
             ? "border-[var(--accent)] ring-2 ring-[color-mix(in_srgb,var(--accent)_25%,transparent)]"
             : "border-neutral-200 hover:border-neutral-300"
-        } focus:outline-none focus-visible:border-[var(--accent)] focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--accent)_25%,transparent)]`}
-      >
-        <span className={`min-w-0 flex-1 truncate ${selected ? "text-neutral-800" : "text-neutral-400"}`}>
-          {selected ? selected.label : placeholder}
-        </span>
-
-        {allowClear && selected && !disabled && (
-          <span
-            role="button"
-            tabIndex={-1}
-            aria-label="Clear selection"
-            onClick={(event) => {
-              event.stopPropagation();
-              markDialogTouched?.();
-              onChange("");
-            }}
-            className="shrink-0 rounded px-1 text-neutral-400 hover:text-neutral-700"
-          >
-            ✕
-          </span>
-        )}
-
-        <svg
-          aria-hidden="true"
-          viewBox="0 0 20 20"
-          className={`h-4 w-4 shrink-0 text-neutral-400 transition-transform ${open ? "rotate-180" : ""}`}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.6"
-        >
-          <path d="M6 8l4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      </button>
-
-      {open &&
-        coords &&
-        typeof document !== "undefined" &&
-        createPortal(
-          <div
-            ref={panelRef}
-            data-dialog-popover=""
-            style={{
-              position: "fixed",
-              top: coords.top,
-              left: coords.left,
-              width: coords.width,
-              transform: coords.flipped ? "translateY(-100%)" : undefined,
-              zIndex: 70,
-            }}
-            className="overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-lg shadow-neutral-900/10"
-          >
-            {showSearch && (
-              <div className="border-b border-neutral-100 p-2">
-                <input
-                  ref={inputRef}
-                  type="text"
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  onKeyDown={onKeyDown}
-                  placeholder={searchPlaceholder}
-                  className="h-8 w-full rounded-md border border-neutral-200 px-2.5 text-base sm:text-[13px] text-neutral-800 focus:border-[var(--accent)] focus:outline-none"
-                />
-              </div>
-            )}
-
-            {/* Without a search box there is nothing else to hold focus, so
-                the list itself takes it and answers the arrow keys. */}
-            <div
-              ref={listRef}
-              id={listboxId}
-              role="listbox"
-              tabIndex={showSearch ? -1 : 0}
-              onKeyDown={showSearch ? undefined : onKeyDown}
-              style={{ maxHeight: coords.maxHeight }}
-              className="admin-scroll overflow-y-auto py-1 focus:outline-none"
-            >
-              {!filtered.length && (
-                <p className="px-3 py-6 text-center text-[13px] text-neutral-400">No matches</p>
-              )}
-
-              {filtered.map((option, index) => {
-                const isSelected = option.value === value;
-                return (
-                  <div
-                    key={option.value || `__empty-${index}`}
-                    data-index={index}
-                    role="option"
-                    aria-selected={isSelected}
-                    onMouseEnter={() => setActive(index)}
-                    onClick={() => commit(option)}
-                    className={`cursor-pointer px-3 py-2 text-[13px] ${
-                      index === active ? "bg-neutral-100" : ""
-                    } ${isSelected ? "font-semibold text-neutral-900" : "text-neutral-700"}`}
-                  >
-                    <span className="block truncate">{option.label}</span>
-                    {option.hint && (
-                      <span className="mt-0.5 block truncate text-[11px] text-neutral-400">{option.hint}</span>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>,
-          document.body
-        )}
-    </>
+        } ${TRIGGER_FOCUS}`
+      }
+    />
   );
 }
 
