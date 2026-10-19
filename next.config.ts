@@ -127,6 +127,8 @@ const nextConfig: NextConfig = {
           { key: 'X-Frame-Options', value: 'DENY' },
         ],
       },
+      // A member's payment link: never indexed, whatever finds it.
+      { source: '/pay/:path*', headers: [{ key: 'X-Robots-Tag', value: 'noindex, nofollow' }] },
       // The embeds: the same policy, without frame-ancestors.
       { source: '/embed', headers: [{ key: 'Content-Security-Policy', value: contentSecurityPolicy({ framed: true }) }] },
       { source: '/embed/:path*', headers: [{ key: 'Content-Security-Policy', value: contentSecurityPolicy({ framed: true }) }] },

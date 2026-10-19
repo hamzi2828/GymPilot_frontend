@@ -9,9 +9,9 @@ export default async function robots(): Promise<MetadataRoute.Robots> {
     rules: {
       userAgent: "*",
       allow: "/",
-      // Account, admin and purchase pages carry nothing a search result should
-      // ever land someone on.
-      disallow: ["/admin", "/admin/", "/user-detail", "/checkin", "/checkout", "/authentication"],
+      // Account, admin and purchase pages (a member's payment link included)
+      // carry nothing a search result should ever land someone on.
+      disallow: ["/admin", "/admin/", "/user-detail", "/checkin", "/checkout", "/pay/", "/authentication"],
     },
     sitemap: `${base}/sitemap.xml`,
   };
