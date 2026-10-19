@@ -63,7 +63,7 @@ export default function CheckoutCancelPage() {
               </Link>
               <button
                 onClick={() => {
-                  startNavigationProgress();
+                  startNavigationProgress("/");
                   router.push("/");
                 }}
                 className="w-full bg-gray-200 text-gray-800 text-center rounded-lg px-4 py-3 hover:bg-gray-300 transition-colors"

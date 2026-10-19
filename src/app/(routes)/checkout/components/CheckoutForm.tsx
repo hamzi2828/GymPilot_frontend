@@ -130,8 +130,9 @@ const CheckoutForm: React.FC<CheckoutFormProps> = ({ packageData, onSubmitChange
             // payment once it lands.
             const { order } = await checkoutService.createBankTransferOrder(packageData._id, shippingData, couponCode);
             leaving = true;
-            startNavigationProgress();
-            router.push(`/checkout/bank-transfer?order=${order._id}`);
+            const next = `/checkout/bank-transfer?order=${order._id}`;
+            startNavigationProgress(next);
+            router.push(next);
             return;
           }
           // Card: redirects the browser to Stripe Checkout.

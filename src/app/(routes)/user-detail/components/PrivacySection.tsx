@@ -209,7 +209,7 @@ export const PrivacySection: React.FC<{ twoFactorEnabled?: boolean; biometricCon
                   removeToken();
                   // Stays busy until the sign-in page is up.
                   leave();
-                  startNavigationProgress();
+                  startNavigationProgress("/authentication");
                   router.replace("/authentication");
                 })
               }

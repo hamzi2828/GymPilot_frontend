@@ -13,8 +13,22 @@ const SHOW_AFTER_MS = 120;
 // Never left running if a navigation is cancelled or goes nowhere.
 const GIVE_UP_MS = 12000;
 
-export function startNavigationProgress() {
-  if (typeof window !== "undefined") window.dispatchEvent(new Event(START_EVENT));
+// The page already open, or only a #section of it: nothing will load.
+function isCurrentPage(url: URL): boolean {
+  return url.pathname === window.location.pathname && url.search === window.location.search;
+}
+
+/** For code that moves with router.push/replace: pass where it is going. */
+export function startNavigationProgress(href?: string) {
+  if (typeof window === "undefined") return;
+  if (href) {
+    try {
+      if (isCurrentPage(new URL(href, window.location.href))) return;
+    } catch {
+      /* not a URL: show the bar anyway */
+    }
+  }
+  window.dispatchEvent(new Event(START_EVENT));
 }
 
 function isPageLink(e: MouseEvent): boolean {
@@ -29,9 +43,7 @@ function isPageLink(e: MouseEvent): boolean {
   } catch {
     return false;
   }
-  if (url.origin !== window.location.origin) return false;
-  // The same page, or only a #section of it.
-  return url.pathname !== window.location.pathname || url.search !== window.location.search;
+  return url.origin === window.location.origin && !isCurrentPage(url);
 }
 
 type Timers = { show?: number; trickle?: number; giveUp?: number; hide?: number };

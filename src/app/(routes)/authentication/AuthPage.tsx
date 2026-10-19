@@ -85,7 +85,7 @@ const AuthPage: React.FC = () => {
     const target = redirectTo || homeFor(role);
     // The button keeps spinning until the next page is up.
     if (!target.startsWith("/authentication")) leave();
-    startNavigationProgress();
+    startNavigationProgress(target);
     router.replace(target);
   };
 
