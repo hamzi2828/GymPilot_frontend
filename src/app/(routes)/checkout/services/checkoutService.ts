@@ -34,6 +34,8 @@ export interface OnlineMethod {
   label: string;
   /** The gym charges saved cards on the due date, so checkout may offer to save one. */
   auto_pay_available?: boolean;
+  /** False for a gateway with no checkout of its own (bank transfer and a receipt only). */
+  checkout?: boolean;
 }
 
 /** What each gateway is called on screen; one not listed is "our payment partner". */
@@ -53,6 +55,9 @@ export function onlineMethod(methods: PaymentMethods | null | undefined): Online
   if (!methods) return null;
   if (methods.online === undefined) return methods.card ? { provider: "stripe", label: "Card" } : null;
   if (!methods.online || !methods.online.provider) return null;
+  // The "generic" gateway has no checkout: its members pay by bank transfer
+  // (offered on its own when the gym has accounts) and upload the receipt.
+  if (methods.online.provider === "generic" || methods.online.checkout === false) return null;
   if (methods.online.provider === "stripe" && !methods.card) return null;
   return methods.online;
 }
