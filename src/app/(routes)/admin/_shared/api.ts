@@ -192,6 +192,42 @@ export async function apiBlob(url: string): Promise<{ blob: Blob; filename: stri
 }
 
 /**
+ * A file from the API (an invoice, a payslip) opened in a new tab. Call it
+ * straight from the click, with nothing awaited first: the tab is opened then,
+ * while the click still counts, and the file is put in it once it has loaded.
+ * A tab opened after the wait is what popup blockers stop, and the file was
+ * then quietly never shown. With no tab at all (blocked even so) the file is
+ * saved instead; a tab closed while it loaded is left closed.
+ */
+export async function openFileInNewTab(url: string, fallbackName: string): Promise<void> {
+  const tab = typeof window !== "undefined" ? window.open("", "_blank") : null;
+  if (tab) {
+    try {
+      tab.document.title = "Loading…";
+      tab.document.body.textContent = "Loading…";
+    } catch {
+      // Nothing to say it with; the tab still gets the file.
+    }
+  }
+  try {
+    const { blob, filename } = await apiBlob(url);
+    const href = URL.createObjectURL(blob);
+    if (tab) {
+      if (!tab.closed) tab.location.href = href;
+    } else {
+      const a = document.createElement("a");
+      a.href = href;
+      a.download = filename || fallbackName;
+      a.click();
+    }
+    setTimeout(() => URL.revokeObjectURL(href), 60000);
+  } catch (e) {
+    tab?.close();
+    throw e;
+  }
+}
+
+/**
  * Rewrites the current page's address in place. Next keeps useSearchParams
  * in step with history.replaceState, and unlike router.replace it does not
  * refetch the page (for every key typed into a search box, say). An empty

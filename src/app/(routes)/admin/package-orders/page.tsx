@@ -24,7 +24,7 @@ import {
   useRequestId,
   useAsyncAction,
 } from "../_shared/ui";
-import { ApiError, GYMFOLIO_API, apiBlob, apiGet, apiJson, absoluteUrl, replaceParams } from "../_shared/api";
+import { ApiError, GYMFOLIO_API, apiGet, apiJson, absoluteUrl, openFileInNewTab, replaceParams } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
 import { MemberPicker, type MemberOption } from "../_ops/MemberPicker";
 import { Pager, pageCount } from "../_ops/lists";
@@ -511,12 +511,11 @@ function PackageOrdersAdminPageInner() {
     });
 
   const invoiceUrl = (o: PackageOrder) => `${GYMFOLIO_API}/package-orders/${o._id}/invoice.pdf?download=1`;
+  // The tab is opened in the click itself (openFileInNewTab), not after the
+  // wait for the PDF, which a popup blocker would stop.
   const openInvoice = (o: PackageOrder) => invoicing.run(async () => {
     try {
-      const { blob } = await apiBlob(invoiceUrl(o));
-      const url = URL.createObjectURL(blob);
-      window.open(url, "_blank");
-      setTimeout(() => URL.revokeObjectURL(url), 60000);
+      await openFileInNewTab(invoiceUrl(o), `invoice-${o.orderNumber}.pdf`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load the invoice");
     }

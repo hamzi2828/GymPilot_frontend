@@ -6,7 +6,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { PageHeader, Card, PrimaryButton, SecondaryButton, DangerButton, Modal, TextField, TextArea, SelectField, Badge, Spinner, Table, ErrorState, useConfirm, useAsyncAction } from "../../_shared/ui";
-import { API_BASE, apiBlob, apiGet, apiJson } from "../../_shared/api";
+import { API_BASE, apiGet, apiJson, openFileInNewTab } from "../../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
 import { useGymToday } from "@/components/ThemeProvider";
 
@@ -157,12 +157,11 @@ export default function PayslipsPage() {
     if (done) setPaying(null);
   });
 
+  // The tab is opened in the click itself (openFileInNewTab), not after the
+  // wait for the PDF, which a popup blocker would stop.
   const openPdf = (p: Payslip) => pdf.run(p.id, async () => {
     try {
-      const { blob } = await apiBlob(`${API_BASE}/staff/payslips/${p.id}/pdf`);
-      const url = URL.createObjectURL(blob);
-      window.open(url, "_blank");
-      setTimeout(() => URL.revokeObjectURL(url), 60000);
+      await openFileInNewTab(`${API_BASE}/staff/payslips/${p.id}/pdf`, `payslip-${p.number}.pdf`);
     } catch (e) {
       setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not open the payslip" });
     }
