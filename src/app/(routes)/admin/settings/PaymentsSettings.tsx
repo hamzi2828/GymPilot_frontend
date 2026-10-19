@@ -282,7 +282,7 @@ const smallInput =
   "h-9 w-16 rounded-lg border border-neutral-200 bg-white px-2 text-center text-base sm:text-sm focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[color-mix(in_srgb,var(--accent)_25%,transparent)]";
 
 /** A card's header: its number, a title and one short line. */
-function CardHead({ step, title, line, aside }: { step?: ReactNode; title: string; line?: ReactNode; aside?: ReactNode }) {
+export function CardHead({ step, title, line, aside }: { step?: ReactNode; title: string; line?: ReactNode; aside?: ReactNode }) {
   return (
     <div className="flex items-start justify-between gap-3 border-b border-neutral-100 px-4 py-4 sm:px-6">
       <div className="flex min-w-0 items-start gap-3">
@@ -302,7 +302,7 @@ function CardHead({ step, title, line, aside }: { step?: ReactNode; title: strin
 }
 
 /** One numbered step inside a card, with what it needs right under it. */
-function Step({ n, title, done, last, children }: { n: number; title: string; done?: boolean; last?: boolean; children?: ReactNode }) {
+export function Step({ n, title, done, last, children }: { n: number; title: string; done?: boolean; last?: boolean; children?: ReactNode }) {
   return (
     <li className="flex gap-3 sm:gap-4">
       <div className="flex flex-col items-center">

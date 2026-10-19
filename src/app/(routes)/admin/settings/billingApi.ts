@@ -37,6 +37,47 @@ export interface BillingSubscription {
   contactEmail: string;
   /** One entry per plan limit; null (or missing, from an older API) when it could not be counted. */
   usage?: PlanUsage[] | null;
+  /** How this gym pays GymsPilotPro, as the super admin chose. Missing from an older API (Stripe only). */
+  pay?: BillingPay | null;
+}
+
+/** The way gyms pay GymsPilotPro: one at a time, chosen by the super admin. */
+export type PayProvider = "safepay" | "stripe" | "generic" | "none";
+
+/** One of GymsPilotPro's own bank accounts, for a gym paying by bank transfer. */
+export interface PlatformBankAccount {
+  bank_name: string;
+  account_title: string;
+  account_number: string;
+  iban: string;
+  qr_code_url: string;
+}
+
+/** The gym's last bank-transfer receipt, while GymsPilotPro checks it or after it turned it down. */
+export interface PendingPayRequest {
+  status: "pending" | "rejected" | null;
+  reason?: string | null;
+  submitted_at?: string | null;
+  amount?: number | null;
+}
+
+export interface BillingPay {
+  provider: PayProvider;
+  label?: string;
+  amount_due: number;
+  currency: string;
+  /** YYYY-MM-DD. */
+  due_date: string | null;
+  /** Bank transfer only. */
+  bank_accounts?: PlatformBankAccount[];
+  pending_request?: PendingPayRequest | null;
+}
+
+/** The way this gym pays, read from an older API (no `pay`) as it worked there: Stripe or nothing. */
+export function payProviderOf(sub: BillingSubscription): PayProvider {
+  const provider = sub.pay?.provider;
+  if (provider === "safepay" || provider === "stripe" || provider === "generic" || provider === "none") return provider;
+  return sub.stripeConfigured ? "stripe" : "none";
 }
 
 /** A plan on sale, as the Billing tab's plan picker shows it. Limits of 0 are unlimited. */
@@ -73,6 +114,10 @@ export async function billingRequest<T>(path: string, method: "GET" | "POST" = "
     body: method === "POST" ? JSON.stringify(body || {}) : undefined,
     cache: "no-store",
   });
+  return readResult<T>(res);
+}
+
+async function readResult<T>(res: Response): Promise<BillingResult<T>> {
   const json = await res.json().catch(() => ({}));
   return { ok: res.ok, status: res.status, code: json?.code, message: json?.message, data: json?.data };
 }
@@ -91,6 +136,36 @@ export function startCheckout(billingCycle?: BillingCycle, planSlug?: string) {
     ...(billingCycle ? { billingCycle } : {}),
     ...(planSlug ? { planSlug } : {}),
   });
+}
+
+/**
+ * Opens a Safepay checkout for the gym's plan (or `planSlug`) with
+ * GymsPilotPro's own Safepay account; `data.url` is where to send the owner.
+ * Safepay sends them back with ?paid=1. 409 BANK_TRANSFER_ONLY or
+ * ONLINE_PAYMENT_OFF when the super admin chose another way to pay.
+ */
+export function startPay(billingCycle?: BillingCycle, planSlug?: string) {
+  return billingRequest<{ url: string }>("/pay", "POST", {
+    ...(billingCycle ? { billingCycle } : {}),
+    ...(planSlug ? { planSlug } : {}),
+  });
+}
+
+/** The receipt files GymsPilotPro takes, and how big one may be. */
+export const RECEIPT_TYPES = ["image/jpeg", "image/png", "image/webp", "application/pdf"];
+export const RECEIPT_MAX_BYTES = 4 * 1024 * 1024;
+
+/**
+ * Sends a bank-transfer receipt for GymsPilotPro to check. A new one replaces
+ * the gym's pending one.
+ */
+export async function uploadReceipt(file: File, { reference, note }: { reference?: string; note?: string } = {}) {
+  const form = new FormData();
+  form.append("receipt", file);
+  if (reference?.trim()) form.append("reference", reference.trim());
+  if (note?.trim()) form.append("note", note.trim());
+  const res = await fetch(`${BILLING_API}/receipt`, { method: "POST", headers: authHeaders(), body: form, cache: "no-store" });
+  return readResult<{ pending_request: PendingPayRequest | null }>(res);
 }
 
 /** The Stripe customer portal: card, invoices, cancellation. Not plan changes -- see changePlan. */
@@ -132,9 +207,11 @@ export function formatMoney(amount: number, currency: string): string {
   }
 }
 
-export function formatDate(iso: string | null): string {
+export function formatDate(iso: string | null | undefined): string {
   if (!iso) return "";
-  const date = new Date(iso);
+  // A bare YYYY-MM-DD is a calendar day: read as midnight UTC it shows the day before west of Greenwich.
+  const day = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  const date = day ? new Date(Number(day[1]), Number(day[2]) - 1, Number(day[3])) : new Date(iso);
   if (Number.isNaN(date.getTime())) return "";
   return date.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
 }
