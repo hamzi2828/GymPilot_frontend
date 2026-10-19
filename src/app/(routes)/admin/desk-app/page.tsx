@@ -25,9 +25,14 @@ import {
   useConfirm,
   useAsyncAction,
 } from "../_shared/ui";
-import { API_BASE, apiGet, apiJson } from "../_shared/api";
+import { API_BASE, ApiError, apiGet, apiJson } from "../_shared/api";
 
 const DESK_LINK_API = `${API_BASE}/api/desk-link`;
+
+// The API's refusal when the signed-in account may not run the desk app yet:
+// a code is only made once they say yes, and the request is sent again with
+// grant_desk_access, which switches it on (and is audit-logged).
+const DESK_PERMISSION_REQUIRED = "DESK_PERMISSION_REQUIRED";
 
 // Where the installer is downloaded from. Unset: the copy on the GymsPilotPro
 // site. Set to an empty value on purpose: there is no installer to offer yet,
@@ -145,21 +150,43 @@ export default function DeskAppPage() {
     return () => clearInterval(t);
   }, [watching, load]);
 
-  const getCode = () => makeAction.run(async () => {
+  // "needs-grant" when the account must first be allowed to run the desk app.
+  const requestCode = (grantDeskAccess: boolean) => makeAction.run(async () => {
     setCodeError(null);
     setCopied(false);
     setLinkedDevice(null);
     try {
-      const res = await apiJson<{ data: LinkCode }>(`${DESK_LINK_API}/codes`, "POST");
+      const res = await apiJson<{ data: LinkCode }>(
+        `${DESK_LINK_API}/codes`,
+        "POST",
+        grantDeskAccess ? { grant_desk_access: true } : undefined
+      );
       knownDesks.current = new Set((overview?.desks || []).map((d) => d.id));
       setCode(res.data);
       setNow(Date.now());
       // The grant may just have been switched on; the page's own flags follow.
       if (res.data.granted_app_access) load(true);
+      return "made" as const;
     } catch (e) {
+      if (!grantDeskAccess && e instanceof ApiError && e.code === DESK_PERMISSION_REQUIRED) return "needs-grant" as const;
       setCodeError(e instanceof Error ? e.message : "Could not make a link code");
+      return "failed" as const;
     }
   });
+
+  // Asked between the two requests, so the button is not left spinning
+  // behind the question.
+  const getCode = async () => {
+    if ((await requestCode(false)) !== "needs-grant") return;
+    const answer = await ask({
+      title: "Turn on front-desk app access?",
+      body: "This lets your account run a front-desk PC. Turn it on?",
+      confirmLabel: "Turn it on",
+      danger: false,
+    });
+    if (answer === null) return;
+    await requestCode(true);
+  };
 
   async function copyCode() {
     if (!code) return;
@@ -330,7 +357,7 @@ export default function DeskAppPage() {
               )}
               {!code && overview?.grants_access_on_link && (
                 <p className="mb-3 text-xs text-neutral-500">
-                  Getting a code also switches on front-desk app access for your account.
+                  Your account cannot run the desk app yet. Getting a code asks you first, then switches that on.
                 </p>
               )}
 
