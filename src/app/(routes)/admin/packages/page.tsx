@@ -19,7 +19,8 @@ import {
   useAsyncAction,
   BusyLabel,
 } from "../_shared/ui";
-import { API_BASE, GYMFOLIO_API, ApiError, apiGet, apiJson } from "../_shared/api";
+import { GYMFOLIO_API, ApiError, apiGet, apiJson } from "../_shared/api";
+import { useGymCurrency } from "../_shared/gymCurrency";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
 import { LoadError } from "../_ops/lists";
 import { PACKAGE_TERMS, TERM_IN_DAYS, daysLabel, isDaysLabel, termOptions } from "./terms";
@@ -97,15 +98,9 @@ export default function PackagesAdminPage() {
   // A delete the backend refused because members still hold the package.
   const [refusal, setRefusal] = useState<{ message: string; pkg: Package } | null>(null);
   // The gym's currency (Settings → General): every package is priced in it.
-  const [defaultCurrency, setDefaultCurrency] = useState("");
-
-  useEffect(() => {
-    apiGet<{ data?: { currency?: string } }>(`${API_BASE}/settings`)
-      .then((r) => {
-        if (r.data?.currency) setDefaultCurrency(r.data.currency);
-      })
-      .catch(() => {});
-  }, []);
+  // From the public settings, which every role can read: the admin settings
+  // need the Settings tab, and without it the currency showed as "…".
+  const defaultCurrency = useGymCurrency();
 
   const load = useCallback(async () => {
     setLoading(true);

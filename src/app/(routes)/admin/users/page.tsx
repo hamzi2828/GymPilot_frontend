@@ -302,7 +302,11 @@ function UsersAdminPageInner() {
     setAssignDraft(emptyAssign);
     setAssignErr(null);
     try {
-      const p = await apiGet<{ data?: PackageOption[] }>(`${GYMFOLIO_API}/packages`);
+      // The full list with this account's Packages tab, else the ones on
+      // sale: assigning needs Package Orders, not Packages.
+      const p = await apiGet<{ data?: PackageOption[] }>(`${GYMFOLIO_API}/packages`).catch(() =>
+        apiGet<{ data?: PackageOption[] }>(`${GYMFOLIO_API}/packages/active`)
+      );
       setPackages(p.data || []);
     } catch (e) {
       setAssignErr(e instanceof Error ? e.message : "Could not load packages.");

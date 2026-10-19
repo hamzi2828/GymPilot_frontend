@@ -23,6 +23,7 @@ import {
   useAsyncAction,
 } from "../_shared/ui";
 import { API_BASE, apiGet, apiJson, isPlanLimitError, replaceParams } from "../_shared/api";
+import { useGymCurrency } from "../_shared/gymCurrency";
 import {
   CredentialsChoice,
   PasswordReveal,
@@ -325,15 +326,10 @@ function StaffAdminPageInner() {
     setSearch(urlQuery);
   }, [urlQuery]);
 
-  // The gym's currency (Settings → General): everyone is paid in it.
-  const [defaultCurrency, setDefaultCurrency] = useState("");
-  useEffect(() => {
-    apiGet<{ data?: { currency?: string } }>(`${API_BASE}/settings`)
-      .then((r) => {
-        if (r.data?.currency) setDefaultCurrency(r.data.currency);
-      })
-      .catch(() => {});
-  }, []);
+  // The gym's currency (Settings → General): everyone is paid in it. From
+  // the public settings, which every role can read: the admin settings need
+  // the Settings tab, and without it the currency showed as "…".
+  const defaultCurrency = useGymCurrency();
 
   const load = useCallback(async () => {
     setLoading(true);

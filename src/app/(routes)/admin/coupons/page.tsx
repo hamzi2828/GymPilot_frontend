@@ -121,7 +121,12 @@ export default function CouponsAdminPage() {
     try {
       const [c, p] = await Promise.all([
         apiGet<{ data: Coupon[] }>(`${GYMFOLIO_API}/coupons`),
-        apiGet<{ data: PackageOption[] }>(`${GYMFOLIO_API}/packages`),
+        // The full list with this account's Packages tab, else the ones on
+        // sale, as Package Orders reads them: without the tab the full list
+        // is refused, and that used to take the whole page down with it.
+        apiGet<{ data: PackageOption[] }>(`${GYMFOLIO_API}/packages`).catch(() =>
+          apiGet<{ data: PackageOption[] }>(`${GYMFOLIO_API}/packages/active`)
+        ),
       ]);
       setCoupons(c.data || []);
       setPackages(p.data || []);
