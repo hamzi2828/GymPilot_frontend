@@ -408,7 +408,7 @@ export function DeskSettingsModal({ onClose, onSaved }: { onClose: () => void; o
               ))}
               <p className="text-[13px] text-neutral-600">
                 {REFUSE_FIELDS.some((field) => refuse[field.key])
-                  ? "These members are turned away: the desk and the kiosk show “Entry refused” in red with the reason, play the problem sound, and no visit is recorded. Anyone already inside can still scan out."
+                  ? "These members are turned away: the desk, the kiosk and a phone that scanned the desk code show “Entry refused” in red with the reason, the desk plays the problem sound, and no visit is recorded. Anyone already inside can still check out."
                   : "Nobody is turned away. Members with a problem are checked in and the desk is shown a red warning, as now."}{" "}
                 When the desk PC is offline it cannot check payments, so it lets members in and the refusal shows once it reconnects.
               </p>

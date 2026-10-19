@@ -1060,7 +1060,7 @@ function StaffAdminPageInner() {
                 }
               />
               <Toggle
-                label="Can enrol fingerprints"
+                label="Can enrol fingerprints and faces"
                 checked={draft.allowFingerprintEnrollment}
                 onChange={(v) => setDraft({ ...draft, allowFingerprintEnrollment: v })}
               />

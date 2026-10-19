@@ -36,8 +36,8 @@ import {
   FiCreditCard,
   FiMonitor,
 } from "react-icons/fi";
-// Feather has no fingerprint; this is the one entry drawn from another set.
-import { MdFingerprint } from "react-icons/md";
+// Feather has no fingerprint or face; these two entries are drawn from another set.
+import { MdFace, MdFingerprint } from "react-icons/md";
 
 interface MenuItem {
   name: string;
@@ -103,6 +103,8 @@ const sections: MenuSection[] = [
       // view, removing one needs it at manage (checked on the page and by
       // the API).
       { name: "Fingerprints", path: "/admin/fingerprints", icon: <MdFingerprint className={iconCls} />, tab: "attendance" },
+      // The faces registered for face check-in at the desk, on the same terms.
+      { name: "Faces", path: "/admin/faces", icon: <MdFace className={iconCls} />, tab: "attendance" },
       // Download the Windows desk app and link a desk with a one-time code.
       { name: "Desk app", path: "/admin/desk-app", icon: <FiMonitor className={iconCls} />, tab: "attendance", forDeskAppUsers: true },
       { name: "Accounts", path: "/admin/accounts", icon: <FiDollarSign className={iconCls} />, tab: "accounts" },

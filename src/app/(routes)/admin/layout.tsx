@@ -29,6 +29,7 @@ const ROUTE_TABS: { prefix: string; tab: string }[] = [
   { prefix: "/admin/lockers", tab: "lockers" },
   { prefix: "/admin/attendance", tab: "attendance" },
   { prefix: "/admin/fingerprints", tab: "attendance" },
+  { prefix: "/admin/faces", tab: "attendance" },
   { prefix: "/admin/accounts", tab: "accounts" },
   { prefix: "/admin/staff", tab: "staff" },
   { prefix: "/admin/roles", tab: "roles" },
@@ -174,10 +175,10 @@ function AdminShell({ children }: { children: React.ReactNode }) {
               href="/kiosk"
               target="_blank"
               rel="noopener"
-              title="Opens the door check-in screen in a new tab. Sign in there with a staff account that is allowed to use the attendance app."
+              title="Opens the door check-in screen in a new tab. Sign in there with a staff account that is allowed to use the attendance app; members then scan its code with their phone."
               className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-semibold text-neutral-700 hover:bg-neutral-200/60 hover:text-neutral-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-neutral-300"
             >
-              Open check-in kiosk
+              Open check-in screen
               <FiExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
             </a>
           </nav>

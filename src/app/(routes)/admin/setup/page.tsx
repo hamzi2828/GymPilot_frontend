@@ -385,7 +385,7 @@ export default function SetupWizardPage() {
             <h2 className="text-lg font-semibold text-neutral-900">You&apos;re set.</h2>
             <ul className="list-disc space-y-1 pl-5 text-sm text-neutral-600">
               <li>Members can sign up on your website and buy a package.</li>
-              <li>The front desk checks people in with the web kiosk at <span className="font-mono">/kiosk</span>, or the Windows attendance app.</li>
+              <li>Members check in by scanning the code on your check-in screen with their phone: open <span className="font-mono">/kiosk</span> on a tablet or PC at the door, or use the Windows desk app, which also checks people in by fingerprint or face.</li>
               <li>Import your existing members from a spreadsheet under Users → Import CSV.</li>
               <li>Everything else — classes, trainers, homepage, emails — lives in the menu on the left.</li>
             </ul>

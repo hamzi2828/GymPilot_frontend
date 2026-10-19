@@ -1,10 +1,10 @@
 "use client";
 
 // Security and privacy controls for the member's own account: two-factor
-// sign-in, ending every session, consent to fingerprint storage, and a copy
-// of their data.
+// sign-in, ending every session, consent to fingerprint storage, the face
+// registered for face check-in (and deleting it), and a copy of their data.
 
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { getAuthHeader, removeToken } from "@/helper/helper";
@@ -14,6 +14,8 @@ import { FORGOT_PASSWORD_PATH, PASSWORD_NOT_SET, RequestError, setTwoFactor as s
 const API_BASE = process.env.NEXT_PUBLIC_BACKEND_URL || "";
 
 interface Consent { given: boolean; at?: string | null; source?: string }
+// GET /api/attendance/me/face: whether the desk has a face on file for them.
+interface FaceStatus { enrolled: boolean; enrolledAt: string | null }
 
 async function call(path: string, method: string, body?: unknown) {
   const res = await fetch(`${API_BASE}${path}`, {
@@ -59,9 +61,27 @@ export const PrivacySection: React.FC<{ twoFactorEnabled?: boolean; biometricCon
   // The account has no password (it signs in with Google): the refusal is
   // shown with the way to set one.
   const [setPasswordFirst, setSetPasswordFirst] = useState(false);
+  // Face check-in. Null until the API has said; deleting asks first.
+  const [face, setFace] = useState<FaceStatus | null>(null);
+  const [faceError, setFaceError] = useState<string | null>(null);
+  const [confirmingFace, setConfirmingFace] = useState(false);
 
   useEffect(() => setTwoFactor(twoFactorEnabled), [twoFactorEnabled]);
   useEffect(() => setConsent(biometricConsent), [biometricConsent]);
+
+  const loadFace = useCallback(async () => {
+    setFaceError(null);
+    try {
+      const r = await call("/api/attendance/me/face", "GET");
+      setFace({ enrolled: !!r?.data?.enrolled, enrolledAt: typeof r?.data?.enrolled_at === "string" ? r.data.enrolled_at : null });
+    } catch (e) {
+      setFaceError(e instanceof Error && e.message !== "Request failed" ? e.message : "We could not check your face check-in just now.");
+    }
+  }, []);
+
+  useEffect(() => {
+    loadFace();
+  }, [loadFace]);
 
   const run = async (key: string, fn: () => Promise<string | void>) => {
     setBusy(key);
@@ -187,11 +207,62 @@ export const PrivacySection: React.FC<{ twoFactorEnabled?: boolean; biometricCon
               : "To check in with a fingerprint at reception, agree to the gym storing an encrypted template of it. You can withdraw this at any time."
           }
           action={
-            <button type="button" disabled={busy === "consent"} className={btn} onClick={() => run("consent", async () => { const r = await call("/user/consents", "PUT", { biometric: !consent?.given }); setConsent(r.data?.biometric || null); return r.message; })}>
+            <button type="button" disabled={busy === "consent"} className={btn} onClick={() => run("consent", async () => { const r = await call("/user/consents", "PUT", { biometric: !consent?.given }); setConsent(r.data?.biometric || null); loadFace(); return r.message; })}>
               {consent?.given ? "Withdraw consent" : "I agree"}
             </button>
           }
         />
+        <div>
+          <Row
+            title={face ? `Face check-in: ${face.enrolled ? "On" : "Off"}` : "Face check-in"}
+            hint={
+              !face
+                ? faceError || "Checking…"
+                : face.enrolled
+                ? `The front desk recognises your face${face.enrolledAt ? ` (registered ${new Date(face.enrolledAt).toLocaleDateString()})` : ""}. It keeps numbers that describe your face, never a photo. You can delete them at any time.`
+                : "No face data is stored for you. To check in by face, ask at the front desk: they register it only with your consent."
+            }
+            action={
+              face?.enrolled ? (
+                <button type="button" disabled={busy === "face" || confirmingFace} className={btn} onClick={() => { setNotice(null); setConfirmingFace(true); }}>
+                  Remove my face data
+                </button>
+              ) : !face && faceError ? (
+                <button type="button" className={btn} onClick={loadFace}>
+                  Try again
+                </button>
+              ) : null
+            }
+          />
+          {confirmingFace && face?.enrolled && (
+            <div className="mb-4 rounded-xl border-2 border-gray-200 bg-gray-50 p-4">
+              <p className="text-sm font-semibold text-gray-900">Remove your face data?</p>
+              <p className="mt-1 text-sm text-gray-600">
+                The front desk will no longer recognise you by your face. This cannot be undone: to use face check-in again, register at the desk.
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={busy === "face"}
+                  className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
+                  onClick={() =>
+                    run("face", async () => {
+                      const r = await call("/api/attendance/me/face", "DELETE");
+                      setConfirmingFace(false);
+                      setFace({ enrolled: false, enrolledAt: null });
+                      return r.message || "Your face data has been deleted.";
+                    })
+                  }
+                >
+                  {busy === "face" ? "Removing…" : "Remove my face data"}
+                </button>
+                <button type="button" disabled={busy === "face"} className={btn} onClick={() => setConfirmingFace(false)}>
+                  Keep it
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
         <Row
           title="Download my data"
           hint="A copy of everything the gym holds about you: account, memberships, bookings and visits."

@@ -211,7 +211,8 @@ export default function DeskAppPage() {
             <div>
               <h2 className="text-base font-semibold text-neutral-900">GymsPilotPro Desk for Windows</h2>
               <p className="mt-1 text-sm text-neutral-500">
-                Checks members and staff in at the front desk with a fingerprint, their QR code or their member number.
+                Checks members and staff in at the front desk by fingerprint or face, and shows the check-in code members scan
+                with their phone.
               </p>
             </div>
           </div>
@@ -237,8 +238,12 @@ export default function DeskAppPage() {
             <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-neutral-700">
               <li>A PC with Windows 10 or Windows 11, connected to the internet.</li>
               <li>
-                A DigitalPersona U.are.U fingerprint reader, with its driver installed. Without one, the app still checks
-                people in by QR code, member number or name.
+                A DigitalPersona U.are.U fingerprint reader, with its driver installed, for fingerprint check-in.
+              </li>
+              <li>A USB webcam facing the desk, for face check-in.</li>
+              <li>
+                Neither? The app still shows the check-in code members scan with their phone, and staff can check anyone
+                in by name.
               </li>
             </ul>
           </div>

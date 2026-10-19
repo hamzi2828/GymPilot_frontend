@@ -30,6 +30,23 @@ interface PunchBy {
   location?: string;
 }
 
+// How a check-in or check-out was made, as the API stores it. `qr` and `code`
+// are from before members checked in by scanning the desk screen's code with
+// their phone; old rows keep them.
+const METHOD_LABELS: Record<string, string> = {
+  fingerprint: "Fingerprint",
+  face: "Face",
+  desk_code: "Desk code (phone)",
+  manual: "By staff",
+  qr: "QR (old)",
+  code: "Member number (old)",
+};
+
+function methodLabel(method: string | undefined | null): string {
+  if (!method) return "";
+  return METHOD_LABELS[method] || method;
+}
+
 // The correction fields (voided / edited, see CorrectionModals) are optional:
 // a row reads the same without them.
 interface AttendanceRecord extends CorrectionFields {
@@ -1320,7 +1337,7 @@ function LiveTable({
     return (
       <EmptyState
         title="Nobody has checked in yet today"
-        hint="Visits appear here within seconds of the front desk or the kiosk recording them."
+        hint="Visits appear here within seconds of the front desk, the kiosk or a member's phone recording them."
       />
     );
   }
@@ -1536,7 +1553,7 @@ function LogTable({
                   <td className="px-5 py-3 align-middle">
                     <div className="text-[12px] text-neutral-700">{record.check_in_by?.name || "—"}</div>
                     <div className="text-[11px] text-neutral-400">
-                      {[record.check_in_by?.device, record.check_in_by?.method].filter(Boolean).join(" · ") || "—"}
+                      {[record.check_in_by?.device, methodLabel(record.check_in_by?.method)].filter(Boolean).join(" · ") || "—"}
                     </div>
                   </td>
   
@@ -1853,7 +1870,7 @@ function PersonModal({
                         caption="In by"
                         value={
                           record.check_in_by?.name
-                            ? [record.check_in_by.name, record.check_in_by.device, record.check_in_by.location]
+                            ? [record.check_in_by.name, methodLabel(record.check_in_by.method), record.check_in_by.device, record.check_in_by.location]
                                 .filter(Boolean)
                                 .join(" · ")
                             : "—"
@@ -1863,7 +1880,7 @@ function PersonModal({
                         caption="Out by"
                         value={
                           record.check_out_by?.name
-                            ? [record.check_out_by.name, record.check_out_by.device, record.check_out_by.location]
+                            ? [record.check_out_by.name, methodLabel(record.check_out_by.method), record.check_out_by.device, record.check_out_by.location]
                                 .filter(Boolean)
                                 .join(" · ")
                             : "—"
