@@ -44,6 +44,15 @@ export interface ProfileSectionProps<T extends UserProfileShape> {
   isSaving: boolean;
   /** The gym's plan includes the phone app; without it the app username is not shown. */
   memberApp?: boolean;
+  /**
+   * The profile as it was when Edit was pressed: what Cancel puts back, and
+   * what the email box is compared with to know whether it was changed. Held
+   * by the page, like the edits themselves, so it outlives this section when
+   * the member looks at another tab mid-edit: kept here, it was lost on the
+   * way back, and a changed email then saved as "updated" without being sent.
+   */
+  beforeEdit: T | null;
+  setBeforeEdit: (profile: T | null) => void;
 }
 
 // Two addresses that differ only in case or stray spaces are the same address.
@@ -88,11 +97,12 @@ export function ProfileSection<T extends UserProfileShape>({
   onSave,
   isSaving,
   memberApp = true,
+  beforeEdit,
+  setBeforeEdit,
 }: ProfileSectionProps<T>) {
-  const [loading, setLoading] = useState(true);
-  // The profile as it was when Edit was pressed: what Cancel puts back, and
-  // what the email box is compared with to know whether it was changed.
-  const [beforeEdit, setBeforeEdit] = useState<T | null>(null);
+  // Back from another tab mid-edit, the edits are already on screen: there
+  // is nothing to wait for.
+  const [loading, setLoading] = useState(!isEditing);
   const [currentPassword, setCurrentPassword] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
   // Set when the API asked for the password although the email looked
@@ -118,6 +128,7 @@ export function ProfileSection<T extends UserProfileShape>({
     // Put back what was there: the boxes edit the profile in place, and a
     // cancelled edit used to stay on screen as if it had been saved.
     if (beforeEdit) setUserProfile(beforeEdit);
+    setBeforeEdit(null);
     setCurrentPassword("");
     setFormError(null);
     setPasswordAsked(false);
@@ -128,8 +139,11 @@ export function ProfileSection<T extends UserProfileShape>({
   const emailChanged = isEditing && !!beforeEdit && !sameEmail(userProfile?.email, beforeEdit.email);
   const needsPassword = emailChanged || passwordAsked;
 
-  // Initial fetch to hydrate profile (optional if parent already hydrated)
+  // Initial fetch to hydrate profile (optional if parent already hydrated).
+  // Not while an edit is open (back from another tab): the answer would be
+  // written over what the member has typed and not saved yet.
   useEffect(() => {
+    if (isEditing) return;
     let mounted = true;
     (async () => {
       try {
@@ -214,6 +228,7 @@ export function ProfileSection<T extends UserProfileShape>({
     if (result.ok) {
       setCurrentPassword("");
       setPasswordAsked(false);
+      setBeforeEdit(null);
       setIsEditing(false);
       return;
     }

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, Suspense } from "react";
+import React, { useEffect, useRef, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Header } from "./components/Header";
 import { Tabs, parseUserTab, UserTab } from "./components/Tabs";
@@ -48,6 +48,14 @@ const UserProfilePageContent: React.FC = () => {
   const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState<UserTab>("profile");
   const [isEditing, setIsEditing] = useState(false);
+  // The profile as it was when Edit was pressed (see ProfileSection). Here
+  // rather than in the section, which unmounts on another tab.
+  const [profileBeforeEdit, setProfileBeforeEdit] = useState<UserProfile | null>(null);
+  // Read by refreshUserData, which other sections call while an edit may be open.
+  const editingRef = useRef(false);
+  useEffect(() => {
+    editingRef.current = isEditing;
+  }, [isEditing]);
   const [toast, setToast] = useState<{ show: boolean; msg: string; type: "success" | "error" | "info" }>({
     show: false,
     msg: "",
@@ -144,8 +152,12 @@ const UserProfilePageContent: React.FC = () => {
     }
   };
 
-  // Fetch & merge user data from API/service
-  const refreshUserData = async (): Promise<void> => {
+  // Fetch & merge user data from API/service. While the profile is being
+  // edited, the boxes the member is typing in keep what they typed: a reload
+  // asked for by another section (two-factor, health details) used to put
+  // the saved values back over unsaved edits. A save passes
+  // `keepEdits: false`, since what was saved is then the truth.
+  const refreshUserData = async ({ keepEdits = editingRef.current }: { keepEdits?: boolean } = {}): Promise<void> => {
     try {
       const currentUser = getCurrentUser();
       if (!currentUser) {
@@ -182,6 +194,19 @@ const UserProfilePageContent: React.FC = () => {
             loyaltyPoints: 0,
           } as UserProfile);
 
+        // What the member has typed and not saved yet.
+        const edits =
+          keepEdits && prev
+            ? {
+                firstName: prev.firstName,
+                lastName: prev.lastName,
+                email: prev.email,
+                phone: prev.phone,
+                dateOfBirth: prev.dateOfBirth,
+                gender: prev.gender,
+              }
+            : {};
+
         return {
           ...base,
           ...pl,
@@ -200,6 +225,7 @@ const UserProfilePageContent: React.FC = () => {
           totalOrders: pl.totalOrders ?? base.totalOrders,
           totalSpent: pl.totalSpent ?? base.totalSpent,
           loyaltyPoints: pl.loyaltyPoints ?? base.loyaltyPoints,
+          ...edits,
         };
       });
     } catch (error) {
@@ -274,7 +300,14 @@ const UserProfilePageContent: React.FC = () => {
         throw new Error("No data returned from server");
       }
 
-      await refreshUserData();
+      await refreshUserData({ keepEdits: false });
+      // Success only for what was saved: an email change the API did not
+      // take must not be reported as an updated profile.
+      const savedEmail = result && typeof result === "object" && result.data && typeof result.data.email === "string" ? result.data.email : null;
+      if (change && change.email.trim() && savedEmail !== null && savedEmail.trim().toLowerCase() !== change.email.trim().toLowerCase()) {
+        showToast("Your other details were saved, but your email address was not changed. Please try again.", "error");
+        return { ok: true };
+      }
       // The API's own sentence when it has something to say (an email that
       // was removed, and the username to sign in with from now on).
       const said = typeof result.message === "string" && result.message !== "User updated successfully" ? result.message : "";
@@ -367,16 +400,18 @@ const UserProfilePageContent: React.FC = () => {
             onSave={handleSave}              // ✅ pass function, not result
             isSaving={saving}                // ✅ parent controls saving state
             memberApp={memberApp}
+            beforeEdit={profileBeforeEdit}
+            setBeforeEdit={setProfileBeforeEdit}
           />
         )}
         {activeTab === "profile" && userProfile && (
           <PrivacySection
             twoFactorEnabled={!!(userProfile as unknown as { twoFactor?: { enabled?: boolean } }).twoFactor?.enabled}
             biometricConsent={(userProfile as unknown as { consents?: { biometric?: { given: boolean; at?: string | null; source?: string } } }).consents?.biometric || null}
-            onChanged={refreshUserData}
+            onChanged={() => refreshUserData()}
           />
         )}
-        {activeTab === "profile" && userProfile && <ProfileExtrasSection onChanged={refreshUserData} />}
+        {activeTab === "profile" && userProfile && <ProfileExtrasSection onChanged={() => refreshUserData()} />}
         {activeTab === "profile" && userProfile && <NotificationsSection />}
         {activeTab === "profile" && userProfile && <ShopSection />}
 
