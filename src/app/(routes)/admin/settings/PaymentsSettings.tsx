@@ -800,7 +800,7 @@ export default function PaymentsSettings<T extends PaymentFields>({
               step={2}
               title={`Connect ${selectedCopy.short}`}
               line="Follow the steps, then press Save."
-              aside={status ? <Badge color={live ? "green" : "amber"}>{live ? "Live" : "Not live yet"}</Badge> : null}
+              aside={status ? <Badge color={live ? "green" : "amber"}>{live ? "Connected" : "Not connected"}</Badge> : null}
             />
           )}
           {bankOption ? bankPanel : keysForm(selected)}
