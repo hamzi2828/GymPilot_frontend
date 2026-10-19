@@ -57,7 +57,7 @@ export default function AuditLogPage() {
     return () => clearTimeout(t);
   }, [load, filters.actor]);
 
-  const select = "h-9 rounded-lg border border-neutral-200 bg-white px-3 text-sm text-neutral-700";
+  const select = "h-9 rounded-lg border border-neutral-200 bg-white px-3 text-sm text-neutral-700 disabled:opacity-50";
 
   return (
     <div>
@@ -65,7 +65,7 @@ export default function AuditLogPage() {
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <input value={filters.actor} onChange={(e) => { setPage(1); setFilters({ ...filters, actor: e.target.value }); }} placeholder="Filter by staff email…" className="h-9 w-64 rounded-lg border border-neutral-200 bg-white px-3 text-sm focus:border-neutral-400 focus:outline-none" />
         <input value={filters.tab} onChange={(e) => { setPage(1); setFilters({ ...filters, tab: e.target.value }); }} placeholder="Area (e.g. packages)" className="h-9 w-48 rounded-lg border border-neutral-200 bg-white px-3 text-sm focus:border-neutral-400 focus:outline-none" />
-        <select value={filters.method} onChange={(e) => { setPage(1); setFilters({ ...filters, method: e.target.value }); }} className={select}>
+        <select value={filters.method} disabled={loading} onChange={(e) => { setPage(1); setFilters({ ...filters, method: e.target.value }); }} className={select}>
           <option value="">Any action</option>
           <option value="POST">Create</option>
           <option value="PUT">Update</option>
@@ -130,8 +130,8 @@ export default function AuditLogPage() {
         <div className="mt-4 flex items-center justify-between text-xs text-neutral-500">
           <span>Page {page} of {pages}</span>
           <div className="flex gap-2">
-            <button type="button" disabled={page <= 1} onClick={() => setPage((p) => p - 1)} className="rounded-lg border border-neutral-200 px-3 py-1.5 disabled:opacity-40">Previous</button>
-            <button type="button" disabled={page >= pages} onClick={() => setPage((p) => p + 1)} className="rounded-lg border border-neutral-200 px-3 py-1.5 disabled:opacity-40">Next</button>
+            <button type="button" disabled={loading || page <= 1} onClick={() => setPage((p) => p - 1)} className="rounded-lg border border-neutral-200 px-3 py-1.5 disabled:opacity-40">Previous</button>
+            <button type="button" disabled={loading || page >= pages} onClick={() => setPage((p) => p + 1)} className="rounded-lg border border-neutral-200 px-3 py-1.5 disabled:opacity-40">Next</button>
           </div>
         </div>
       )}

@@ -18,6 +18,8 @@ import {
   Modal,
   Select2,
   useConfirm,
+  useAsyncAction,
+  BusyLabel,
   ErrorState,
 } from "../_shared/ui";
 import { countryOptions, currencyOptions, countryByCode } from "@/data/countries";
@@ -278,7 +280,10 @@ function SettingsAdminPageInner() {
   const [saved, setSaved] = useState<Settings | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
+  // Save and the SMTP test: either one running holds the other back.
+  const settingsAction = useAsyncAction();
+  const saving = settingsAction.busy;
+  const retrying = useAsyncAction();
   const [notice, setNotice] = useState<{ tone: "ok" | "warn" | "error"; text: string } | null>(null);
   // A secret the API asked to be typed again, shown beside its own box.
   const [secretError, setSecretError] = useState<{ field: string; message: string } | null>(null);
@@ -322,13 +327,15 @@ function SettingsAdminPageInner() {
   const emptyBank = { name: "", accountNumber: "", accountTitle: "", branch: "", iban: "", notes: "" };
   const [bankDraft, setBankDraft] = useState<typeof emptyBank>(emptyBank);
   const [bankErr, setBankErr] = useState<string | null>(null);
-  const [uploadingFor, setUploadingFor] = useState<string | null>(null);
-  const [logoUploading, setLogoUploading] = useState<"logo" | "footerLogo" | null>(null);
+  const uploadingBarcode = useAsyncAction();
+  const removingBarcode = useAsyncAction();
+  const deletingBank = useAsyncAction();
+  const uploadingLogo = useAsyncAction();
+  const removingLogo = useAsyncAction();
 
   // Logo uploads are multipart, so they go through apiForm, which leaves the
   // Content-Type for the browser to set with its boundary.
-  const uploadLogo = async (which: "logo" | "footerLogo", file: File) => {
-    setLogoUploading(which);
+  const uploadLogo = (which: "logo" | "footerLogo", file: File) => uploadingLogo.run(which, async () => {
     setNotice(null);
     try {
       const form = new FormData();
@@ -339,12 +346,10 @@ function SettingsAdminPageInner() {
       setNotice({ tone: "ok", text: "Logo updated. It is live on the site immediately." });
     } catch (e) {
       setNotice({ tone: "error", text: e instanceof Error ? e.message : "Logo upload failed" });
-    } finally {
-      setLogoUploading(null);
     }
-  };
+  });
 
-  const removeLogo = async (which: "logo" | "footerLogo") => {
+  const removeLogo = (which: "logo" | "footerLogo") => removingLogo.run(which, async () => {
     try {
       await apiJson(`${SETTINGS_API}/${which === "logo" ? "logo" : "footer-logo"}`, "DELETE");
       await load();
@@ -352,12 +357,13 @@ function SettingsAdminPageInner() {
     } catch (e) {
       setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not remove the logo" });
     }
-  };
+  });
   // A barcode can be chosen in the dialog before the bank exists; it is held
   // here and uploaded straight after the account is created.
   const [pendingBarcode, setPendingBarcode] = useState<File | null>(null);
   const [pendingPreview, setPendingPreview] = useState<string | null>(null);
-  const [savingBank, setSavingBank] = useState(false);
+  const bankAction = useAsyncAction();
+  const savingBank = bankAction.busy;
 
   const choosePendingBarcode = (file: File | null) => {
     setPendingBarcode(file);
@@ -406,13 +412,12 @@ function SettingsAdminPageInner() {
     if (tab === "banks") loadBanks();
   }, [tab, loadBanks]);
 
-  const save = async () => {
+  const save = () => settingsAction.run("save", async () => {
     if (!settings) return;
     if (smtpNeedsPassword(settings, saved)) {
       setNotice({ tone: "error", text: "You changed the mail server (SMTP host), so type its password again before saving. Nothing was saved." });
       return;
     }
-    setSaving(true);
     setNotice(null);
     setSecretError(null);
     try {
@@ -443,13 +448,10 @@ function SettingsAdminPageInner() {
         setSecretError({ field: e.field, message: e.message });
         if (tab !== SECRET_FIELD_TABS[e.field]) setTab(SECRET_FIELD_TABS[e.field]);
       }
-    } finally {
-      setSaving(false);
     }
-  };
+  });
 
-  const testSmtp = async () => {
-    setSaving(true);
+  const testSmtp = () => settingsAction.run("test", async () => {
     setNotice(null);
     try {
       await apiJson(`${SETTINGS_API}/test-smtp`, "POST");
@@ -459,10 +461,8 @@ function SettingsAdminPageInner() {
         tone: "error",
         text: `SMTP test failed: ${e instanceof Error ? e.message : "unknown error"}. Save your credentials first, then retry.`,
       });
-    } finally {
-      setSaving(false);
     }
-  };
+  });
 
   // ---- Banks ----
   const openBank = (b?: Bank) => {
@@ -484,12 +484,11 @@ function SettingsAdminPageInner() {
     setBankModal(true);
   };
 
-  const saveBank = async () => {
+  const saveBank = () => bankAction.run(async () => {
     if (!bankDraft.name.trim() || !bankDraft.accountNumber.trim() || !bankDraft.accountTitle.trim()) {
       setBankErr("Bank name, account number and account title are required.");
       return;
     }
-    setSavingBank(true);
     try {
       let bankId = editingBank?._id;
       if (editingBank) {
@@ -521,10 +520,8 @@ function SettingsAdminPageInner() {
       await loadBanks();
     } catch (e) {
       setBankErr(e instanceof Error ? e.message : "Could not save the bank.");
-    } finally {
-      setSavingBank(false);
     }
-  };
+  });
 
   const deleteBank = async (b: Bank) => {
     const answer = await ask({
@@ -533,12 +530,14 @@ function SettingsAdminPageInner() {
       confirmLabel: "Delete bank account",
     });
     if (answer === null) return;
-    try {
-      await apiJson(`${BANKS_API}/${b._id}`, "DELETE");
-      await loadBanks();
-    } catch (e) {
-      setNotice({ tone: "error", text: e instanceof Error ? e.message : "Delete failed" });
-    }
+    await deletingBank.run(b._id, async () => {
+      try {
+        await apiJson(`${BANKS_API}/${b._id}`, "DELETE");
+        await loadBanks();
+      } catch (e) {
+        setNotice({ tone: "error", text: e instanceof Error ? e.message : "Delete failed" });
+      }
+    });
   };
 
   // Multipart, so apiForm rather than apiJson.
@@ -548,8 +547,7 @@ function SettingsAdminPageInner() {
     return apiForm(`${BANKS_API}/${bankId}/qr-code`, "POST", form);
   };
 
-  const uploadBarcode = async (bankId: string, file: File) => {
-    setUploadingFor(bankId);
+  const uploadBarcode = (bankId: string, file: File) => uploadingBarcode.run(bankId, async () => {
     setNotice(null);
     try {
       await postBarcode(bankId, file);
@@ -557,19 +555,17 @@ function SettingsAdminPageInner() {
       setNotice({ tone: "ok", text: "Barcode uploaded." });
     } catch (e) {
       setNotice({ tone: "error", text: e instanceof Error ? e.message : "Barcode upload failed" });
-    } finally {
-      setUploadingFor(null);
     }
-  };
+  });
 
-  const removeBarcode = async (bankId: string) => {
+  const removeBarcode = (bankId: string) => removingBarcode.run(bankId, async () => {
     try {
       await apiJson(`${BANKS_API}/${bankId}/qr-code`, "DELETE");
       await loadBanks();
     } catch (e) {
       setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not remove barcode" });
     }
-  };
+  });
 
   const tabStrip = (
     <div className="mb-6 border-b border-neutral-200">
@@ -624,7 +620,9 @@ function SettingsAdminPageInner() {
           <p className="text-sm font-semibold text-neutral-900">The settings could not be loaded</p>
           <p className="mt-1 text-xs text-neutral-500">{loadError || "Please try again in a moment."}</p>
           <div className="mt-4">
-            <SecondaryButton onClick={load}>Try again</SecondaryButton>
+            <SecondaryButton onClick={() => retrying.run(load)} loading={retrying.busy}>
+              Try again
+            </SecondaryButton>
           </div>
         </Card>
       </div>
@@ -645,8 +643,8 @@ function SettingsAdminPageInner() {
         title="Settings"
         actions={
           tab === "general" ? (
-            <PrimaryButton onClick={save} disabled={saving}>
-              {saving ? "Saving..." : "Save Changes"}
+            <PrimaryButton onClick={save} loading={settingsAction.isBusy("save")} disabled={saving}>
+              Save Changes
             </PrimaryButton>
           ) : undefined
         }
@@ -936,13 +934,16 @@ function SettingsAdminPageInner() {
 
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap gap-2">
-                    <label className="inline-flex h-9 cursor-pointer items-center rounded-lg border border-neutral-200 bg-white px-3 text-sm font-medium text-neutral-700 transition-colors hover:border-neutral-300 hover:bg-neutral-50">
-                      {logoUploading === slot.key ? "Uploading…" : slot.url ? "Replace" : "Upload"}
+                    <label
+                      aria-busy={uploadingLogo.isBusy(slot.key) || undefined}
+                      className="relative inline-flex h-9 cursor-pointer items-center rounded-lg border border-neutral-200 bg-white px-3 text-sm font-medium text-neutral-700 transition-colors hover:border-neutral-300 hover:bg-neutral-50 aria-busy:cursor-wait"
+                    >
+                      <BusyLabel busy={uploadingLogo.isBusy(slot.key)}>{slot.url ? "Replace" : "Upload"}</BusyLabel>
                       <input
                         type="file"
                         accept="image/png,image/jpeg,image/webp,image/svg+xml"
                         className="hidden"
-                        disabled={logoUploading === slot.key}
+                        disabled={uploadingLogo.isBusy(slot.key)}
                         onChange={(e) => {
                           const f = e.target.files?.[0];
                           if (f) {
@@ -956,7 +957,11 @@ function SettingsAdminPageInner() {
                         }}
                       />
                     </label>
-                    {slot.url && <SecondaryButton onClick={() => removeLogo(slot.key)}>Remove</SecondaryButton>}
+                    {slot.url && (
+                      <SecondaryButton onClick={() => removeLogo(slot.key)} loading={removingLogo.isBusy(slot.key)} disabled={uploadingLogo.isBusy(slot.key)}>
+                        Remove
+                      </SecondaryButton>
+                    )}
                   </div>
 
                   <div className="mt-3 grid grid-cols-2 gap-3">
@@ -982,7 +987,7 @@ function SettingsAdminPageInner() {
           </div>
 
           <div className="mt-6 flex justify-end">
-            <PrimaryButton onClick={save} disabled={saving}>{saving ? "Saving..." : "Save Logo Sizes"}</PrimaryButton>
+            <PrimaryButton onClick={save} loading={settingsAction.isBusy("save")} disabled={saving}>Save Logo Sizes</PrimaryButton>
           </div>
         </Card>
       )}
@@ -1075,9 +1080,10 @@ function SettingsAdminPageInner() {
                 await save();
                 loadCardStatus();
               }}
+              loading={settingsAction.isBusy("save")}
               disabled={saving}
             >
-              {saving ? "Saving..." : "Save Stripe Settings"}
+              Save Stripe Settings
             </PrimaryButton>
           </div>
         </Card>
@@ -1120,8 +1126,8 @@ function SettingsAdminPageInner() {
           </div>
 
           <div className="flex justify-end gap-2 mt-6">
-            <SecondaryButton onClick={testSmtp} disabled={saving}>Test Connection</SecondaryButton>
-            <PrimaryButton onClick={save} disabled={saving}>{saving ? "Saving..." : "Save SMTP Settings"}</PrimaryButton>
+            <SecondaryButton onClick={testSmtp} loading={settingsAction.isBusy("test")} disabled={saving}>Test Connection</SecondaryButton>
+            <PrimaryButton onClick={save} loading={settingsAction.isBusy("save")} disabled={saving}>Save SMTP Settings</PrimaryButton>
           </div>
         </Card>
       )}
@@ -1199,13 +1205,16 @@ function SettingsAdminPageInner() {
                   <div className="flex flex-wrap gap-2 mt-4">
                     <SecondaryButton onClick={() => openBank(b)}>Edit</SecondaryButton>
 
-                    <label className="inline-flex cursor-pointer items-center h-9 px-3 text-sm font-medium rounded-md border border-neutral-200 bg-white text-neutral-700 hover:border-neutral-400 transition-colors">
-                      {uploadingFor === b._id ? "Uploading..." : b.qrCodeUrl ? "Replace Barcode" : "Upload Barcode"}
+                    <label
+                      aria-busy={uploadingBarcode.isBusy(b._id) || undefined}
+                      className="relative inline-flex cursor-pointer items-center h-9 px-3 text-sm font-medium rounded-md border border-neutral-200 bg-white text-neutral-700 hover:border-neutral-400 transition-colors aria-busy:cursor-wait"
+                    >
+                      <BusyLabel busy={uploadingBarcode.isBusy(b._id)}>{b.qrCodeUrl ? "Replace Barcode" : "Upload Barcode"}</BusyLabel>
                       <input
                         type="file"
                         accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml"
                         className="hidden"
-                        disabled={uploadingFor === b._id}
+                        disabled={uploadingBarcode.isBusy(b._id)}
                         onChange={(e) => {
                           const f = e.target.files?.[0];
                           if (f) uploadBarcode(b._id, f);
@@ -1214,8 +1223,22 @@ function SettingsAdminPageInner() {
                       />
                     </label>
 
-                    {b.qrCodeUrl && <SecondaryButton onClick={() => removeBarcode(b._id)}>Remove Barcode</SecondaryButton>}
-                    <DangerButton onClick={() => deleteBank(b)}>Delete</DangerButton>
+                    {b.qrCodeUrl && (
+                      <SecondaryButton
+                        onClick={() => removeBarcode(b._id)}
+                        loading={removingBarcode.isBusy(b._id)}
+                        disabled={uploadingBarcode.isBusy(b._id) || deletingBank.isBusy(b._id)}
+                      >
+                        Remove Barcode
+                      </SecondaryButton>
+                    )}
+                    <DangerButton
+                      onClick={() => deleteBank(b)}
+                      loading={deletingBank.isBusy(b._id)}
+                      disabled={uploadingBarcode.isBusy(b._id) || removingBarcode.isBusy(b._id)}
+                    >
+                      Delete
+                    </DangerButton>
                   </div>
                 </div>
               ))}
@@ -1288,13 +1311,13 @@ function SettingsAdminPageInner() {
           </div>
 
           <div className="flex justify-end mt-6">
-            <PrimaryButton onClick={save} disabled={saving}>{saving ? "Saving..." : "Save Colour Scheme"}</PrimaryButton>
+            <PrimaryButton onClick={save} loading={settingsAction.isBusy("save")} disabled={saving}>Save Colour Scheme</PrimaryButton>
           </div>
         </Card>
       )}
 
       {/* Bank editor */}
-      <Modal open={bankModal} onClose={() => setBankModal(false)} title={editingBank ? "Edit Bank" : "Add Bank"} size="sm">
+      <Modal open={bankModal} onClose={() => setBankModal(false)} title={editingBank ? "Edit Bank" : "Add Bank"} size="sm" busy={savingBank}>
         <div className="space-y-4">
           <TextField label="Bank Name" value={bankDraft.name} onChange={(v) => setBankDraft({ ...bankDraft, name: v })} required />
           <TextField label="Account Title" value={bankDraft.accountTitle} onChange={(v) => setBankDraft({ ...bankDraft, accountTitle: v })} required />
@@ -1365,9 +1388,9 @@ function SettingsAdminPageInner() {
           {bankErr && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{bankErr}</p>}
 
           <div className="flex justify-end gap-2 pt-2">
-            <SecondaryButton onClick={() => setBankModal(false)}>Cancel</SecondaryButton>
-            <PrimaryButton onClick={saveBank} disabled={savingBank}>
-              {savingBank ? "Saving..." : editingBank ? "Save Changes" : "Add Bank"}
+            <SecondaryButton onClick={() => setBankModal(false)} disabled={savingBank}>Cancel</SecondaryButton>
+            <PrimaryButton onClick={saveBank} loading={savingBank}>
+              {editingBank ? "Save Changes" : "Add Bank"}
             </PrimaryButton>
           </div>
         </div>

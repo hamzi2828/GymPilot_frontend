@@ -4,8 +4,7 @@
 // website's WhatsApp button, which channels carry transactional notices, and
 // the automated nudges.
 
-import { useState } from "react";
-import { Card, PrimaryButton, SecondaryButton, TextField, SelectField, Toggle, useConfirm } from "../_shared/ui";
+import { Card, PrimaryButton, SecondaryButton, TextField, SelectField, Toggle, useConfirm, useAsyncAction } from "../_shared/ui";
 import { API_BASE, apiJson, isMaskedSecret } from "../_shared/api";
 
 export interface MessagingConfig {
@@ -76,7 +75,8 @@ export default function MessagingSettings({
   const tx = m.transactional || {};
   const btn = m.whatsappButton || {};
   const auto = m.automations || {};
-  const [busy, setBusy] = useState(false);
+  const pushAction = useAsyncAction();
+  const busy = pushAction.busy;
   const { ask, dialog: confirmDialog } = useConfirm();
 
   const patch = (key: keyof MessagingConfig, sub: Record<string, unknown>) => onChange({ ...m, [key]: { ...((m[key] as Record<string, unknown>) || {}), ...sub } });
@@ -90,18 +90,15 @@ export default function MessagingSettings({
     if (answer !== null) setupPush(true);
   };
 
-  const setupPush = async (rotate = false) => {
-    setBusy(true);
+  const setupPush = (rotate = false) => pushAction.run(async () => {
     try {
       const res = await apiJson<{ message: string }>(`${API_BASE}/settings/push/keys`, "POST", { rotate });
       onNotice("ok", res.message);
       await onReload();
     } catch (e) {
       onNotice("error", e instanceof Error ? e.message : "Could not set up push");
-    } finally {
-      setBusy(false);
     }
-  };
+  });
 
   const providerFields = (kind: "sms" | "whatsapp") => {
     const cfg = kind === "sms" ? sms : wa;
@@ -180,13 +177,13 @@ export default function MessagingSettings({
         <div className="flex flex-wrap items-center gap-3">
           <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${push.enabled && push.vapidPublicKey ? "bg-emerald-50 text-emerald-700" : "bg-neutral-100 text-neutral-600"}`}>{push.enabled && push.vapidPublicKey ? "On" : "Off"}</span>
           {!push.vapidPublicKey ? (
-            <SecondaryButton onClick={() => setupPush(false)} disabled={busy}>
-              {busy ? "Setting up…" : "Turn on push notifications"}
+            <SecondaryButton onClick={() => setupPush(false)} loading={busy}>
+              Turn on push notifications
             </SecondaryButton>
           ) : (
             <>
               <Toggle label="Enabled" checked={!!push.enabled} onChange={(v) => patch("push", { enabled: v })} />
-              <SecondaryButton onClick={rotateKeys} disabled={busy}>
+              <SecondaryButton onClick={rotateKeys} loading={busy}>
                 Rotate keys
               </SecondaryButton>
             </>
@@ -226,8 +223,8 @@ export default function MessagingSettings({
       </Card>
 
       <div className="flex justify-end xl:col-span-2">
-        <PrimaryButton onClick={() => onSave()} disabled={saving}>
-          {saving ? "Saving..." : "Save Messaging Settings"}
+        <PrimaryButton onClick={() => onSave()} loading={saving}>
+          Save Messaging Settings
         </PrimaryButton>
       </div>
     </div>

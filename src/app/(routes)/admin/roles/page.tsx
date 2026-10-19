@@ -15,6 +15,7 @@ import {
   EmptyState,
   ErrorState,
   useConfirm,
+  useAsyncAction,
 } from "../_shared/ui";
 import { API_BASE, apiGet, apiJson } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
@@ -123,7 +124,9 @@ export default function RolesAdminPage() {
   const [editing, setEditing] = useState<Role | null>(null);
   const [draft, setDraft] = useState(emptyDraft);
   const [permissions, setPermissions] = useState<Record<string, Level>>({});
-  const [saving, setSaving] = useState(false);
+  const saveAction = useAsyncAction();
+  const saving = saveAction.busy;
+  const removing = useAsyncAction();
   const [formErr, setFormErr] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -178,12 +181,11 @@ export default function RolesAdminPage() {
     setPermissions(Object.fromEntries(tabs.map((tab) => [tab.key, level])));
   };
 
-  const save = async () => {
+  const save = () => saveAction.run(async () => {
     if (!draft.name.trim()) {
       setFormErr("Give the role a name.");
       return;
     }
-    setSaving(true);
     setFormErr(null);
     try {
       const body = {
@@ -207,21 +209,21 @@ export default function RolesAdminPage() {
       await reloadPermissions();
     } catch (e) {
       setFormErr(e instanceof Error ? e.message : "Could not save the role");
-    } finally {
-      setSaving(false);
     }
-  };
+  });
 
   const remove = async (role: Role) => {
     const answer = await ask({ title: `Delete the "${role.name}" role?`, body: "This cannot be undone.", confirmLabel: "Delete role" });
     if (answer === null) return;
-    try {
-      await apiJson(`${API_BASE}/roles/${role.id}`, "DELETE");
-      setNotice(`${role.name} deleted.`);
-      await load();
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : "Could not delete the role");
-    }
+    await removing.run(role.id, async () => {
+      try {
+        await apiJson(`${API_BASE}/roles/${role.id}`, "DELETE");
+        setNotice(`${role.name} deleted.`);
+        await load();
+      } catch (e) {
+        setErr(e instanceof Error ? e.message : "Could not delete the role");
+      }
+    });
   };
 
   return (
@@ -301,7 +303,11 @@ export default function RolesAdminPage() {
                 {editable && (
                   <div className="flex shrink-0 items-center gap-2">
                     <SecondaryButton onClick={() => openEdit(role)}>Edit</SecondaryButton>
-                    {!role.is_system && <DangerButton onClick={() => remove(role)}>Delete</DangerButton>}
+                    {!role.is_system && (
+                      <DangerButton onClick={() => remove(role)} loading={removing.isBusy(role.id)}>
+                        Delete
+                      </DangerButton>
+                    )}
                   </div>
                 )}
               </div>
@@ -330,6 +336,7 @@ export default function RolesAdminPage() {
         onClose={() => setOpen(false)}
         title={editing ? `Edit role — ${editing.name}` : "New role"}
         size="xl"
+        busy={saving}
       >
         <div className="space-y-5">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -443,9 +450,9 @@ export default function RolesAdminPage() {
           )}
 
           <div className="flex justify-end gap-2 pt-1">
-            <SecondaryButton onClick={() => setOpen(false)}>Cancel</SecondaryButton>
-            <PrimaryButton onClick={save} disabled={saving}>
-              {saving ? "Saving…" : editing ? "Save changes" : "Create role"}
+            <SecondaryButton onClick={() => setOpen(false)} disabled={saving}>Cancel</SecondaryButton>
+            <PrimaryButton onClick={save} loading={saving}>
+              {editing ? "Save changes" : "Create role"}
             </PrimaryButton>
           </div>
         </div>

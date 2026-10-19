@@ -15,7 +15,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Card, PrimaryButton, SecondaryButton, Badge, Spinner, Modal } from "../_shared/ui";
+import { Card, PrimaryButton, SecondaryButton, Badge, Spinner, Modal, useAsyncAction, untilPageLeaves } from "../_shared/ui";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
 import {
   getSubscription,
@@ -277,7 +277,10 @@ export default function BillingSettings() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [cycle, setCycle] = useState<BillingCycle>("monthly");
-  const [busy, setBusy] = useState<"checkout" | "portal" | "plan" | null>(null);
+  // Keyed "checkout", "portal" or "plan": whichever is running holds back the others.
+  const billingAction = useAsyncAction();
+  const busy = billingAction.busy;
+  const retrying = useAsyncAction();
   const [notice, setNotice] = useState<Notice | null>(null);
   // The plan picker: what is on sale, the cycle it shows, and the choice
   // waiting to be confirmed.
@@ -378,7 +381,7 @@ export default function BillingSettings() {
     if (res.ok && res.data?.url) {
       // Stays "busy" while the browser leaves for Stripe.
       window.location.assign(res.data.url);
-      return true;
+      return untilPageLeaves();
     }
     if (res.code === "ALREADY_SUBSCRIBED" || res.code === "CHECKOUT_COMPLETED") {
       setNotice({ tone: "warn", text: res.message || "This gym already has a subscription. Change its plan here, or its card from Manage billing." });
@@ -389,24 +392,20 @@ export default function BillingSettings() {
     } else {
       setNotice({ tone: "error", text: res.message || "Could not start the checkout." });
     }
-    return false;
   };
 
-  const subscribe = async () => {
-    setBusy("checkout");
+  const subscribe = () => billingAction.run("checkout", async () => {
     setNotice(null);
     try {
-      if (await followCheckout(await startCheckout(cycle))) return;
+      await followCheckout(await startCheckout(cycle));
     } catch {
       setNotice({ tone: "error", text: "Could not reach the server. Please try again." });
     }
-    setBusy(null);
-  };
+  });
 
   // The confirmed choice from the plan picker. A gym Stripe bills moves at
   // once; one it does not (yet) subscribes to the plan through checkout.
-  const applyChoice = async (picked: PlanChoice, subscribed: boolean) => {
-    setBusy("plan");
+  const applyChoice = (picked: PlanChoice, subscribed: boolean) => billingAction.run("plan", async () => {
     setNotice(null);
     try {
       if (subscribed) {
@@ -415,42 +414,38 @@ export default function BillingSettings() {
           setChoice(null);
           setNotice({ tone: "ok", text: res.message || `You are on ${picked.plan.name} now.` });
           await Promise.all([load(), loadPlans()]);
-          setBusy(null);
           return;
         }
         if (res.code !== "NO_STRIPE_SUBSCRIPTION") {
           setChoice(null);
           setNotice({ tone: res.status >= 500 ? "error" : "warn", text: res.message || "Could not change the plan." });
-          setBusy(null);
           return;
         }
         // Stripe does not bill the gym after all: subscribe instead.
       }
       const res = await startCheckout(picked.cycle, picked.plan.current ? undefined : picked.plan.slug);
       setChoice(null);
-      if (await followCheckout(res)) return;
+      await followCheckout(res);
     } catch {
       setChoice(null);
       setNotice({ tone: "error", text: "Could not reach the server. Please try again." });
     }
-    setBusy(null);
-  };
+  });
 
-  const manage = async () => {
-    setBusy("portal");
+  const manage = () => billingAction.run("portal", async () => {
     setNotice(null);
     try {
       const res = await openPortal();
       if (res.ok && res.data?.url) {
+        // Stays "busy" while the browser leaves for Stripe.
         window.location.assign(res.data.url);
-        return;
+        return untilPageLeaves();
       }
       setNotice({ tone: "error", text: res.message || "Could not open the billing portal." });
     } catch {
       setNotice({ tone: "error", text: "Could not reach the server. Please try again." });
     }
-    setBusy(null);
-  };
+  });
 
   const noticeBox = notice && (
     <div className={`mb-5 flex items-start justify-between gap-4 rounded-xl border px-4 py-3 text-sm ${NOTICE_STYLES[notice.tone]}`}>
@@ -476,10 +471,13 @@ export default function BillingSettings() {
           <p className="mt-1 text-xs text-neutral-500">{loadError || "Please try again in a moment."}</p>
           <div className="mt-4">
             <SecondaryButton
-              onClick={() => {
-                setLoading(true);
-                load();
-              }}
+              onClick={() =>
+                retrying.run(async () => {
+                  setLoading(true);
+                  await load();
+                })
+              }
+              loading={retrying.busy}
             >
               Try again
             </SecondaryButton>
@@ -628,7 +626,7 @@ export default function BillingSettings() {
               cycle={pickCycle}
               onCycle={setPickCycle}
               onPick={setChoice}
-              disabled={busy !== null}
+              disabled={busy}
             />
           </Card>
         </div>
@@ -637,10 +635,11 @@ export default function BillingSettings() {
       <Modal
         open={!!choice}
         onClose={() => {
-          if (busy !== "plan") setChoice(null);
+          if (!billingAction.isBusy("plan")) setChoice(null);
         }}
         title={choice ? (subscribed ? (choice.plan.current ? `Switch to ${choice.cycle} billing?` : `Move to ${choice.plan.name}?`) : `Subscribe to ${choice.plan.name}?`) : ""}
         size="sm"
+        busy={billingAction.isBusy("plan")}
       >
         {choice && (
           <div className="space-y-3 text-sm text-neutral-700">
@@ -666,11 +665,11 @@ export default function BillingSettings() {
               </p>
             )}
             <div className="flex justify-end gap-2 pt-2">
-              <SecondaryButton onClick={() => setChoice(null)} disabled={busy === "plan"}>
+              <SecondaryButton onClick={() => setChoice(null)} disabled={billingAction.isBusy("plan")}>
                 Cancel
               </SecondaryButton>
-              <PrimaryButton onClick={() => applyChoice(choice, subscribed)} disabled={busy !== null}>
-                {busy === "plan" ? "Working…" : subscribed ? "Confirm change" : "Continue to payment"}
+              <PrimaryButton onClick={() => applyChoice(choice, subscribed)} loading={billingAction.isBusy("plan")} disabled={busy}>
+                {subscribed ? "Confirm change" : "Continue to payment"}
               </PrimaryButton>
             </div>
           </div>
@@ -698,8 +697,8 @@ export default function BillingSettings() {
                 ? "A payment did not go through, so your subscription lapsed. Pay it or update your card in the billing portal: everything comes back as soon as Stripe is paid."
                 : `Your card is on file. Update it, download invoices or cancel in the billing portal.${showPicker ? " To change plan or billing cycle, use Change plan above." : ""}`}
             </p>
-            <PrimaryButton onClick={manage} disabled={busy !== null}>
-              {busy === "portal" ? "Opening…" : "Manage billing, card & invoices"}
+            <PrimaryButton onClick={manage} loading={billingAction.isBusy("portal")} disabled={busy}>
+              Manage billing, card & invoices
             </PrimaryButton>
           </div>
         ) : !plan ? (
@@ -749,8 +748,8 @@ export default function BillingSettings() {
                   : "Subscribe to bring everything back exactly as you left it."}
                 {!hasYearly && ` ${priceFor(cycle)} / ${cycle === "yearly" ? "year" : "month"}.`}
               </p>
-              <PrimaryButton onClick={subscribe} disabled={busy !== null}>
-                {busy === "checkout" ? "Opening checkout…" : "Subscribe"}
+              <PrimaryButton onClick={subscribe} loading={billingAction.isBusy("checkout")} disabled={busy}>
+                Subscribe
               </PrimaryButton>
             </div>
           </div>

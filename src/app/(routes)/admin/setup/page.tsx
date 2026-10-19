@@ -8,7 +8,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { PageHeader, Card, PrimaryButton, SecondaryButton, TextField, TextArea, Toggle, UpgradePlanLink, ErrorState } from "../_shared/ui";
+import { PageHeader, Card, PrimaryButton, SecondaryButton, TextField, TextArea, Toggle, UpgradePlanLink, ErrorState, useAsyncAction, untilPageLeaves } from "../_shared/ui";
 import { API_BASE, GYMFOLIO_API, apiGet, apiJson, apiForm, isPlanLimitError } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
 import { PACKAGE_TERMS } from "../packages/terms";
@@ -54,7 +54,8 @@ export default function SetupWizardPage() {
   // the form would be blank, and saving it would write blanks, USD and UTC
   // over what the gym really has.
   const [loadErr, setLoadErr] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const stepAction = useAsyncAction();
+  const busy = stepAction.busy;
   const [error, setError] = useState<string | null>(null);
   // Set when a step was refused by the gym's platform plan (e.g. the staff
   // limit), so the error can link straight to Billing.
@@ -92,8 +93,7 @@ export default function SetupWizardPage() {
     load();
   }, [load]);
 
-  const run = async (fn: () => Promise<void>, next = true) => {
-    setBusy(true);
+  const run = (fn: () => Promise<void>, next = true) => stepAction.run(async () => {
     setError(null);
     setPlanLimit(false);
     setNotice(null);
@@ -103,10 +103,8 @@ export default function SetupWizardPage() {
     } catch (e) {
       setError(e instanceof Error ? e.message : "Something went wrong");
       setPlanLimit(isPlanLimitError(e));
-    } finally {
-      setBusy(false);
     }
-  };
+  });
 
   const saveGym = () =>
     run(async () => {
@@ -186,6 +184,8 @@ export default function SetupWizardPage() {
       await apiJson(`${API_BASE}/settings`, "PUT", { setupCompleted: true });
       await reload();
       router.replace("/admin");
+      // Busy until the dashboard has taken over.
+      await untilPageLeaves();
     }, false);
 
   if (loading) return <p className="text-sm text-neutral-500">Loading…</p>;
@@ -236,7 +236,7 @@ export default function SetupWizardPage() {
               <input type="file" accept="image/*" onChange={(e) => setLogoFile(e.target.files?.[0] || null)} className="mt-1 block text-sm" />
             </label>
             <div className="flex justify-end">
-              <PrimaryButton onClick={saveGym} disabled={busy}>{busy ? "Saving…" : "Save and continue"}</PrimaryButton>
+              <PrimaryButton onClick={saveGym} loading={busy}>Save and continue</PrimaryButton>
             </div>
           </div>
         )}
@@ -254,8 +254,8 @@ export default function SetupWizardPage() {
               </label>
             </div>
             <div className="flex justify-between">
-              <SecondaryButton onClick={() => setStep(0)}>Back</SecondaryButton>
-              <PrimaryButton onClick={saveMoney} disabled={busy}>{busy ? "Saving…" : "Save and continue"}</PrimaryButton>
+              <SecondaryButton onClick={() => setStep(0)} disabled={busy}>Back</SecondaryButton>
+              <PrimaryButton onClick={saveMoney} loading={busy}>Save and continue</PrimaryButton>
             </div>
           </div>
         )}
@@ -283,10 +283,10 @@ export default function SetupWizardPage() {
             <TextArea label="What is included (one per line)" value={pkg.features} onChange={(v) => setPkg({ ...pkg, features: v })} />
             <Toggle label="Charge the card automatically every month (needs Stripe, next step)" checked={pkg.recurring} onChange={(v) => setPkg({ ...pkg, recurring: v })} />
             <div className="flex justify-between">
-              <SecondaryButton onClick={() => setStep(1)}>Back</SecondaryButton>
+              <SecondaryButton onClick={() => setStep(1)} disabled={busy}>Back</SecondaryButton>
               <div className="flex gap-2">
-                <SecondaryButton onClick={() => setStep(3)}>Skip</SecondaryButton>
-                <PrimaryButton onClick={savePackage} disabled={busy}>{busy ? "Saving…" : packageId ? "Save and continue" : "Create and continue"}</PrimaryButton>
+                <SecondaryButton onClick={() => setStep(3)} disabled={busy}>Skip</SecondaryButton>
+                <PrimaryButton onClick={savePackage} loading={busy}>{packageId ? "Save and continue" : "Create and continue"}</PrimaryButton>
               </div>
             </div>
           </div>
@@ -343,10 +343,10 @@ export default function SetupWizardPage() {
               )}
             </div>
             <div className="flex justify-between">
-              <SecondaryButton onClick={() => setStep(2)}>Back</SecondaryButton>
+              <SecondaryButton onClick={() => setStep(2)} disabled={busy}>Back</SecondaryButton>
               <div className="flex gap-2">
-                <SecondaryButton onClick={() => setStep(4)}>Skip for now</SecondaryButton>
-                <PrimaryButton onClick={savePayment} disabled={busy}>{busy ? "Saving…" : "Save and continue"}</PrimaryButton>
+                <SecondaryButton onClick={() => setStep(4)} disabled={busy}>Skip for now</SecondaryButton>
+                <PrimaryButton onClick={savePayment} loading={busy}>Save and continue</PrimaryButton>
               </div>
             </div>
           </div>
@@ -371,10 +371,10 @@ export default function SetupWizardPage() {
               </label>
             </div>
             <div className="flex justify-between">
-              <SecondaryButton onClick={() => setStep(3)}>Back</SecondaryButton>
+              <SecondaryButton onClick={() => setStep(3)} disabled={busy}>Back</SecondaryButton>
               <div className="flex gap-2">
-                <SecondaryButton onClick={() => setStep(5)}>Skip</SecondaryButton>
-                <PrimaryButton onClick={saveStaff} disabled={busy}>{busy ? "Saving…" : "Invite and continue"}</PrimaryButton>
+                <SecondaryButton onClick={() => setStep(5)} disabled={busy}>Skip</SecondaryButton>
+                <PrimaryButton onClick={saveStaff} loading={busy}>Invite and continue</PrimaryButton>
               </div>
             </div>
           </div>
@@ -390,8 +390,8 @@ export default function SetupWizardPage() {
               <li>Everything else — classes, trainers, homepage, emails — lives in the menu on the left.</li>
             </ul>
             <div className="flex justify-between">
-              <SecondaryButton onClick={() => setStep(4)}>Back</SecondaryButton>
-              <PrimaryButton onClick={finish} disabled={busy}>{busy ? "Finishing…" : "Go to the dashboard"}</PrimaryButton>
+              <SecondaryButton onClick={() => setStep(4)} disabled={busy}>Back</SecondaryButton>
+              <PrimaryButton onClick={finish} loading={busy}>Go to the dashboard</PrimaryButton>
             </div>
           </div>
         )}

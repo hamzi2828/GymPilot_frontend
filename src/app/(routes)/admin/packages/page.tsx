@@ -16,6 +16,8 @@ import {
   Spinner,
   Table,
   useConfirm,
+  useAsyncAction,
+  BusyLabel,
 } from "../_shared/ui";
 import { API_BASE, GYMFOLIO_API, ApiError, apiGet, apiJson } from "../_shared/api";
 import { usePermissions } from "@/components/admin/PermissionsProvider";
@@ -87,7 +89,10 @@ export default function PackagesAdminPage() {
   // list (see ./terms).
   const [byDays, setByDays] = useState(false);
   const [featuresText, setFeaturesText] = useState("");
-  const [saving, setSaving] = useState(false);
+  const saveAction = useAsyncAction();
+  const saving = saveAction.busy;
+  const removing = useAsyncAction();
+  const toggling = useAsyncAction();
   const [error, setError] = useState<string | null>(null);
   // A delete the backend refused because members still hold the package.
   const [refusal, setRefusal] = useState<{ message: string; pkg: Package } | null>(null);
@@ -143,7 +148,7 @@ export default function PackagesAdminPage() {
     setOpen(true);
   };
 
-  const save = async () => {
+  const save = () => saveAction.run(async () => {
     const oneOff = billing.mode !== "recurring";
     const days = Math.floor(Number(form.durationDays) || 0);
     if (oneOff && byDays && days < 1) {
@@ -154,7 +159,6 @@ export default function PackagesAdminPage() {
       setError("Choose how long the package lasts.");
       return;
     }
-    setSaving(true);
     setError(null);
     try {
       const period = oneOff ? form.period : billing.interval;
@@ -181,10 +185,8 @@ export default function PackagesAdminPage() {
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Save failed");
-    } finally {
-      setSaving(false);
     }
-  };
+  });
 
   const remove = async (p: Package) => {
     const answer = await ask({
@@ -194,25 +196,27 @@ export default function PackagesAdminPage() {
     });
     if (answer === null) return;
     setRefusal(null);
-    try {
-      await apiJson(`${GYMFOLIO_API}/packages/${p._id}`, "DELETE");
-      await load();
-    } catch (e) {
-      // Members still hold it (409 PACKAGE_IN_USE): the backend says who and
-      // points at Deactivate, which the banner then offers in one click.
-      if (e instanceof ApiError && e.code === "PACKAGE_IN_USE") setRefusal({ message: e.message, pkg: p });
-      else alert(e instanceof Error ? e.message : "Delete failed");
-    }
+    await removing.run(p._id, async () => {
+      try {
+        await apiJson(`${GYMFOLIO_API}/packages/${p._id}`, "DELETE");
+        await load();
+      } catch (e) {
+        // Members still hold it (409 PACKAGE_IN_USE): the backend says who and
+        // points at Deactivate, which the banner then offers in one click.
+        if (e instanceof ApiError && e.code === "PACKAGE_IN_USE") setRefusal({ message: e.message, pkg: p });
+        else alert(e instanceof Error ? e.message : "Delete failed");
+      }
+    });
   };
 
-  const toggleActive = async (p: Package) => {
+  const toggleActive = (p: Package) => toggling.run(p._id, async () => {
     try {
       await apiJson(`${GYMFOLIO_API}/packages/${p._id}/toggle-active`, "PATCH");
       await load();
     } catch (e) {
       alert(e instanceof Error ? e.message : "Toggle failed");
     }
-  };
+  });
 
   const kind = (form.kind || "membership") as Kind;
   const isPack = kind === "session_pack" || kind === "pt_pack";
@@ -244,6 +248,7 @@ export default function PackagesAdminPage() {
                   await toggleActive(refusal.pkg);
                   setRefusal(null);
                 }}
+                loading={toggling.isBusy(refusal.pkg._id)}
               >
                 Deactivate {refusal.pkg.name}
               </SecondaryButton>
@@ -273,15 +278,23 @@ export default function PackagesAdminPage() {
             </span>,
             <span key="b" className="text-xs text-neutral-600">{describeBilling(p)}</span>,
             <span key="f" className="text-neutral-500 text-xs">{(p.features || []).length} items</span>,
-            <button key="s" onClick={() => toggleActive(p)} disabled={!editable} className="disabled:cursor-default">
-              <Badge color={p.isActive ? "green" : "neutral"}>{p.isActive ? "Active" : "Inactive"}</Badge>
+            <button
+              key="s"
+              onClick={() => toggleActive(p)}
+              disabled={!editable || toggling.isBusy(p._id) || removing.isBusy(p._id)}
+              aria-busy={toggling.isBusy(p._id) || undefined}
+              className="relative disabled:cursor-default aria-busy:disabled:cursor-wait"
+            >
+              <BusyLabel busy={toggling.isBusy(p._id)}>
+                <Badge color={p.isActive ? "green" : "neutral"}>{p.isActive ? "Active" : "Inactive"}</Badge>
+              </BusyLabel>
             </button>,
             editable ? (
               <div key="a" className="flex gap-2">
                 <SecondaryButton onClick={() => openEdit(p)} label={`Edit ${p.name}`}>
                   <FiEdit2 className="w-3.5 h-3.5" />
                 </SecondaryButton>
-                <DangerButton onClick={() => remove(p)} label={`Delete ${p.name}`}>
+                <DangerButton onClick={() => remove(p)} label={`Delete ${p.name}`} loading={removing.isBusy(p._id)} disabled={toggling.isBusy(p._id)}>
                   <FiTrash2 className="w-3.5 h-3.5" />
                 </DangerButton>
               </div>
@@ -431,8 +444,8 @@ export default function PackagesAdminPage() {
         {error && <p className="mt-4 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
         <div className="flex justify-end gap-2 mt-6">
           <SecondaryButton onClick={() => setOpen(false)} disabled={saving}>Cancel</SecondaryButton>
-          <PrimaryButton onClick={save} disabled={saving}>
-            {saving ? "Saving..." : editing ? "Update" : "Create"}
+          <PrimaryButton onClick={save} loading={saving}>
+            {editing ? "Update" : "Create"}
           </PrimaryButton>
         </div>
       </Modal>
