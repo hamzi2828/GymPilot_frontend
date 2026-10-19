@@ -2,10 +2,14 @@
 
 // A member's payment link: /pay/<token>, sent before, on and after the day
 // their membership falls due. No sign-in -- the link is the key, and it opens
-// one order only. "Pay now" takes them to the gym's gateway (card, JazzCash,
-// Easypaisa or any bank app); the gym's bank details are offered as well, for
-// a transfer instead. The gateway sends them back here with ?done=1, and the
-// page then asks until the payment is confirmed.
+// one order only.
+//
+// Two ways to pay. Online: "Pay now" takes them to the gym's gateway (card,
+// JazzCash, Easypaisa or any bank app), which sends them back here with
+// ?done=1, and the page asks until the payment is confirmed. By bank
+// transfer: the gym's accounts and QR codes, then a screenshot of the
+// receipt uploaded here for the gym's staff to check. A gym on the "generic"
+// gateway has only the second; any other gym with bank accounts offers both.
 
 import React, { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
@@ -14,12 +18,23 @@ import "@fortawesome/fontawesome-free/css/all.css";
 import Spinner from "@/components/ui/Spinner";
 import useAsyncAction from "@/components/ui/useAsyncAction";
 import { useSiteSettings } from "@/components/ThemeProvider";
-import type { BankAccount } from "../../checkout/services/checkoutService";
-import { PayLinkError, assetUrl, getGymBanks, getPayLink, startPayLinkCheckout, type PayLink } from "../payService";
+import {
+  PayLinkError,
+  assetUrl,
+  getGymBanks,
+  getPayLink,
+  startPayLinkCheckout,
+  uploadPayLinkProof,
+  type PayLink,
+  type PayLinkBank,
+} from "../payService";
 
 // After coming back from the gateway: ask every few seconds, for about a minute.
 const POLL_EVERY_MS = 3000;
 const POLL_TRIES = 20;
+// The API's own cap on a receipt (Vercel refuses bodies over 4.5 MB first).
+const MAX_RECEIPT_BYTES = 4 * 1024 * 1024;
+const RECEIPT_TYPES = "image/jpeg,image/png,image/webp,application/pdf,.pdf";
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -58,9 +73,80 @@ function failureOf(e: unknown): Failure {
   return { kind: "unreachable", message: e instanceof Error && e.message ? e.message : "We could not load this payment." };
 }
 
+/** A refusal that means the link or its order has moved on: read it again rather than show the error. */
+function linkMovedOn(e: unknown) {
+  return e instanceof PayLinkError && (e.status === 409 || e.status === 410 || e.code === "LINK_INVALID" || e.code === "LINK_EXPIRED");
+}
+
 const card = "rounded-2xl border border-gray-200 bg-white p-5 shadow-sm sm:p-6";
 const secondaryBtn =
   "inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-gray-300 bg-white px-5 py-2.5 text-sm font-semibold text-gray-800 hover:bg-gray-50 disabled:opacity-60";
+
+/** A number to copy into a bank app. */
+function CopyValue({ label, value }: { label: string; value: string }) {
+  const [copied, setCopied] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      setFailed(false);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // No clipboard here: the number is on screen to select by hand.
+      setFailed(true);
+    }
+  };
+  return (
+    <div className="flex items-center justify-between gap-3 py-2">
+      <div className="min-w-0">
+        <p className="text-xs text-gray-500">{label}</p>
+        <p className="break-all font-mono text-sm font-semibold text-gray-900">{value}</p>
+      </div>
+      <button
+        type="button"
+        onClick={copy}
+        aria-label={`Copy ${label.toLowerCase()}`}
+        className="shrink-0 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+      >
+        {copied ? "Copied" : failed ? "Select it" : "Copy"}
+      </button>
+    </div>
+  );
+}
+
+function BankCard({ bank }: { bank: PayLinkBank }) {
+  return (
+    <div className="rounded-xl border border-gray-200 p-4">
+      <p className="text-base font-bold text-gray-900">{bank.bank_name}</p>
+      {bank.qr_code_url && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={assetUrl(bank.qr_code_url)}
+          alt={`${bank.bank_name} payment QR code`}
+          className="mx-auto my-4 block aspect-square w-full max-w-[260px] rounded-xl border border-gray-200 bg-white object-contain p-2"
+        />
+      )}
+      <div className="divide-y divide-gray-100">
+        {bank.account_title && (
+          <div className="py-2">
+            <p className="text-xs text-gray-500">Account title</p>
+            <p className="text-sm font-semibold text-gray-900">{bank.account_title}</p>
+          </div>
+        )}
+        {bank.account_number && <CopyValue label="Account number" value={bank.account_number} />}
+        {bank.iban && <CopyValue label="IBAN" value={bank.iban} />}
+        {bank.branch && (
+          <div className="py-2">
+            <p className="text-xs text-gray-500">Branch</p>
+            <p className="text-sm text-gray-900">{bank.branch}</p>
+          </div>
+        )}
+      </div>
+      {bank.notes && <p className="mt-2 text-xs text-gray-500">{bank.notes}</p>}
+    </div>
+  );
+}
 
 function PayContent() {
   const params = useParams<{ token: string }>();
@@ -72,13 +158,16 @@ function PayContent() {
   const [link, setLink] = useState<PayLink | null>(null);
   const [failure, setFailure] = useState<Failure | null>(null);
   const [loading, setLoading] = useState(true);
-  const [banks, setBanks] = useState<BankAccount[]>([]);
+  // Only for an older API, whose link does not list the accounts itself.
+  const [publicBanks, setPublicBanks] = useState<PayLinkBank[]>([]);
   // Back from the gateway: asking until it is paid, then out of tries.
   const [confirming, setConfirming] = useState(false);
   const [timedOut, setTimedOut] = useState(false);
   const [autoPay, setAutoPay] = useState(false);
   const [payError, setPayError] = useState<string | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const pay = useAsyncAction();
+  const uploader = useAsyncAction();
   const recheck = useAsyncAction();
   const retry = useAsyncAction();
   // Which round of asking is the current one: leaving the page, or a newer
@@ -139,11 +228,14 @@ function PayContent() {
     let gone = false;
     (async () => {
       const data = await load();
-      if (!gone && returned && data && data.status === "due") confirm();
+      if (gone || !data) return;
+      if (returned && data.status === "due") confirm();
+      if (!Array.isArray(data.banks)) {
+        getGymBanks()
+          .then((list) => !gone && setPublicBanks(list))
+          .catch(() => !gone && setPublicBanks([]));
+      }
     })();
-    getGymBanks()
-      .then((list) => !gone && setBanks(list))
-      .catch(() => !gone && setBanks([]));
     return () => {
       gone = true;
       round.current += 1;
@@ -159,9 +251,25 @@ function PayContent() {
         pay.leave();
         window.location.href = url;
       } catch (e) {
-        const f = failureOf(e);
-        if (f.kind === "unreachable") setPayError(e instanceof Error ? e.message : "We could not start the payment. Please try again.");
-        else await load();
+        if (linkMovedOn(e)) await load();
+        else setPayError(e instanceof Error && e.message ? e.message : "We could not start the payment. Please try again.");
+      }
+    });
+
+  const sendReceipt = (file: File) =>
+    uploader.run(async () => {
+      setUploadError(null);
+      if (file.size > MAX_RECEIPT_BYTES) {
+        setUploadError("That file is too large. Upload a photo or PDF under 4 MB.");
+        return;
+      }
+      try {
+        const proof = await uploadPayLinkProof(token, file);
+        if (proof) setLink((l) => (l ? { ...l, proof } : l));
+        await load();
+      } catch (e) {
+        if (linkMovedOn(e)) await load();
+        else setUploadError(e instanceof Error && e.message ? e.message : "We could not send your receipt. Please try again.");
       }
     });
 
@@ -222,7 +330,8 @@ function PayContent() {
 
   const first = (link.member_first_name || "").trim();
   const amount = money(link.amount, link.currency);
-  const status = failure?.kind === "expired" ? "expired" : link.status;
+  const proof = link.proof?.status || "none";
+  const status = failure?.kind === "expired" ? "expired" : proof === "approved" ? "paid" : link.status;
 
   // ---- Paid, closed or expired: nothing to pay here ----
   if (status !== "due") {
@@ -264,11 +373,43 @@ function PayContent() {
   }
 
   // ---- Due ----
+  // Online through a gateway, unless the gym has none or only takes
+  // transfers ("generic"). An older API names no provider: it has one.
+  const online = link.provider === undefined ? true : !!link.provider && link.provider !== "generic" && link.provider !== "none";
+  const banks = Array.isArray(link.banks) ? link.banks : publicBanks;
+  const receiptSent = proof === "submitted";
   const period = (link.period || "").trim().toLowerCase();
   const consentText = `I allow ${gymName} to charge my saved card for my membership (${Number(link.amount || 0).toLocaleString(undefined, {
     maximumFractionDigits: 2,
   })} ${(link.currency || "").toUpperCase()}${period ? ` every ${period}` : ""}) on each due date. I can turn this off anytime in my account.`;
-  const showPay = !confirming && !timedOut;
+  // While a gateway payment is being confirmed, or a receipt is with the
+  // gym, nothing else is offered: either may already have paid.
+  const busyElsewhere = confirming || timedOut || receiptSent;
+  const showPay = online && !busyElsewhere;
+  const showTransfer = !busyElsewhere && (banks.length > 0 || !online);
+
+  const uploadButton = (label: string, primary: boolean) => (
+    <label
+      aria-busy={uploader.busy || undefined}
+      className={`relative inline-flex min-h-12 w-full cursor-pointer items-center justify-center gap-2 rounded-xl px-5 py-3 text-base font-semibold aria-busy:cursor-wait ${
+        primary ? "btn-accent" : "border border-gray-300 bg-white text-gray-800 hover:bg-gray-50"
+      }`}
+    >
+      {uploader.busy ? <Spinner /> : <i className="fas fa-upload" aria-hidden="true" />}
+      {uploader.busy ? "Sending your receipt…" : label}
+      <input
+        type="file"
+        accept={RECEIPT_TYPES}
+        className="sr-only"
+        disabled={uploader.busy}
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          e.target.value = "";
+          if (file) sendReceipt(file);
+        }}
+      />
+    </label>
+  );
 
   return (
     <main className="min-h-screen bg-gray-50 px-4 pb-16 pt-28">
@@ -299,6 +440,22 @@ function PayContent() {
               </div>
             )}
           </dl>
+
+          {receiptSent && !confirming && !timedOut && (
+            <div className="mt-5 rounded-xl border border-sky-200 bg-sky-50 px-4 py-4 text-sm text-sky-900" role="status">
+              <p className="font-semibold">Receipt received — {gymName} will check it and confirm.</p>
+              <p className="mt-1">
+                {link.proof?.submitted_at ? `Sent ${dayLabel(link.proof.submitted_at, ianaTimezone)}. ` : ""}Your membership is renewed as soon as they do, and a receipt is emailed to you.
+                Please do not pay again.
+              </p>
+              <div className="mt-4">{uploadButton("Send a different receipt", false)}</div>
+              {uploadError && (
+                <p role="alert" className="mt-3 text-sm text-red-700">
+                  {uploadError}
+                </p>
+              )}
+            </div>
+          )}
 
           {confirming && (
             <div className="mt-5 flex items-start gap-3 rounded-xl bg-gray-50 px-4 py-4" role="status">
@@ -364,7 +521,7 @@ function PayContent() {
               <button
                 type="button"
                 onClick={startPaying}
-                disabled={pay.busy}
+                disabled={pay.busy || uploader.busy}
                 aria-busy={pay.busy || undefined}
                 className="btn-accent mt-5 inline-flex min-h-14 w-full items-center justify-center gap-3 rounded-xl px-6 py-4 text-lg font-bold shadow-sm disabled:opacity-80"
               >
@@ -378,49 +535,48 @@ function PayContent() {
           )}
         </div>
 
-        {/* ---- Paying by transfer instead ---- */}
-        {showPay && banks.length > 0 && (
+        {/* ---- Bank transfer, and the receipt ---- */}
+        {showTransfer && (
           <div className={card}>
-            <h2 className="text-base font-bold text-gray-900">Or pay by bank transfer — no fee</h2>
-            <p className="mt-1 text-sm text-gray-600">
-              Send {amount} from any bank app to {banks.length === 1 ? "this account" : "one of these accounts"} (Raast works with the IBAN). Use{" "}
-              {link.order_number ? <strong className="text-gray-900">{link.order_number}</strong> : "your full name"} as the reference, then send the receipt to {gymName} so they
-              can confirm it.
-            </p>
-            <div className="mt-4 space-y-3">
-              {banks.map((bank) => (
-                <div key={bank._id} className="rounded-xl border border-gray-200 p-4">
-                  <p className="text-sm font-bold text-gray-900">{bank.name}</p>
-                  <dl className="mt-2 space-y-1.5 text-sm">
-                    <div className="flex flex-wrap justify-between gap-x-3">
-                      <dt className="text-gray-500">Account title</dt>
-                      <dd className="text-right font-medium text-gray-900">{bank.accountTitle}</dd>
-                    </div>
-                    <div className="flex flex-wrap justify-between gap-x-3">
-                      <dt className="text-gray-500">Account number</dt>
-                      <dd className="break-all text-right font-mono font-medium text-gray-900">{bank.accountNumber}</dd>
-                    </div>
-                    {bank.iban && (
-                      <div className="flex flex-wrap justify-between gap-x-3">
-                        <dt className="text-gray-500">IBAN</dt>
-                        <dd className="break-all text-right font-mono font-medium text-gray-900">{bank.iban}</dd>
-                      </div>
-                    )}
-                    {bank.branch && (
-                      <div className="flex flex-wrap justify-between gap-x-3">
-                        <dt className="text-gray-500">Branch</dt>
-                        <dd className="text-right text-gray-900">{bank.branch}</dd>
-                      </div>
-                    )}
-                  </dl>
-                  {bank.notes && <p className="mt-2 text-xs text-gray-500">{bank.notes}</p>}
-                  {bank.qrCodeUrl && (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={assetUrl(bank.qrCodeUrl)} alt={`${bank.name} payment QR code`} className="mt-3 h-36 w-36 rounded-lg border border-gray-200 object-contain" />
-                  )}
+            <h2 className="text-base font-bold text-gray-900">{online ? "Or pay by bank transfer (no fee)" : "Pay by bank transfer"}</h2>
+
+            {proof === "rejected" && (
+              <p role="alert" className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+                <strong>Rejected{link.proof?.reason ? `: ${link.proof.reason.trim().replace(/[.\s]+$/, "")}` : ""}</strong> — upload a new receipt.
+              </p>
+            )}
+
+            {banks.length > 0 ? (
+              <>
+                <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-gray-600">
+                  <li>
+                    Send <strong className="text-gray-900">{amount}</strong> from any bank app to {banks.length === 1 ? "this account" : "one of these accounts"}: scan the QR code, or
+                    copy the account number or IBAN.
+                  </li>
+                  <li>Take a screenshot of the receipt and upload it below. {gymName} checks it and confirms your membership.</li>
+                </ol>
+                <div className="mt-4 space-y-3">
+                  {banks.map((bank) => (
+                    <BankCard key={bank.id || bank.account_number} bank={bank} />
+                  ))}
                 </div>
-              ))}
-            </div>
+                <div className="mt-5">{uploadButton("I've paid — upload the screenshot", !online)}</div>
+                <p className="mt-2 text-center text-xs text-gray-500">A photo (JPG, PNG or WebP) or a PDF, up to 4 MB.</p>
+                {uploadError && (
+                  <p role="alert" className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                    {uploadError}
+                  </p>
+                )}
+              </>
+            ) : (
+              <p className="mt-2 text-sm text-gray-600">
+                Bank details are not available right now. Please{" "}
+                <Link href="/contact-us" className="font-semibold underline">
+                  contact {gymName}
+                </Link>{" "}
+                to pay.
+              </p>
+            )}
           </div>
         )}
       </div>

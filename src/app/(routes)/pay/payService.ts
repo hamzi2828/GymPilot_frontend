@@ -3,12 +3,36 @@
 // The payment link a member is sent before, on and after the day their
 // membership falls due. The link is the key: it names one order and needs no
 // sign-in. The API checks its signature and its expiry on every call.
+//
+// It is paid online through the gym's gateway, or by bank transfer into one
+// of the gym's accounts with a screenshot of the receipt uploaded here, which
+// the gym's staff then check.
 
 import type { BankAccount } from "../checkout/services/checkoutService";
 
 const API_BASE = process.env.NEXT_PUBLIC_BACKEND_URL || "";
 
 export type PayLinkStatus = "due" | "paid" | "expired" | "cancelled";
+
+/** One of the gym's accounts to transfer to, as the link lists it. */
+export interface PayLinkBank {
+  id: string;
+  bank_name: string;
+  account_title: string;
+  account_number: string;
+  iban?: string;
+  qr_code_url?: string;
+  branch?: string;
+  notes?: string;
+}
+
+/** The transfer receipt sent from this link, and what the gym made of it. */
+export interface PayLinkProof {
+  status: "none" | "submitted" | "approved" | "rejected";
+  /** Why staff turned it down. */
+  reason?: string;
+  submitted_at?: string | null;
+}
 
 /** GET /api/pay/:token -- what the link is for. */
 export interface PayLink {
@@ -28,6 +52,15 @@ export interface PayLink {
   auto_pay_available?: boolean;
   /** How often the membership falls due ("month"), for the auto-pay consent (when the API sends it). */
   period?: string;
+  /**
+   * The gym's gateway: "safepay", "stripe", "generic" (bank transfer and a
+   * receipt only), or null with none. Absent from an older API, which always
+   * has a gateway behind the link.
+   */
+  provider?: string | null;
+  /** The gym's bank accounts (absent from an older API, which lists them at /payment/banks). */
+  banks?: PayLinkBank[];
+  proof?: PayLinkProof;
 }
 
 /**
@@ -91,10 +124,30 @@ export async function startPayLinkCheckout(token: string, autoPay = false): Prom
   return json.url;
 }
 
-/** The gym's bank accounts, for paying by transfer instead (public). */
-export async function getGymBanks(): Promise<BankAccount[]> {
+/**
+ * Sends the screenshot (or PDF) of the transfer receipt. The order then waits
+ * for the gym's staff, as any bank transfer does.
+ */
+export async function uploadPayLinkProof(token: string, file: File): Promise<PayLinkProof | null> {
+  const form = new FormData();
+  form.append("proof", file);
+  const json = await call<{ data?: { proof?: PayLinkProof } }>(`${tokenPath(token)}/proof`, { method: "POST", body: form }, "We could not send your receipt. Please try again.");
+  return json.data?.proof || null;
+}
+
+/** The gym's bank accounts from the public list, in the link's shape (for an older API). */
+export async function getGymBanks(): Promise<PayLinkBank[]> {
   const json = await call<{ data?: BankAccount[] }>("/api/gymfolio/payment/banks", { method: "GET" }, "Could not load bank details");
-  return json.data || [];
+  return (json.data || []).map((b) => ({
+    id: b._id,
+    bank_name: b.name,
+    account_title: b.accountTitle,
+    account_number: b.accountNumber,
+    iban: b.iban,
+    qr_code_url: b.qrCodeUrl,
+    branch: b.branch,
+    notes: b.notes,
+  }));
 }
 
 export function assetUrl(url?: string) {
