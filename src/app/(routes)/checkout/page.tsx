@@ -5,10 +5,10 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import "@fortawesome/fontawesome-free/css/all.css";
 import CheckoutForm from "./components/CheckoutForm";
-import OrderSummary from "./components/OrderSummary";
+import OrderSummary, { offersAutoPay } from "./components/OrderSummary";
 import { isAuthenticated } from "../../../helper/helper";
 import { packageService, type Package } from "../packages/services/packageService";
-import { checkoutService, type CouponPreview, type PaymentMethodKey, type PaymentMethods } from "./services/checkoutService";
+import { checkoutService, onlineMethod, type CouponPreview, type PaymentMethodKey, type PaymentMethods } from "./services/checkoutService";
 import Spinner from "@/components/ui/Spinner";
 import useAsyncAction from "@/components/ui/useAsyncAction";
 
@@ -26,14 +26,17 @@ const CheckoutPageContent = () => {
   // The package could not be loaded: said on the page, with a way back.
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  // How the member pays. Card is offered when the gym has Stripe set up, bank
-  // transfer when it has an account on file; the first available one is
-  // preselected.
+  // How the member pays. Online is offered when the gym has a payment gateway
+  // connected (Stripe, or Safepay), bank transfer when it has an account on
+  // file; the first available one is preselected.
   const [methods, setMethods] = useState<PaymentMethods | null>(null);
   // Set when the payment options could not be loaded, so the summary offers a
   // retry instead of saying "Loading…" forever with Pay disabled.
   const [methodsError, setMethodsError] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethodKey>("stripe");
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethodKey>("online");
+  // "Save my card and pay automatically", ticked by the member themselves.
+  // Never ticked for them.
+  const [autoPay, setAutoPay] = useState(false);
   const [coupon, setCoupon] = useState<CouponPreview | null>(null);
   // Whether the joining fee will be charged: only with a member's first
   // membership. null when it is not known (the summary then says so).
@@ -47,7 +50,7 @@ const CheckoutPageContent = () => {
       const available = await checkoutService.getPaymentMethods().catch(() => null);
       setMethods(available);
       setMethodsError(!available);
-      if (available) setPaymentMethod(available.card ? "stripe" : "bank_transfer");
+      if (available) setPaymentMethod(onlineMethod(available) ? "online" : "bank_transfer");
     });
 
   const handleSubmitChange = (handler: () => void, submitting: boolean) => {
@@ -72,7 +75,7 @@ const CheckoutPageContent = () => {
         setJoiningFeeDue(feeDue);
         setMethods(available);
         setMethodsError(!available);
-        if (available) setPaymentMethod(available.card ? "stripe" : "bank_transfer");
+        if (available) setPaymentMethod(onlineMethod(available) ? "online" : "bank_transfer");
 
         if (packageId) {
           const selectedPackage = packages.find((p) => p._id === packageId);
@@ -162,6 +165,7 @@ const CheckoutPageContent = () => {
               onSubmitChange={handleSubmitChange}
               paymentMethod={paymentMethod}
               couponCode={coupon?.code}
+              autoPay={autoPay && paymentMethod === "online" && offersAutoPay(methods, packageData)}
               onError={setSubmitError}
             />
             <OrderSummary
@@ -174,6 +178,8 @@ const CheckoutPageContent = () => {
               onRetryMethods={retryMethods}
               paymentMethod={paymentMethod}
               onPaymentMethodChange={setPaymentMethod}
+              autoPay={autoPay}
+              onAutoPayChange={setAutoPay}
               coupon={coupon}
               onCouponChange={setCoupon}
               joiningFeeDue={joiningFeeDue}

@@ -1,8 +1,9 @@
 // src/app/(routes)/checkout/services/checkoutService.ts
 //
-// Buying a package. Two ways to pay: card through the gym's Stripe account
-// (redirect to Stripe Checkout) and bank transfer (an order the member then
-// attaches a receipt to, confirmed by staff).
+// Buying a package. Two ways to pay: online through the gym's own payment
+// gateway (Stripe, or Safepay in Pakistan: a redirect to its payment page)
+// and bank transfer (an order the member then attaches a receipt to,
+// confirmed by staff).
 
 import { getAuthToken } from "../../../../helper/helper";
 
@@ -21,7 +22,40 @@ export interface ShippingAddress {
   phone?: string;
 }
 
-export type PaymentMethodKey = "stripe" | "bank_transfer";
+export type PaymentMethodKey = "online" | "bank_transfer";
+
+/**
+ * The gateway that takes this gym's online payments, as GET /payment/methods
+ * names it: its id ("stripe", "safepay", …) and what members can pay with
+ * through it ("Card, JazzCash, Easypaisa or any bank app").
+ */
+export interface OnlineMethod {
+  provider: string;
+  label: string;
+  /** The gym charges saved cards on the due date, so checkout may offer to save one. */
+  auto_pay_available?: boolean;
+}
+
+/** What each gateway is called on screen; one not listed is "our payment partner". */
+const PROVIDER_NAMES: Record<string, string> = { stripe: "Stripe", safepay: "Safepay" };
+
+export function providerName(provider?: string | null): string {
+  return (provider && PROVIDER_NAMES[provider]) || "our payment partner";
+}
+
+/**
+ * How this gym takes online payments right now, or null when it does not.
+ * An API from before gateways could be chosen sends no `online`; its `card`
+ * then means Stripe. Stripe also still needs `card`, which says it is fully
+ * connected (its webhook secret included).
+ */
+export function onlineMethod(methods: PaymentMethods | null | undefined): OnlineMethod | null {
+  if (!methods) return null;
+  if (methods.online === undefined) return methods.card ? { provider: "stripe", label: "Card" } : null;
+  if (!methods.online || !methods.online.provider) return null;
+  if (methods.online.provider === "stripe" && !methods.card) return null;
+  return methods.online;
+}
 
 export interface BankAccount {
   _id: string;
@@ -35,12 +69,15 @@ export interface BankAccount {
 }
 
 export interface PaymentMethods {
+  /** The gym's Stripe is connected (its old meaning; see `online`). */
   card: boolean;
   /** Why card is off, when it is (e.g. the gym has not finished connecting Stripe). */
   cardUnavailable?: { code: string | null; reason: string } | null;
   bankTransfer: boolean;
   banks: BankAccount[];
   currency: string;
+  /** The gateway for online payments, or null when there is none (absent from older APIs). */
+  online?: OnlineMethod | null;
 }
 
 export interface CouponPreview {
@@ -172,12 +209,21 @@ class CheckoutService {
     return json.data;
   }
 
-  /** Card: opens Stripe Checkout (redirects the browser). */
-  async createPackageStripeCheckout(packageId: string, customerInfo: ShippingAddress, couponCode?: string) {
+  /**
+   * Online: opens the gym's gateway's payment page (redirects the browser).
+   * `autoPay` is the member's ticked consent to save the card and be charged
+   * on each due date; it is only sent when given.
+   */
+  async createOnlineCheckout(packageId: string, customerInfo: ShippingAddress, couponCode?: string, autoPay = false) {
     const response = await fetch(`${this.baseUrl}/api/gymfolio/payment/create-package-checkout-session`, {
       method: "POST",
       headers: this.getAuthHeaders(),
-      body: JSON.stringify({ packageId, customerInfo: this.formatCustomer(customerInfo), couponCode: couponCode || undefined }),
+      body: JSON.stringify({
+        packageId,
+        customerInfo: this.formatCustomer(customerInfo),
+        couponCode: couponCode || undefined,
+        ...(autoPay ? { saveCard: true, autoPayConsent: true } : {}),
+      }),
     });
     const result = await this.parse<{ url?: string }>(response, "Failed to create package checkout session");
     if (result.url) {
@@ -226,7 +272,8 @@ class CheckoutService {
   }
 
   /**
-   * Asks whether a Stripe checkout has been paid.
+   * Asks whether an online checkout has been paid: a Stripe one by its
+   * session id, any other gateway's by the order id, named with `provider`.
    *
    * Resolves only when the API gave a proper answer: `paid` true or false,
    * or `notFound` when it has no order for this payment at all (404
@@ -235,8 +282,9 @@ class CheckoutService {
    * either way about the payment, so the caller must not read it as "not
    * paid".
    */
-  async verifyPayment(sessionId: string): Promise<{ paid: boolean; order: VerifiedOrder | null; notFound?: boolean }> {
-    const response = await fetch(`${this.baseUrl}/api/gymfolio/payment/verify/${encodeURIComponent(sessionId)}`, {
+  async verifyPayment(sessionId: string, provider?: string | null): Promise<{ paid: boolean; order: VerifiedOrder | null; notFound?: boolean }> {
+    const query = provider && provider !== "stripe" ? `?provider=${encodeURIComponent(provider)}` : "";
+    const response = await fetch(`${this.baseUrl}/api/gymfolio/payment/verify/${encodeURIComponent(sessionId)}${query}`, {
       method: "GET",
       headers: this.getAuthHeaders(),
     });

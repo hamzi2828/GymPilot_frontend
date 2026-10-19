@@ -3,12 +3,13 @@
 import React, { useEffect, useState, useCallback, useRef, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { checkoutService, type VerifiedOrder } from "../services/checkoutService";
+import { checkoutService, isOrderId, type VerifiedOrder } from "../services/checkoutService";
 import "@fortawesome/fontawesome-free/css/all.css";
 
-// Where the member lands after paying at Stripe. The payment has already
-// happened by the time this page opens; all it does is ask the API to confirm
-// it. So a check that fails is not a payment that failed, and the page must
+// Where the member lands after paying on the gym's gateway: Stripe sends
+// ?session_id=, any other gateway (Safepay) ?provider=safepay&order=<order id>.
+// The payment has already happened by the time this page opens; all it does
+// is ask the API to confirm it. So a check that fails is not a payment that failed, and the page must
 // never say so: it tries again by itself, and if it still has no answer it
 // says exactly that, with a way to check again and where to look.
 
@@ -18,7 +19,7 @@ const RETRY_WAITS_MS = [1500, 3000, 5000];
 type Status =
   | "checking"
   | "paid"
-  // The API answered, and Stripe has not taken the money (yet).
+  // The API answered, and the gateway has not taken the money (yet).
   | "unpaid"
   // No proper answer after every try: offline, or the server is having trouble.
   | "unknown"
@@ -31,7 +32,10 @@ const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function SuccessContent() {
   const searchParams = useSearchParams();
-  const sessionId = searchParams.get("session_id");
+  // Stripe's session, or the order paid through another gateway.
+  const provider = searchParams.get("provider");
+  const order = searchParams.get("order");
+  const sessionId = searchParams.get("session_id") || (provider && provider !== "stripe" && isOrderId(order) ? order : null);
 
   const [status, setStatus] = useState<Status>(sessionId ? "checking" : "missing");
   const [orderDetails, setOrderDetails] = useState<VerifiedOrder | null>(null);
@@ -52,7 +56,7 @@ function SuccessContent() {
       if (attempt > 0) await wait(RETRY_WAITS_MS[attempt - 1]);
       if (run.current !== mine) return;
       try {
-        const result = await checkoutService.verifyPayment(sessionId);
+        const result = await checkoutService.verifyPayment(sessionId, provider);
         if (run.current !== mine) return;
         answered = true;
         if (result.notFound) {
@@ -70,7 +74,7 @@ function SuccessContent() {
       }
     }
     setStatus(answered ? "unpaid" : "unknown");
-  }, [sessionId]);
+  }, [sessionId, provider]);
 
   useEffect(() => {
     check();
@@ -124,7 +128,7 @@ function SuccessContent() {
             )}
             {status === "missing" && (
               <p className="mt-2 text-gray-600">
-                This page opens after a card payment. If you have paid, your membership is under My account.
+                This page opens after an online payment. If you have paid, your membership is under My account.
               </p>
             )}
             {status === "notFound" && (

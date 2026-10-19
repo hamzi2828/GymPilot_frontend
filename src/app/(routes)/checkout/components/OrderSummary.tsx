@@ -4,11 +4,12 @@ import React, { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { type Package } from "../../packages/services/packageService";
-import { checkoutService, type CouponPreview, type PaymentMethodKey, type PaymentMethods } from "../services/checkoutService";
+import { checkoutService, onlineMethod, providerName, type CouponPreview, type PaymentMethodKey, type PaymentMethods } from "../services/checkoutService";
 import { parseAmount } from "@/helper/money";
 import { signInUrl } from "@/helper/helper";
 import Spinner from "@/components/ui/Spinner";
 import useAsyncAction from "@/components/ui/useAsyncAction";
+import { useSiteSettings } from "@/components/ThemeProvider";
 
 interface OrderSummaryProps {
   packageData?: Package | null;
@@ -22,6 +23,9 @@ interface OrderSummaryProps {
   onRetryMethods?: () => void;
   paymentMethod: PaymentMethodKey;
   onPaymentMethodChange: (method: PaymentMethodKey) => void;
+  /** "Save my card and pay automatically", as the member has ticked it. */
+  autoPay?: boolean;
+  onAutoPayChange?: (value: boolean) => void;
   coupon: CouponPreview | null;
   onCouponChange: (coupon: CouponPreview | null) => void;
   /**
@@ -41,15 +45,36 @@ function money(amount: number, currency: string) {
   }
 }
 
-function billingLine(pkg: Package) {
+// `renewsByItself`: Stripe charges a recurring package again by itself. A
+// gym on another gateway sends a payment link before each due date instead.
+function billingLine(pkg: Package, renewsByItself = true) {
   const b = pkg.billing;
   if (b && b.mode === "recurring") {
     const every = b.intervalCount > 1 ? `every ${b.intervalCount} ${b.interval}s` : `per ${b.interval}`;
-    return `${every}, renews automatically${b.trialDays ? ` · ${b.trialDays}-day free trial` : ""}`;
+    return `${every}${renewsByItself ? ", renews automatically" : ""}${b.trialDays ? ` · ${b.trialDays}-day free trial` : ""}`;
   }
   if (pkg.kind === "session_pack" || pkg.kind === "pt_pack") return `${pkg.sessions || 0} sessions`;
   if (pkg.durationDays) return `valid ${pkg.durationDays} days`;
   return pkg.period;
+}
+
+/** How often the membership falls due: "month", "3 months". */
+function termOf(pkg: Package): string {
+  const b = pkg.billing;
+  if (b && b.mode === "recurring") return b.intervalCount > 1 ? `${b.intervalCount} ${b.interval}s` : b.interval;
+  return (pkg.period || "month").toLowerCase().replace(/^per\s+/, "").trim() || "month";
+}
+
+/**
+ * Whether checkout offers to save the card and charge it on each due date:
+ * the gym's gateway charges saved cards (its auto-charge is on), it is not
+ * Stripe (whose recurring packages renew by themselves), and the package is
+ * a membership that falls due again (a pack or a pass does not).
+ */
+export function offersAutoPay(methods: PaymentMethods | null, pkg: Package | null | undefined): boolean {
+  const online = onlineMethod(methods);
+  if (!online || online.provider === "stripe" || online.auto_pay_available !== true || !pkg) return false;
+  return !pkg.kind || pkg.kind === "membership";
 }
 
 const OrderSummary: React.FC<OrderSummaryProps> = ({
@@ -65,7 +90,10 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
   coupon,
   onCouponChange,
   joiningFeeDue = null,
+  autoPay = false,
+  onAutoPayChange,
 }) => {
+  const { siteName } = useSiteSettings();
   const [code, setCode] = useState("");
   const { busy: checking, run } = useAsyncAction();
   const [couponError, setCouponError] = useState<string | null>(null);
@@ -113,12 +141,22 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
     });
   };
 
-  const noMethods = methods && !methods.card && !methods.bankTransfer;
+  // The gym's gateway for online payments (Stripe, Safepay, …), if any.
+  const online = onlineMethod(methods);
+  const viaStripe = online?.provider === "stripe";
+  const gateway = providerName(online?.provider);
+  const renewsByItself = !online || viaStripe;
+  const noMethods = methods && !online && !methods.bankTransfer;
   // Nothing to charge: the API refuses a free package at checkout, so it is
   // joined at the desk (the packages page links there instead of here).
   const free = !(listPrice > 0);
-  const canPay = !free && !noMethods && (paymentMethod === "stripe" ? !!methods?.card : !!methods?.bankTransfer);
-  const cardReason = methods && !methods.card ? methods.cardUnavailable?.reason || "" : "";
+  const canPay = !free && !noMethods && (paymentMethod === "online" ? !!online : !!methods?.bankTransfer);
+  const cardReason = methods && !online ? methods.cardUnavailable?.reason || "" : "";
+  // What a renewal costs: the price, less a discount that carries over.
+  const renewalPrice = Math.max(0, listPrice - (coupon?.appliesToRenewals ? discount : 0));
+  const term = termOf(packageData);
+  const showAutoPay = paymentMethod === "online" && offersAutoPay(methods, packageData);
+  const consentText = `I allow ${siteName || "the gym"} to charge my saved card for my membership (${renewalPrice.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${(currency || "").toUpperCase()} every ${term}) on each due date. I can turn this off anytime in my account.`;
 
   const MethodOption = ({ value, title, hint, disabled, right }: { value: PaymentMethodKey; title: string; hint: string; disabled?: boolean; right?: React.ReactNode }) => {
     const active = paymentMethod === value;
@@ -155,7 +193,7 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
           <div className="flex items-start justify-between">
             <div>
               <h3 className="checkout-product-title font-semibold text-lg">{packageData.name} Package</h3>
-              <p className="text-sm text-gray-600 mt-1">{billingLine(packageData)}</p>
+              <p className="text-sm text-gray-600 mt-1">{billingLine(packageData, renewsByItself)}</p>
             </div>
             <div className="checkout-shipping-price font-bold text-lg">
               {currency} {packageData.price}
@@ -245,7 +283,8 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
             </div>
             {recurring && (
               <p className="mt-1 text-xs text-gray-500">
-                Then {money(listPrice - (coupon?.appliesToRenewals ? discount : 0), currency)} {packageData.billing && packageData.billing.intervalCount > 1 ? `every ${packageData.billing.intervalCount} ${packageData.billing.interval}s` : `per ${packageData.billing?.interval}`}. Cancel any time from your account.
+                Then {money(renewalPrice, currency)} {packageData.billing && packageData.billing.intervalCount > 1 ? `every ${packageData.billing.intervalCount} ${packageData.billing.interval}s` : `per ${packageData.billing?.interval}`}.{" "}
+                {renewsByItself ? "Cancel any time from your account." : "We send you a payment link before each due date."}
               </p>
             )}
           </div>
@@ -280,9 +319,16 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
           ) : (
             <>
               {cardReason && <p className="text-sm text-gray-600">{cardReason} You can pay by bank transfer instead.</p>}
-              {methods.card && (
+              {online && !viaStripe && (
                 <MethodOption
-                  value="stripe"
+                  value="online"
+                  title={online.label ? `Pay online — ${online.label.charAt(0).toLowerCase()}${online.label.slice(1)}` : "Pay online"}
+                  hint={`Securely through ${gateway}, straight to ${siteName || "the gym"}.`}
+                />
+              )}
+              {online && viaStripe && (
+                <MethodOption
+                  value="online"
                   title="Pay by card"
                   hint={recurring ? "Securely via Stripe. Your card renews the membership automatically." : "Securely via Stripe Checkout"}
                   right={
@@ -304,6 +350,23 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
                   hint={recurring ? "Pay one term now by transfer; staff confirm it once the money arrives." : "We show you the bank details; staff confirm once the money arrives."}
                 />
               )}
+              {showAutoPay && (
+                <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-gray-200 bg-white p-4">
+                  <input
+                    type="checkbox"
+                    checked={autoPay}
+                    onChange={(e) => onAutoPayChange?.(e.target.checked)}
+                    disabled={isSubmitting}
+                    className="mt-1 h-4 w-4 shrink-0 accent-[var(--accent)]"
+                  />
+                  <span>
+                    <span className="checkout-label block font-medium">
+                      Save my card and pay automatically {/^\d/.test(term) ? `every ${term}` : `each ${term}`}
+                    </span>
+                    <span className="mt-1 block text-xs text-gray-600">{consentText}</span>
+                  </span>
+                </label>
+              )}
             </>
           )}
         </div>
@@ -320,7 +383,7 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
           disabled={isSubmitting || checking || !canPay}
           aria-busy={isSubmitting || undefined}
           className="checkout-green-bg w-full px-6 py-3 rounded-lg flex items-center justify-center space-x-2 text-black font-semibold hover:opacity-90 transition-opacity duration-200 bg-green-400 shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
-          aria-label={paymentMethod === "stripe" ? "Pay now" : "Continue to bank details"}
+          aria-label={paymentMethod === "online" ? "Pay now" : "Continue to bank details"}
         >
           {isSubmitting ? (
             <>
@@ -329,13 +392,17 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
             </>
           ) : (
             <>
-              <i className={`fas ${paymentMethod === "stripe" ? "fa-lock" : "fa-university"}`} />
-              <span>{paymentMethod === "stripe" ? `Pay ${money(total, currency)}` : "Continue to bank details"}</span>
+              <i className={`fas ${paymentMethod === "online" ? "fa-lock" : "fa-university"}`} />
+              <span>{paymentMethod === "online" ? `Pay ${money(total, currency)}` : "Continue to bank details"}</span>
             </>
           )}
         </button>
         <p className="text-xs text-gray-500 text-center">
-          {paymentMethod === "stripe" ? "You will be redirected to Stripe to complete your payment. Card details are never stored on our servers." : "Your membership starts as soon as the transfer is confirmed."}
+          {paymentMethod !== "online"
+            ? "Your membership starts as soon as the transfer is confirmed."
+            : renewsByItself
+            ? "You will be redirected to Stripe to complete your payment. Card details are never stored on our servers."
+            : `You will be taken to ${gateway} to pay. Card and wallet details stay with ${gateway} and are never stored on our servers.`}
         </p>
       </div>
     </div>

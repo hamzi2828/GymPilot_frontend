@@ -26,10 +26,12 @@ interface CheckoutFormProps {
   discountAmount?: number;
   packageData?: Package | null;
   onSubmitChange?: (handler: () => void, isSubmitting: boolean) => void;
-  /** Chosen in the order summary; card by default. */
+  /** Chosen in the order summary; online by default. */
   paymentMethod?: PaymentMethodKey;
   /** A validated discount code, applied server-side to whichever way they pay. */
   couponCode?: string;
+  /** The member ticked "Save my card and pay automatically": sent as their consent. */
+  autoPay?: boolean;
   /**
    * Why the last attempt to pay did not go ahead (null clears it). Shown by
    * the parent beside the Pay button, which is where the member is looking --
@@ -40,7 +42,7 @@ interface CheckoutFormProps {
 
 const UNREACHABLE = "We can't reach the server right now. Check your internet connection and try again. You have not been charged.";
 
-const CheckoutForm: React.FC<CheckoutFormProps> = ({ packageData, onSubmitChange, paymentMethod = "stripe", couponCode, onError }) => {
+const CheckoutForm: React.FC<CheckoutFormProps> = ({ packageData, onSubmitChange, paymentMethod = "online", couponCode, autoPay = false, onError }) => {
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
   // Synchronous twin of isSubmitting: two quick clicks both see the state as
@@ -94,7 +96,7 @@ const CheckoutForm: React.FC<CheckoutFormProps> = ({ packageData, onSubmitChange
     setIsSubmitting(true);
     setErrors({});
     onError?.(null);
-    // Set once the browser is on its way to Stripe or the bank-details page.
+    // Set once the browser is on its way to the payment page or the bank-details page.
     // The button then stays disabled: re-enabling it during the redirect let
     // a second click create a second order and payment session.
     let leaving = false;
@@ -135,8 +137,8 @@ const CheckoutForm: React.FC<CheckoutFormProps> = ({ packageData, onSubmitChange
             router.push(next);
             return;
           }
-          // Card: redirects the browser to Stripe Checkout.
-          await checkoutService.createPackageStripeCheckout(packageData._id, shippingData, couponCode);
+          // Online: redirects the browser to the gateway's payment page.
+          await checkoutService.createOnlineCheckout(packageData._id, shippingData, couponCode, autoPay);
           leaving = true;
           return;
         } catch (error: unknown) {
@@ -162,9 +164,9 @@ const CheckoutForm: React.FC<CheckoutFormProps> = ({ packageData, onSubmitChange
         setIsSubmitting(false);
       }
     }
-  }, [isPackageCheckout, packageData, shippingData, paymentMethod, couponCode, router, onError]);
+  }, [isPackageCheckout, packageData, shippingData, paymentMethod, couponCode, autoPay, router, onError]);
 
-  // Coming back from Stripe restores this page from the browser's cache with
+  // Coming back from the payment page restores this page from the browser's cache with
   // the button still locked; unlock it so the member can try again.
   useEffect(() => {
     const onShow = (e: PageTransitionEvent) => {
