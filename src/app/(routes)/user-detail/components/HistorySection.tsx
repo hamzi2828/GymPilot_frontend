@@ -75,13 +75,23 @@ function startsLater(entry: MembershipOrder, now: number) {
   return entry.isActive && !!entry.startDate && new Date(entry.startDate).getTime() > now;
 }
 
+// Ways of paying online, through whichever gateway the gym uses.
+const ONLINE_METHODS = ["stripe", "online", "safepay"];
+
+/** A renewal the member can still pay through its payment link. */
+function payableByLink(entry: MembershipOrder) {
+  return !!entry.payLinkUrl && entry.status !== "cancelled" && !["paid", "refunded"].includes(entry.paymentStatus);
+}
+
 /**
- * A card checkout that was never paid: the member left the payment page and
- * the session expired (the order is then closed), or an old one still open
- * long after Stripe stopped accepting it. Not a package they ever had.
+ * An online checkout that was never paid: the member left the payment page
+ * and the session expired (the order is then closed), or an old one still
+ * open long after the gateway stopped accepting it. Not a package they ever
+ * had. A renewal with a payment link is not one: it is waiting to be paid.
  */
 function abandonedCheckout(entry: MembershipOrder, now: number) {
-  if (entry.paymentMethod !== "stripe" || ["paid", "refunded", "processing"].includes(entry.paymentStatus)) return false;
+  if (payableByLink(entry)) return false;
+  if (!ONLINE_METHODS.includes(entry.paymentMethod) || ["paid", "refunded", "processing"].includes(entry.paymentStatus)) return false;
   if (entry.status === "cancelled") return true;
   return entry.status === "pending" && !!entry.purchasedAt && now - new Date(entry.purchasedAt).getTime() > DAY_MS;
 }
@@ -196,7 +206,11 @@ export const HistorySection: React.FC<HistorySectionProps> = ({
     memberships.find((entry) => startsLater(entry, now)) ||
     null;
   const upNext = memberships.filter((entry) => entry !== current && startsLater(entry, now));
-  const pending = memberships.filter((entry) => entry.status === "pending" && entry.paymentStatus !== "failed" && !abandonedCheckout(entry, now));
+  const pending = memberships.filter(
+    (entry) => payableByLink(entry) || (entry.status === "pending" && entry.paymentStatus !== "failed" && !abandonedCheckout(entry, now))
+  );
+  // A renewal already waiting on its payment link replaces "Renew now".
+  const renewalDue = pending.some(payableByLink);
   // Receipts turned down in the last month, unless the same package has been
   // ordered again since: the member needs to know why, and what to do next.
   const rejected = memberships.filter(
@@ -281,15 +295,26 @@ export const HistorySection: React.FC<HistorySectionProps> = ({
                 <div>
                   <p className="text-base font-bold text-black">{entry.packageName}</p>
                   <p className="text-sm text-amber-900">
-                    {entry.paymentMethod === "bank_transfer"
+                    {payableByLink(entry)
+                      ? entry.paymentStatus === "failed"
+                        ? `We could not charge your saved card. Pay ${money(entry.amount, entry.currency)}${entry.lastDay ? ` by ${dateLabel(entry.lastDay)}` : ""} to keep your membership.`
+                        : `Your renewal of ${money(entry.amount, entry.currency)} is due${entry.dueDate ? ` on ${dateLabel(entry.dueDate)}` : ""}${
+                            entry.lastDay ? `; the last day to pay is ${dateLabel(entry.lastDay)}` : ""
+                          }. Pay online, or by bank transfer from the payment page.`
+                      : entry.paymentMethod === "bank_transfer"
                       ? entry.paymentStatus === "processing"
                         ? "We have your transfer details and are confirming the payment."
                         : `Send ${money(entry.amount, entry.currency)} by bank transfer to activate this membership.`
-                      : "Your card payment has not gone through. If you left the payment page, you can start again from Packages."}
+                      : "Your online payment has not gone through. If you left the payment page, you can start again from Packages."}
                   </p>
                   <p className="text-xs text-gray-500">#{entry.orderNumber}</p>
                 </div>
-                {entry.paymentMethod === "bank_transfer" && (
+                {payableByLink(entry) && (
+                  <Link href={entry.payLinkUrl!} className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-black hover:opacity-90">
+                    Pay now
+                  </Link>
+                )}
+                {!payableByLink(entry) && entry.paymentMethod === "bank_transfer" && (
                   <Link href={`/checkout/bank-transfer?order=${entry.id}`} className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-black hover:opacity-90">
                     {entry.paymentStatus === "processing" ? "View details" : "Bank details & receipt"}
                   </Link>
@@ -471,7 +496,7 @@ export const HistorySection: React.FC<HistorySectionProps> = ({
               </button>
             )}
 
-            {current.daysLeft !== null && current.daysLeft <= 7 && !current.recurring && current.status === "active" && upNext.length === 0 && (
+            {current.daysLeft !== null && current.daysLeft <= 7 && !current.recurring && current.status === "active" && upNext.length === 0 && !renewalDue && (
               <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-amber-50 px-4 py-3">
                 <p className="text-sm text-amber-900">
                   Your membership ends in {current.daysLeft} day{current.daysLeft === 1 ? "" : "s"}. Renew now and the new term starts when this one ends.

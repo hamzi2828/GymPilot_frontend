@@ -216,6 +216,30 @@ export interface MembershipOrder {
   paymentRejected: boolean;
   rejectionReason: string;
   kind: string;
+  /**
+   * A renewal waiting to be paid through its payment link (the API's
+   * `pay_link_url`), as a path on this site; null for any other order.
+   */
+  payLinkUrl: string | null;
+  /** When that renewal falls due, and the last day to pay it. */
+  dueDate: string | null;
+  lastDay: string | null;
+}
+
+/**
+ * The payment link the API built, as a path on the site the member is on
+ * (/pay/<token>): the API names the gym's own address, which may not be the
+ * one in use. Anything but a /pay/ address is no payment link.
+ */
+function payLinkPath(value: unknown): string | null {
+  if (typeof value !== "string" || !value.trim()) return null;
+  try {
+    const url = new URL(value, "https://site.invalid");
+    if (url.protocol !== "https:" && url.protocol !== "http:") return null;
+    return url.pathname.startsWith("/pay/") ? `${url.pathname}${url.search}` : null;
+  } catch {
+    return null;
+  }
 }
 
 export interface MembershipRules {
@@ -371,6 +395,7 @@ export async function getMembershipHistory(): Promise<MembershipOrder[]> {
       const freeze = (order.freeze as Record<string, unknown>) || {};
       const sessions = (order.sessions as Record<string, unknown>) || {};
       const invoice = (order.invoice as Record<string, unknown>) || {};
+      const metadata = (order.metadata as Record<string, unknown>) || {};
 
       const endDate = subscription.endDate ? String(subscription.endDate) : null;
       const end = endDate ? new Date(endDate).getTime() : null;
@@ -410,6 +435,9 @@ export async function getMembershipHistory(): Promise<MembershipOrder[]> {
         paymentRejected: String(payment.method) === "bank_transfer" && String(payment.status) === "failed",
         rejectionReason: String(((payment.proof as Record<string, unknown>) || {}).rejectionReason || "").trim(),
         kind: String(pkg.kind || "membership"),
+        payLinkUrl: payLinkPath(order.pay_link_url),
+        dueDate: metadata.dueDate ? String(metadata.dueDate) : null,
+        lastDay: metadata.lastDay ? String(metadata.lastDay) : null,
       };
     })
     .sort((a, b) => new Date(b.purchasedAt || 0).getTime() - new Date(a.purchasedAt || 0).getTime());
@@ -425,4 +453,38 @@ export async function getMyAttendance(month?: string): Promise<MyAttendance> {
   const query = month ? `month=${encodeURIComponent(month)}` : "limit=180";
   const res = await send(`/api/attendance/me?${query}`, { method: "GET", headers: jsonHeaders() }, "We could not load your visits.");
   return res.json();
+}
+
+/* ----------------------- automatic payments ----------------------- */
+
+/** A card the member saved at checkout, as GET /api/billing/me/saved-methods lists it (never the card itself). */
+export interface SavedMethod {
+  id: string;
+  brand: string;
+  last4: string;
+  exp_month: number | null;
+  exp_year: number | null;
+  /** Charged automatically on each due date. */
+  auto_pay: boolean;
+  /** When the member agreed to it. */
+  consent_at: string | null;
+}
+
+/** The member's saved cards; null when this gym's API does not offer saved cards at all. */
+export async function getSavedMethods(): Promise<SavedMethod[] | null> {
+  try {
+    const res = await send("/api/billing/me/saved-methods", { method: "GET", headers: jsonHeaders() }, "We could not load your saved card.");
+    const json = await res.json().catch(() => null);
+    return Array.isArray(json?.data) ? (json.data as SavedMethod[]) : [];
+  } catch (e) {
+    if (e instanceof RequestError && e.status === 404) return null;
+    throw e;
+  }
+}
+
+/** Stops automatic payments at once and removes the saved card. */
+export async function removeSavedMethod(id: string): Promise<string> {
+  const res = await send(`/api/billing/me/saved-methods/${encodeURIComponent(id)}`, { method: "DELETE", headers: jsonHeaders() }, "We could not remove your card. Please try again.");
+  const json = await res.json().catch(() => null);
+  return (json && typeof json.message === "string" && json.message) || "Automatic payments are off and your card has been removed.";
 }

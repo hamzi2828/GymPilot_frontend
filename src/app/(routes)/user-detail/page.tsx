@@ -7,6 +7,7 @@ import { Tabs, parseUserTab, UserTab } from "./components/Tabs";
 import { BookingsSection } from "./components/BookingsSection";
 import { ProfileSection, type SaveResult } from "./components/ProfileSection";
 import { HistorySection } from "./components/HistorySection";
+import { AutoPaySection } from "./components/AutoPaySection";
 import { VisitsSection } from "./components/VisitsSection";
 import { CheckInSection } from "./components/CheckInSection";
 import { PrivacySection } from "./components/PrivacySection";
@@ -440,6 +441,7 @@ const UserProfilePageContent: React.FC = () => {
             onRefresh={fetchHistory}
           />
         )}
+        {activeTab === "history" && <AutoPaySection onSessionEnded={endSession} />}
 
         {activeTab === "visits" && (
           <VisitsSection
