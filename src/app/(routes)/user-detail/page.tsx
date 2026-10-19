@@ -386,7 +386,7 @@ const UserProfilePageContent: React.FC = () => {
 
         {activeTab === "work" && work && <WorkSection initial={work} />}
 
-        {activeTab === "checkin" && <CheckInSection />}
+        {activeTab === "checkin" && <CheckInSection onSessionEnded={endSession} onRecorded={fetchHistory} />}
 
         {activeTab === "history" && (
           <HistorySection

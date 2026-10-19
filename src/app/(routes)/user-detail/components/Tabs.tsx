@@ -17,7 +17,8 @@ export const USER_TABS: { key: UserTab; label: string; icon: string }[] = [
   // Attendance used to live at the bottom of History, where it was three
   // scrolls below the thing it belongs to. It is its own view now.
   { key: "visits", label: "Recent visits", icon: "fas fa-calendar-check" },
-  { key: "checkin", label: "Check-in QR", icon: "fas fa-qrcode" },
+  // Scan the code on the screen at the front desk.
+  { key: "checkin", label: "Check in", icon: "fas fa-qrcode" },
   // Staff accounts only: shifts, leave and payslips. Hidden for members.
   { key: "work", label: "My work", icon: "fas fa-briefcase" },
 ];

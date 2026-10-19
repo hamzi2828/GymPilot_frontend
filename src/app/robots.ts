@@ -11,7 +11,7 @@ export default async function robots(): Promise<MetadataRoute.Robots> {
       allow: "/",
       // Account, admin and purchase pages carry nothing a search result should
       // ever land someone on.
-      disallow: ["/admin", "/admin/", "/user-detail", "/checkout", "/authentication"],
+      disallow: ["/admin", "/admin/", "/user-detail", "/checkin", "/checkout", "/authentication"],
     },
     sitemap: `${base}/sitemap.xml`,
   };

@@ -16,16 +16,20 @@ export function middleware(req: NextRequest) {
 
   // Identify protected routes
   const isUserDetail = pathname === '/user-detail' || pathname.startsWith('/user-detail/');
+  // Where a phone's camera lands from the check-in code on the desk screen.
+  // Checking in is for a signed-in account, so a visitor is sent to sign in
+  // first -- with the code kept, in case they are back before it changes.
+  const isCheckin = pathname === '/checkin';
   const isAdmin = pathname === '/admin' || pathname.startsWith('/admin/');
   const isPlatform = pathname === '/super-admin' || pathname.startsWith('/super-admin/');
-  if (!isUserDetail && !isAdmin && !isPlatform) return NextResponse.next();
+  if (!isUserDetail && !isCheckin && !isAdmin && !isPlatform) return NextResponse.next();
 
   if (isPlatform) {
     return NextResponse.redirect(`${PLATFORM_ADMIN_URL}${pathname}${req.nextUrl.search}`);
   }
 
-  // The member portal and the admin panel both need a session. That is all
-  // that is decided here.
+  // The member portal, the check-in page and the admin panel all need a
+  // session. That is all that is decided here.
   //
   // The edge only has a cookie. It cannot know that a receptionist holds
   // Attendance but not Settings, and the role it could read from a second
@@ -50,5 +54,5 @@ export function middleware(req: NextRequest) {
 // Only the signed-in areas. The public site, /embed, /kiosk, the API routes
 // and static files are never matched, so this cannot get in their way.
 export const config = {
-  matcher: ['/user-detail', '/user-detail/:path*', '/admin', '/admin/:path*', '/super-admin', '/super-admin/:path*'],
+  matcher: ['/user-detail', '/user-detail/:path*', '/checkin', '/admin', '/admin/:path*', '/super-admin', '/super-admin/:path*'],
 };
