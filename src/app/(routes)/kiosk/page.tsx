@@ -21,6 +21,8 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import QRCode from "qrcode";
 import { useSiteSettings } from "@/components/ThemeProvider";
+import Spinner from "@/components/ui/Spinner";
+import useAsyncAction from "@/components/ui/useAsyncAction";
 
 const API_BASE = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:4000";
 const TOKEN_KEY = "kiosk_token";
@@ -229,7 +231,8 @@ export default function KioskPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState<string | null>(null);
-  const [loggingIn, setLoggingIn] = useState(false);
+  const loginAction = useAsyncAction();
+  const loggingIn = loginAction.busy;
 
   const [receipt, setReceipt] = useState<Receipt | null>(null);
   const [flash, setFlash] = useState<{ tone: FlashTone; text: string } | null>(null);
@@ -246,7 +249,12 @@ export default function KioskPage() {
   const [unlockPrompt, setUnlockPrompt] = useState(false);
   const [unlockPassword, setUnlockPassword] = useState("");
   const [unlockError, setUnlockError] = useState<string | null>(null);
-  const [unlocking, setUnlocking] = useState(false);
+  const unlockAction = useAsyncAction();
+  const unlocking = unlockAction.busy;
+  // A hand-picked punch: one at a time, so a double tap is never a check-in
+  // followed by a check-out.
+  const punchAction = useAsyncAction();
+  const signOutAction = useAsyncAction();
   const staffActivityRef = useRef(0);
 
   // The check-in code on screen, and why there is none when there is none.
@@ -600,34 +608,34 @@ export default function KioskPage() {
     [token, loadRecent, endSession, lockStaff, markOffline, markOnline]
   );
 
-  const login = async (e: React.FormEvent) => {
+  const login = (e: React.FormEvent) => {
     e.preventDefault();
-    setLoggingIn(true);
-    setLoginError(null);
-    try {
-      const res = await desk<{ token: string; user: { name: string; location?: string } }>("login", { email, password });
-      if (!res.success || !res.token) throw new Error(res.message || "Sign in failed");
-      localStorage.setItem(TOKEN_KEY, res.token);
-      setToken(res.token);
-      setOperator(res.user);
-      setPassword("");
-      loadRecent(res.token);
-    } catch (err) {
-      setLoginError(err instanceof Error ? err.message : "Sign in failed");
-    } finally {
-      setLoggingIn(false);
-    }
+    loginAction.run(async () => {
+      setLoginError(null);
+      try {
+        const res = await desk<{ token: string; user: { name: string; location?: string } }>("login", { email, password });
+        if (!res.success || !res.token) throw new Error(res.message || "Sign in failed");
+        localStorage.setItem(TOKEN_KEY, res.token);
+        setToken(res.token);
+        setOperator(res.user);
+        setPassword("");
+        loadRecent(res.token);
+      } catch (err) {
+        setLoginError(err instanceof Error ? err.message : "Sign in failed");
+      }
+    });
   };
 
-  const logout = async () => {
-    if (token) await desk("logout", {}, token).catch(() => {});
-    lockStaff();
-    localStorage.removeItem(TOKEN_KEY);
-    setToken(null);
-    setOperator(null);
-    setShownCode(null);
-    setCodeTrouble(null);
-  };
+  const logout = () =>
+    signOutAction.run(async () => {
+      if (token) await desk("logout", {}, token).catch(() => {});
+      lockStaff();
+      localStorage.removeItem(TOKEN_KEY);
+      setToken(null);
+      setOperator(null);
+      setShownCode(null);
+      setCodeTrouble(null);
+    });
 
   const openUnlock = () => {
     touchStaff();
@@ -637,37 +645,37 @@ export default function KioskPage() {
 
   // The desk account's password again. A wrong one is a 400 from the
   // server, not a 401 -- the kiosk stays signed in either way.
-  const unlock = async (e: React.FormEvent) => {
+  const unlock = (e: React.FormEvent) => {
     e.preventDefault();
     if (!token || !unlockPassword) return;
     touchStaff();
-    setUnlocking(true);
-    setUnlockError(null);
-    try {
-      const res = await desk<{ unlock: string; expires_in?: number }>("unlock", { password: unlockPassword }, token);
-      if (res.offline) {
-        markOffline();
-        setUnlockError(NOT_CONNECTED);
-        return;
+    unlockAction.run(async () => {
+      setUnlockError(null);
+      try {
+        const res = await desk<{ unlock: string; expires_in?: number }>("unlock", { password: unlockPassword }, token);
+        if (res.offline) {
+          markOffline();
+          setUnlockError(NOT_CONNECTED);
+          return;
+        }
+        if (res.http_status === 401 || res.http_status === 403) {
+          endSession(res.message);
+          return;
+        }
+        if (!res.success || !res.unlock) {
+          setUnlockError(res.message || "Could not unlock.");
+          return;
+        }
+        touchStaff();
+        setPeople([]);
+        setStaffUnlock({ grant: res.unlock, expiresAt: Date.now() + (res.expires_in || 600) * 1000 });
+        setUnlockPrompt(false);
+      } catch {
+        setUnlockError("Could not reach the server. Try again.");
+      } finally {
+        setUnlockPassword("");
       }
-      if (res.http_status === 401 || res.http_status === 403) {
-        endSession(res.message);
-        return;
-      }
-      if (!res.success || !res.unlock) {
-        setUnlockError(res.message || "Could not unlock.");
-        return;
-      }
-      touchStaff();
-      setPeople([]);
-      setStaffUnlock({ grant: res.unlock, expiresAt: Date.now() + (res.expires_in || 600) * 1000 });
-      setUnlockPrompt(false);
-    } catch {
-      setUnlockError("Could not reach the server. Try again.");
-    } finally {
-      setUnlockPassword("");
-      setUnlocking(false);
-    }
+    });
   };
 
   const search = async (q: string) => {
@@ -726,7 +734,8 @@ export default function KioskPage() {
             <input type="password" required autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} className="mt-1 h-11 w-full rounded-lg border border-white/10 bg-neutral-950 px-3 text-sm text-white outline-none focus:border-white/30" />
           </label>
           {loginError && <p className="mt-4 rounded-lg bg-rose-500/10 px-3 py-2 text-xs text-rose-300">{loginError}</p>}
-          <button type="submit" disabled={loggingIn} className="mt-6 h-11 w-full rounded-lg bg-white text-sm font-semibold text-neutral-900 hover:opacity-90 disabled:opacity-50">
+          <button type="submit" disabled={loggingIn} aria-busy={loggingIn || undefined} className="mt-6 inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-white text-sm font-semibold text-neutral-900 hover:opacity-90 disabled:opacity-50">
+            {loggingIn && <Spinner />}
             {loggingIn ? "Signing in…" : "Start check-in screen"}
           </button>
         </form>
@@ -768,7 +777,8 @@ export default function KioskPage() {
         {/* Staff only, like the search: a member at the screen must not be
             able to take the kiosk off its desk account. */}
         {staffUnlock && (
-          <button type="button" onClick={logout} className="shrink-0 text-xs font-medium text-neutral-400 hover:text-white">
+          <button type="button" onClick={logout} disabled={signOutAction.busy} aria-busy={signOutAction.busy || undefined} className="inline-flex shrink-0 items-center gap-1.5 text-xs font-medium text-neutral-400 hover:text-white disabled:opacity-50">
+            {signOutAction.busy && <Spinner />}
             Sign out
           </button>
         )}
@@ -857,13 +867,19 @@ export default function KioskPage() {
                       <li key={`${p.person_type}:${p.id}`}>
                         <button
                           type="button"
+                          disabled={punchAction.busy}
+                          aria-busy={punchAction.busyKey === `${p.person_type}:${p.id}` || undefined}
                           onClick={() => {
                             touchStaff();
-                            punch({ person_type: p.person_type, person_id: p.id, method: "manual", staff_unlock: staffUnlock.grant });
+                            punchAction.run(
+                              () => punch({ person_type: p.person_type, person_id: p.id, method: "manual", staff_unlock: staffUnlock.grant }),
+                              `${p.person_type}:${p.id}`
+                            );
                           }}
-                          className="flex w-full items-center justify-between px-3 py-2 text-left hover:bg-white/5"
+                          className="flex w-full items-center justify-between px-3 py-2 text-left hover:bg-white/5 disabled:cursor-wait disabled:opacity-60"
                         >
                           <span className="text-sm text-white">
+                            {punchAction.busyKey === `${p.person_type}:${p.id}` && <Spinner className="mr-2" />}
                             {p.name} <span className="text-xs text-neutral-500">{p.code}</span>
                           </span>
                           <span className="text-xs text-neutral-500">
@@ -903,7 +919,8 @@ export default function KioskPage() {
                     placeholder="Desk password"
                     className="h-10 flex-1 rounded-lg border border-white/10 bg-neutral-950 px-3 text-sm text-white outline-none focus:border-white/30"
                   />
-                  <button type="submit" disabled={unlocking || !unlockPassword} className="h-10 rounded-lg bg-white px-4 text-sm font-semibold text-neutral-900 hover:opacity-90 disabled:opacity-40">
+                  <button type="submit" disabled={unlocking || !unlockPassword} aria-busy={unlocking || undefined} className="inline-flex h-10 items-center gap-2 rounded-lg bg-white px-4 text-sm font-semibold text-neutral-900 hover:opacity-90 disabled:opacity-40">
+                    {unlocking && <Spinner />}
                     {unlocking ? "Checking…" : "Unlock"}
                   </button>
                   <button type="button" onClick={lockStaff} className="h-10 rounded-lg border border-white/15 px-3 text-sm text-neutral-300 hover:bg-white/5">
