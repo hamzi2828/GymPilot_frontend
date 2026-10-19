@@ -4,6 +4,8 @@ import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { cancelBooking } from "../../classes/services/bookingService";
 import { getMyBookingsWithRules, type MyBookingRow } from "../service/userDetailService";
+import Spinner from "@/components/ui/Spinner";
+import useAsyncAction from "@/components/ui/useAsyncAction";
 
 const STATUS_STYLE: Record<MyBookingRow["status"], string> = {
   booked: "bg-emerald-50 text-emerald-700 border-emerald-200",
@@ -49,7 +51,7 @@ export const BookingsSection: React.FC = () => {
   const [loading, setLoading] = useState(true);
   // A failed load is not "No classes booked".
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [busy, setBusy] = useState<string | null>(null);
+  const { busyKey: busy, run } = useAsyncAction();
   // The booking whose "are you sure" is open.
   const [confirming, setConfirming] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
@@ -73,20 +75,18 @@ export const BookingsSection: React.FC = () => {
     load();
   }, [load]);
 
-  const onCancel = async (booking: MyBookingRow) => {
-    setBusy(booking.id);
-    setNotice(null);
-    try {
-      const res = await cancelBooking(booking.id);
-      setNotice({ tone: "ok", text: res.message });
-      setConfirming(null);
-      await load();
-    } catch (e) {
-      setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not cancel" });
-    } finally {
-      setBusy(null);
-    }
-  };
+  const onCancel = (booking: MyBookingRow) =>
+    run(async () => {
+      setNotice(null);
+      try {
+        const res = await cancelBooking(booking.id);
+        setNotice({ tone: "ok", text: res.message });
+        setConfirming(null);
+        await load();
+      } catch (e) {
+        setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not cancel" });
+      }
+    }, booking.id);
 
   return (
     <div>
@@ -100,7 +100,8 @@ export const BookingsSection: React.FC = () => {
                 setConfirming(null);
                 setScope(s);
               }}
-              className={`px-4 py-1.5 text-sm font-semibold rounded-md capitalize ${
+              disabled={loading}
+              className={`px-4 py-1.5 text-sm font-semibold rounded-md capitalize disabled:cursor-wait ${
                 scope === s ? "bg-gray-900 text-white" : "text-gray-600 hover:text-gray-900"
               }`}
             >
@@ -211,9 +212,11 @@ export const BookingsSection: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => onCancel(b)}
-                      disabled={busy === b.id}
-                      className="rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
+                      disabled={busy !== null}
+                      aria-busy={busy === b.id || undefined}
+                      className="inline-flex items-center gap-2 rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
                     >
+                      {busy === b.id && <Spinner />}
                       {busy === b.id ? "Cancelling…" : "Yes, cancel my booking"}
                     </button>
                     <button

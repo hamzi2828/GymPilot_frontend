@@ -13,6 +13,8 @@ import {
   unfreezeMembership,
 } from "../service/userDetailService";
 import { MonthByMonth } from "./MonthByMonth";
+import Spinner from "@/components/ui/Spinner";
+import useAsyncAction from "@/components/ui/useAsyncAction";
 
 function money(amount: number, currency: string) {
   if (!amount) return "—";
@@ -161,7 +163,8 @@ export const HistorySection: React.FC<HistorySectionProps> = ({
   onRefresh,
 }) => {
   const [rules, setRules] = useState<MembershipRules | null>(null);
-  const [busy, setBusy] = useState<string | null>(null);
+  // One change at a time; the button pressed spins.
+  const { busyKey: busy, run: runAction, leave } = useAsyncAction();
   const [notice, setNotice] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
   const [panel, setPanel] = useState<"" | "freeze" | "cancel">("");
   const [freezeDays, setFreezeDays] = useState("7");
@@ -214,21 +217,19 @@ export const HistorySection: React.FC<HistorySectionProps> = ({
     (entry) => entry !== current && !pending.includes(entry) && !upNext.includes(entry) && !abandonedCheckout(entry, now)
   );
 
-  const run = async (key: string, fn: () => Promise<string | void>) => {
-    setBusy(key);
-    setNotice(null);
-    try {
-      const message = await fn();
-      if (message) setNotice({ tone: "ok", text: message });
-      setPanel("");
-      setReason("");
-      onRefresh?.();
-    } catch (e) {
-      setNotice({ tone: "error", text: e instanceof Error ? e.message : "Something went wrong" });
-    } finally {
-      setBusy(null);
-    }
-  };
+  const run = (key: string, fn: () => Promise<string | void>) =>
+    runAction(async () => {
+      setNotice(null);
+      try {
+        const message = await fn();
+        if (message) setNotice({ tone: "ok", text: message });
+        setPanel("");
+        setReason("");
+        onRefresh?.();
+      } catch (e) {
+        setNotice({ tone: "error", text: e instanceof Error ? e.message : "Something went wrong" });
+      }
+    }, key);
 
   const canFreeze = !!current && current.status === "active" && rules?.allowMemberFreeze;
   const canCancel = !!current && current.status !== "cancelled" && rules?.allowMemberCancel && !current.cancelAtPeriodEnd;
@@ -380,13 +381,25 @@ export const HistorySection: React.FC<HistorySectionProps> = ({
             {/* Self-service */}
             <div className="mt-5 flex flex-wrap gap-2 border-t border-gray-100 pt-4">
               {current.invoiceNumber && (
-                <button type="button" disabled={busy === "invoice"} onClick={() => run("invoice", () => downloadInvoice(current.id, current.invoiceNumber!))} className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50">
-                  <i className="fas fa-file-invoice mr-2" />Invoice {current.invoiceNumber}
+                <button type="button" disabled={!!busy} aria-busy={busy === "invoice" || undefined} onClick={() => run("invoice", () => downloadInvoice(current.id, current.invoiceNumber!))} className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+                  {busy === "invoice" ? <Spinner className="mr-2" /> : <i className="fas fa-file-invoice mr-2" />}Invoice {current.invoiceNumber}
                 </button>
               )}
               {current.manageable && (
-                <button type="button" disabled={busy === "portal"} onClick={() => run("portal", () => openBillingPortal(current.id))} className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50">
-                  <i className="fas fa-credit-card mr-2" />{current.status === "past_due" ? "Update card" : "Manage card & receipts"}
+                <button
+                  type="button"
+                  disabled={!!busy}
+                  aria-busy={busy === "portal" || undefined}
+                  onClick={() =>
+                    run("portal", async () => {
+                      await openBillingPortal(current.id);
+                      // On its way to Stripe: stays busy until the page goes.
+                      leave();
+                    })
+                  }
+                  className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                >
+                  {busy === "portal" ? <Spinner className="mr-2" /> : <i className="fas fa-credit-card mr-2" />}{current.status === "past_due" ? "Update card" : "Manage card & receipts"}
                 </button>
               )}
               {canFreeze && (
@@ -395,12 +408,14 @@ export const HistorySection: React.FC<HistorySectionProps> = ({
                 </button>
               )}
               {current.status === "frozen" && (
-                <button type="button" disabled={busy === "unfreeze"} onClick={() => run("unfreeze", () => unfreezeMembership(current.id))} className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-black hover:opacity-90 disabled:opacity-50">
+                <button type="button" disabled={!!busy} aria-busy={busy === "unfreeze" || undefined} onClick={() => run("unfreeze", () => unfreezeMembership(current.id))} className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-black hover:opacity-90 disabled:opacity-50">
+                  {busy === "unfreeze" && <Spinner />}
                   Resume now
                 </button>
               )}
               {current.cancelAtPeriodEnd && current.recurring && (
-                <button type="button" disabled={busy === "resume"} onClick={() => run("resume", () => resumeMembership(current.id))} className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+                <button type="button" disabled={!!busy} aria-busy={busy === "resume" || undefined} onClick={() => run("resume", () => resumeMembership(current.id))} className="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+                  {busy === "resume" && <Spinner />}
                   Keep renewing
                 </button>
               )}
@@ -422,7 +437,8 @@ export const HistorySection: React.FC<HistorySectionProps> = ({
                   <input value={reason} onChange={(e) => setReason(e.target.value)} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2" placeholder="Travel, injury…" />
                 </label>
                 <div className="flex items-end">
-                  <button type="button" disabled={busy === "freeze"} onClick={() => run("freeze", () => freezeMembership(current.id, Number(freezeDays), reason))} className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-black hover:opacity-90 disabled:opacity-50">
+                  <button type="button" disabled={!!busy} aria-busy={busy === "freeze" || undefined} onClick={() => run("freeze", () => freezeMembership(current.id, Number(freezeDays), reason))} className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-black hover:opacity-90 disabled:opacity-50">
+                    {busy === "freeze" && <Spinner />}
                     Freeze
                   </button>
                 </div>
@@ -437,7 +453,8 @@ export const HistorySection: React.FC<HistorySectionProps> = ({
                   <input value={reason} onChange={(e) => setReason(e.target.value)} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2" />
                 </label>
                 <div className="flex items-end">
-                  <button type="button" disabled={busy === "cancel"} onClick={() => run("cancel", () => cancelMembership(current.id, reason))} className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50">
+                  <button type="button" disabled={!!busy} aria-busy={busy === "cancel" || undefined} onClick={() => run("cancel", () => cancelMembership(current.id, reason))} className="inline-flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50">
+                    {busy === "cancel" && <Spinner />}
                     Confirm
                   </button>
                 </div>
@@ -511,7 +528,8 @@ export const HistorySection: React.FC<HistorySectionProps> = ({
                       </td>
                       <td className="px-4 py-3 text-right">
                         {entry.invoiceNumber && (
-                          <button type="button" disabled={busy === `inv-${entry.id}`} onClick={() => run(`inv-${entry.id}`, () => downloadInvoice(entry.id, entry.invoiceNumber!))} className="text-xs font-semibold text-primary underline underline-offset-2 disabled:opacity-50">
+                          <button type="button" disabled={!!busy} aria-busy={busy === `inv-${entry.id}` || undefined} onClick={() => run(`inv-${entry.id}`, () => downloadInvoice(entry.id, entry.invoiceNumber!))} className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary underline underline-offset-2 disabled:opacity-50">
+                            {busy === `inv-${entry.id}` && <Spinner />}
                             Invoice
                           </button>
                         )}

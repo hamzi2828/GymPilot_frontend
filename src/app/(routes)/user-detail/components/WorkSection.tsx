@@ -6,6 +6,8 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { getAuthHeader } from "@/helper/helper";
 import { localDateKey } from "@/helper/date";
+import Spinner from "@/components/ui/Spinner";
+import useAsyncAction from "@/components/ui/useAsyncAction";
 
 const API_BASE = process.env.NEXT_PUBLIC_BACKEND_URL || "";
 
@@ -27,13 +29,14 @@ async function call(path: string, method: string, body?: unknown) {
 // Local date: a leave request "from today" should mean the member's today.
 const today = () => localDateKey();
 const input = "w-full border-2 border-gray-200 rounded-lg px-4 py-3 focus:outline-none focus:border-primary";
-const btn = "rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50";
+const btn = "inline-flex items-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50";
 const STATUS: Record<string, string> = { pending: "bg-amber-50 text-amber-800", approved: "bg-green-50 text-green-800", rejected: "bg-red-50 text-red-700", cancelled: "bg-gray-100 text-gray-600" };
 
 export const WorkSection: React.FC<{ initial?: Work | null }> = ({ initial = null }) => {
   const [work, setWork] = useState<Work | null>(initial);
   const [draft, setDraft] = useState({ type: "annual", from: today(), to: today(), reason: "" });
-  const [busy, setBusy] = useState<string | null>(null);
+  // One request at a time; the button pressed spins.
+  const { busyKey: busy, run: runAction } = useAsyncAction();
   const [notice, setNotice] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
 
   const load = useCallback(async () => {
@@ -49,33 +52,32 @@ export const WorkSection: React.FC<{ initial?: Work | null }> = ({ initial = nul
     if (!initial) load();
   }, [initial, load]);
 
-  const run = async (key: string, fn: () => Promise<string | void>) => {
-    setBusy(key);
-    setNotice(null);
-    try {
-      const m = await fn();
-      if (m) setNotice({ tone: "ok", text: m });
-      await load();
-    } catch (e) {
-      setNotice({ tone: "error", text: e instanceof Error ? e.message : "Something went wrong" });
-    } finally {
-      setBusy(null);
-    }
-  };
+  const run = (key: string, fn: () => Promise<string | void>) =>
+    runAction(async () => {
+      setNotice(null);
+      try {
+        const m = await fn();
+        if (m) setNotice({ tone: "ok", text: m });
+        await load();
+      } catch (e) {
+        setNotice({ tone: "error", text: e instanceof Error ? e.message : "Something went wrong" });
+      }
+    }, key);
 
-  const openPayslip = async (id: string, number: string) => {
-    const res = await fetch(`${API_BASE}/staff/me/payslips/${id}/pdf`, { headers: getAuthHeader() });
-    if (!res.ok) {
-      setNotice({ tone: "error", text: "Could not open the payslip" });
-      return;
-    }
-    const url = URL.createObjectURL(await res.blob());
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${number}.pdf`;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 60000);
-  };
+  const openPayslip = (id: string, number: string) =>
+    runAction(async () => {
+      const res = await fetch(`${API_BASE}/staff/me/payslips/${id}/pdf`, { headers: getAuthHeader() });
+      if (!res.ok) {
+        setNotice({ tone: "error", text: "Could not open the payslip" });
+        return;
+      }
+      const url = URL.createObjectURL(await res.blob());
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${number}.pdf`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    }, `pdf-${id}`);
 
   if (!work) return null;
 
@@ -124,7 +126,8 @@ export const WorkSection: React.FC<{ initial?: Work | null }> = ({ initial = nul
           <input className={input} placeholder="Reason (optional)" value={draft.reason} onChange={(e) => setDraft({ ...draft, reason: e.target.value })} />
         </div>
         <div className="mt-3 flex justify-end">
-          <button type="button" className={btn} disabled={busy === "leave"} onClick={() => run("leave", async () => (await call("/staff/me/leave", "POST", draft)).message)}>
+          <button type="button" className={btn} disabled={!!busy} aria-busy={busy === "leave" || undefined} onClick={() => run("leave", async () => (await call("/staff/me/leave", "POST", draft)).message)}>
+            {busy === "leave" && <Spinner />}
             {busy === "leave" ? "Sending…" : "Request leave"}
           </button>
         </div>
@@ -138,7 +141,8 @@ export const WorkSection: React.FC<{ initial?: Work | null }> = ({ initial = nul
                 <span className="flex items-center gap-2">
                   <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${STATUS[l.status] || ""}`}>{l.status === "cancelled" ? "withdrawn" : l.status}</span>
                   {l.status === "pending" && (
-                    <button type="button" className="text-xs underline" disabled={busy === l.id} onClick={() => run(l.id, async () => (await call(`/staff/me/leave/${l.id}`, "DELETE")).message)}>
+                    <button type="button" className="inline-flex items-center gap-1.5 text-xs underline disabled:opacity-50" disabled={!!busy} aria-busy={busy === l.id || undefined} onClick={() => run(l.id, async () => (await call(`/staff/me/leave/${l.id}`, "DELETE")).message)}>
+                      {busy === l.id && <Spinner />}
                       Withdraw
                     </button>
                   )}
@@ -165,7 +169,8 @@ export const WorkSection: React.FC<{ initial?: Work | null }> = ({ initial = nul
                     {p.currency} {p.net.toLocaleString()}
                   </span>
                   <span className="text-xs text-gray-500">{p.status}{p.paid_on ? ` · ${new Date(p.paid_on).toLocaleDateString()}` : ""}</span>
-                  <button type="button" className="text-xs underline" onClick={() => openPayslip(p.id, p.number)}>
+                  <button type="button" className="inline-flex items-center gap-1.5 text-xs underline disabled:opacity-50" disabled={!!busy} aria-busy={busy === `pdf-${p.id}` || undefined} onClick={() => openPayslip(p.id, p.number)}>
+                    {busy === `pdf-${p.id}` && <Spinner />}
                     PDF
                   </button>
                 </span>

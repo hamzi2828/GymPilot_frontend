@@ -179,7 +179,8 @@ export const VisitsSection: React.FC<VisitsSectionProps> = ({
                 <button
                   type="button"
                   onClick={() => onSelectMonth(null)}
-                  className="text-xs font-semibold text-gray-500 underline underline-offset-2 hover:text-gray-900"
+                  disabled={monthLoading}
+                  className="text-xs font-semibold text-gray-500 underline underline-offset-2 hover:text-gray-900 disabled:opacity-50"
                 >
                   Back to recent visits
                 </button>

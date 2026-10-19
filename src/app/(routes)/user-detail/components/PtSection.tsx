@@ -8,6 +8,8 @@ import { useSearchParams } from "next/navigation";
 import { getPtTrainers, getPtAvailability, bookPtSession, getMyPtSessions, cancelPtSession, type PtTrainer, type PtRules, type PtSlot, type PtSession, type PtPack } from "../../classes/services/ptService";
 import { localDateKey } from "@/helper/date";
 import { useSiteSettings } from "@/components/ThemeProvider";
+import Spinner from "@/components/ui/Spinner";
+import useAsyncAction from "@/components/ui/useAsyncAction";
 
 const dayLabel = (key: string) => {
   const [y, m, d] = key.split("-").map(Number);
@@ -40,7 +42,10 @@ export const PtSection: React.FC = () => {
   const [trainerId, setTrainerId] = useState(params.get("trainer") || "");
   const [weekStart, setWeekStart] = useState(today());
   const [slots, setSlots] = useState<PtSlot[]>([]);
-  const [busy, setBusy] = useState<string | null>(null);
+  // The chosen trainer's week is being fetched: its controls wait for it.
+  const [slotsLoading, setSlotsLoading] = useState(false);
+  // One booking or cancellation at a time; the one pressed spins.
+  const { busyKey: busy, run } = useAsyncAction();
   const [notice, setNotice] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -69,51 +74,54 @@ export const PtSection: React.FC = () => {
   useEffect(() => {
     if (!trainerId) {
       setSlots([]);
+      setSlotsLoading(false);
       return;
     }
     let cancelled = false;
+    setSlotsLoading(true);
     getPtAvailability(trainerId, weekStart, addDays(weekStart, 6))
       .then((s) => {
         if (!cancelled) setSlots(s);
       })
       .catch(() => {
         if (!cancelled) setSlots([]);
+      })
+      .finally(() => {
+        if (!cancelled) setSlotsLoading(false);
       });
     return () => {
       cancelled = true;
     };
   }, [trainerId, weekStart, sessions]);
 
-  const book = async (slot: PtSlot) => {
+  const book = (slot: PtSlot) => {
     const trainer = trainers.find((t) => t.id === trainerId);
     if (!trainer) return;
     if (!confirm(`Book ${trainer.name} on ${dayLabel(slot.date)} at ${slot.start_time}?${pack ? " One session will be taken from your pack." : trainer.rate ? ` Pay ${`${currency} ${trainer.rate}`.trim()} at reception.` : ""}`)) return;
-    setBusy(`${slot.date}|${slot.start_time}`);
-    setNotice(null);
-    try {
-      const res = await bookPtSession({ trainerId, date: slot.date, startTime: slot.start_time });
-      setNotice({ tone: "ok", text: res.message });
-      await load();
-    } catch (e) {
-      setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not book" });
-    } finally {
-      setBusy(null);
-    }
+    run(async () => {
+      setNotice(null);
+      try {
+        const res = await bookPtSession({ trainerId, date: slot.date, startTime: slot.start_time });
+        setNotice({ tone: "ok", text: res.message });
+        await load();
+      } catch (e) {
+        setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not book" });
+      }
+    }, `${slot.date}|${slot.start_time}`);
   };
 
-  const cancel = async (s: PtSession) => {
+  const cancel = (s: PtSession) => {
     if (!confirm(`Cancel your session with ${s.trainer_name} on ${dayLabel(s.date)} at ${s.start_time}?${rules && rules.cancel_hours ? ` Cancelling less than ${rules.cancel_hours} hours before loses the session credit.` : ""}`)) return;
-    setBusy(s.id);
-    setNotice(null);
-    try {
-      const res = await cancelPtSession(s.id);
-      setNotice({ tone: "ok", text: res.message });
-      await load();
-    } catch (e) {
-      setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not cancel" });
-    } finally {
-      setBusy(null);
-    }
+    run(async () => {
+      setNotice(null);
+      try {
+        const res = await cancelPtSession(s.id);
+        setNotice({ tone: "ok", text: res.message });
+        await load();
+      } catch (e) {
+        setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not cancel" });
+      }
+    }, s.id);
   };
 
   const byDay = new Map<string, PtSlot[]>();
@@ -170,7 +178,8 @@ export const PtSection: React.FC = () => {
                     {s.credit_used ? " · from your pack" : s.price ? ` · ${s.currency} ${s.price}` : ""}
                   </p>
                 </div>
-                <button type="button" disabled={busy === s.id} onClick={() => cancel(s)} className="text-sm font-semibold text-gray-600 underline underline-offset-4 disabled:opacity-40">
+                <button type="button" disabled={busy !== null} aria-busy={busy === s.id || undefined} onClick={() => cancel(s)} className="inline-flex items-center gap-1.5 text-sm font-semibold text-gray-600 underline underline-offset-4 disabled:opacity-40">
+                  {busy === s.id && <Spinner />}
                   {busy === s.id ? "Cancelling…" : "Cancel"}
                 </button>
               </li>
@@ -188,7 +197,7 @@ export const PtSection: React.FC = () => {
             <>
               <div className="mt-4 flex flex-wrap gap-2">
                 {trainers.map((t) => (
-                  <button key={t.id} type="button" onClick={() => setTrainerId(t.id)} className={`rounded-full border px-4 py-2 text-sm font-semibold ${trainerId === t.id ? "border-black bg-black text-white" : "border-gray-300 text-gray-700 hover:border-gray-500"}`}>
+                  <button key={t.id} type="button" disabled={slotsLoading} onClick={() => setTrainerId(t.id)} className={`rounded-full border px-4 py-2 text-sm font-semibold disabled:cursor-wait ${trainerId === t.id ? "border-black bg-black text-white" : "border-gray-300 text-gray-700 hover:border-gray-500"}`}>
                     {t.name}
                     {t.rate && !pack ? <span className="ml-1 font-normal opacity-70">· {`${currency} ${t.rate}`.trim()}/session</span> : null}
                   </button>
@@ -197,13 +206,14 @@ export const PtSection: React.FC = () => {
               {chosen && (
                 <>
                   <div className="mt-5 flex items-center justify-between">
-                    <button type="button" onClick={() => setWeekStart((w) => (w > today() ? addDays(w, -7) : w))} className="text-sm font-semibold text-gray-600 underline">
+                    <button type="button" disabled={slotsLoading} onClick={() => setWeekStart((w) => (w > today() ? addDays(w, -7) : w))} className="text-sm font-semibold text-gray-600 underline disabled:opacity-40">
                       ← Earlier
                     </button>
-                    <p className="text-sm text-gray-600">
+                    <p className="inline-flex items-center gap-2 text-sm text-gray-600" aria-busy={slotsLoading || undefined}>
+                      {slotsLoading && <Spinner />}
                       {dayLabel(weekStart)} – {dayLabel(addDays(weekStart, 6))}
                     </p>
-                    <button type="button" onClick={() => setWeekStart((w) => addDays(w, 7))} className="text-sm font-semibold text-gray-600 underline">
+                    <button type="button" disabled={slotsLoading} onClick={() => setWeekStart((w) => addDays(w, 7))} className="text-sm font-semibold text-gray-600 underline disabled:opacity-40">
                       Later →
                     </button>
                   </div>
@@ -218,7 +228,8 @@ export const PtSection: React.FC = () => {
                             {list.map((slot) => {
                               const key = `${slot.date}|${slot.start_time}`;
                               return (
-                                <button key={key} type="button" disabled={busy === key} onClick={() => book(slot)} className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm hover:border-black disabled:opacity-40">
+                                <button key={key} type="button" disabled={busy !== null || slotsLoading} aria-busy={busy === key || undefined} onClick={() => book(slot)} className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm hover:border-black disabled:opacity-40">
+                                  {busy === key && <Spinner />}
                                   {busy === key ? "Booking…" : slot.start_time}
                                 </button>
                               );

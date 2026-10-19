@@ -5,6 +5,8 @@
 
 import React, { useCallback, useEffect, useState } from "react";
 import { getAuthHeader } from "@/helper/helper";
+import Spinner from "@/components/ui/Spinner";
+import useAsyncAction from "@/components/ui/useAsyncAction";
 
 const API_BASE = process.env.NEXT_PUBLIC_BACKEND_URL || "";
 
@@ -41,7 +43,8 @@ async function currentSubscription(): Promise<PushSubscription | null> {
 export const NotificationsSection: React.FC = () => {
   const [info, setInfo] = useState<Info | null>(null);
   const [thisDevice, setThisDevice] = useState(false);
-  const [busy, setBusy] = useState<string | null>(null);
+  // One change at a time; the switch or button pressed spins.
+  const { busyKey: busy, run: runAction } = useAsyncAction();
   const [notice, setNotice] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
 
   const load = useCallback(async () => {
@@ -58,19 +61,17 @@ export const NotificationsSection: React.FC = () => {
     load();
   }, [load]);
 
-  const run = async (key: string, fn: () => Promise<string | void>) => {
-    setBusy(key);
-    setNotice(null);
-    try {
-      const message = await fn();
-      if (message) setNotice({ tone: "ok", text: message });
-      await load();
-    } catch (e) {
-      setNotice({ tone: "error", text: e instanceof Error ? e.message : "Something went wrong" });
-    } finally {
-      setBusy(null);
-    }
-  };
+  const run = (key: string, fn: () => Promise<string | void>) =>
+    runAction(async () => {
+      setNotice(null);
+      try {
+        const message = await fn();
+        if (message) setNotice({ tone: "ok", text: message });
+        await load();
+      } catch (e) {
+        setNotice({ tone: "error", text: e instanceof Error ? e.message : "Something went wrong" });
+      }
+    }, key);
 
   const toggle = (key: keyof Prefs) => run(key, async () => {
     await call("/user/notification-preferences", "PUT", { [key]: !info?.preferences[key] });
@@ -110,11 +111,13 @@ export const NotificationsSection: React.FC = () => {
     </div>
   );
   const Switch = ({ on, k }: { on: boolean; k: keyof Prefs }) => (
-    <button type="button" role="switch" aria-checked={on} disabled={busy === k} onClick={() => toggle(k)} className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors disabled:opacity-50 ${on ? "bg-black" : "bg-gray-300"}`}>
-      <span className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${on ? "translate-x-5" : "translate-x-0.5"}`} />
+    <button type="button" role="switch" aria-checked={on} disabled={!!busy} aria-busy={busy === k || undefined} onClick={() => toggle(k)} className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors disabled:opacity-50 ${on ? "bg-black" : "bg-gray-300"}`}>
+      <span className={`inline-flex h-5 w-5 transform items-center justify-center rounded-full bg-white transition-transform ${on ? "translate-x-5" : "translate-x-0.5"}`}>
+        {busy === k && <Spinner className="text-[12px] text-gray-500" />}
+      </span>
     </button>
   );
-  const btn = "rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50";
+  const btn = "inline-flex items-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50";
   const p = info.preferences;
 
   return (
@@ -133,9 +136,15 @@ export const NotificationsSection: React.FC = () => {
               <div className="flex items-center gap-3">
                 <Switch on={p.push} k="push" />
                 {thisDevice ? (
-                  <button type="button" disabled={busy === "push-off"} className={btn} onClick={disablePush}>Turn off here</button>
+                  <button type="button" disabled={!!busy} aria-busy={busy === "push-off" || undefined} className={btn} onClick={disablePush}>
+                    {busy === "push-off" && <Spinner />}
+                    Turn off here
+                  </button>
                 ) : (
-                  <button type="button" disabled={busy === "push-on"} className={btn} onClick={enablePush}>Enable on this device</button>
+                  <button type="button" disabled={!!busy} aria-busy={busy === "push-on" || undefined} className={btn} onClick={enablePush}>
+                    {busy === "push-on" && <Spinner />}
+                    Enable on this device
+                  </button>
                 )}
               </div>
             }

@@ -5,6 +5,8 @@
 
 import React, { useCallback, useEffect, useState } from "react";
 import { getAuthHeader } from "@/helper/helper";
+import Spinner from "@/components/ui/Spinner";
+import useAsyncAction from "@/components/ui/useAsyncAction";
 
 const API_BASE = process.env.NEXT_PUBLIC_BACKEND_URL || "";
 
@@ -39,7 +41,7 @@ async function call(path: string, method: string, body?: unknown) {
 
 const input = "w-full border-2 border-gray-200 rounded-lg px-4 py-3 focus:outline-none focus:border-primary";
 const btn = "rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50";
-const primary = "px-5 py-3 bg-primary text-black font-semibold rounded-lg hover:opacity-90 disabled:opacity-60";
+const primary = "inline-flex items-center gap-2 px-5 py-3 bg-primary text-black font-semibold rounded-lg hover:opacity-90 disabled:opacity-60";
 
 export const ProfileExtrasSection: React.FC<{ onChanged?: () => void }> = ({ onChanged }) => {
   const [health, setHealth] = useState<Health | null>(null);
@@ -47,7 +49,8 @@ export const ProfileExtrasSection: React.FC<{ onChanged?: () => void }> = ({ onC
   const [answers, setAnswers] = useState<boolean[]>(PARQ_QUESTIONS.map(() => false));
   const [signature, setSignature] = useState("");
   const [agreed, setAgreed] = useState(false);
-  const [busy, setBusy] = useState<string | null>(null);
+  // One change at a time; the one that was pressed spins.
+  const { busyKey: busy, run: runAction } = useAsyncAction();
   const [notice, setNotice] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
 
   const load = useCallback(async () => {
@@ -66,20 +69,18 @@ export const ProfileExtrasSection: React.FC<{ onChanged?: () => void }> = ({ onC
     load();
   }, [load]);
 
-  const run = async (key: string, fn: () => Promise<string | void>) => {
-    setBusy(key);
-    setNotice(null);
-    try {
-      const message = await fn();
-      if (message) setNotice({ tone: "ok", text: message });
-      await load();
-      onChanged?.();
-    } catch (e) {
-      setNotice({ tone: "error", text: e instanceof Error ? e.message : "Something went wrong" });
-    } finally {
-      setBusy(null);
-    }
-  };
+  const run = (key: string, fn: () => Promise<string | void>) =>
+    runAction(async () => {
+      setNotice(null);
+      try {
+        const message = await fn();
+        if (message) setNotice({ tone: "ok", text: message });
+        await load();
+        onChanged?.();
+      } catch (e) {
+        setNotice({ tone: "error", text: e instanceof Error ? e.message : "Something went wrong" });
+      }
+    }, key);
 
   const uploadPhoto = (file: File | null) => {
     if (!file) return;
@@ -125,9 +126,10 @@ export const ProfileExtrasSection: React.FC<{ onChanged?: () => void }> = ({ onC
       <section className="mt-8 rounded-2xl border-2 border-gray-200 bg-white p-6">
         <h2 className="text-xl font-bold text-black">Profile photo</h2>
         <p className="mt-1 text-sm text-gray-600">Shown at reception when you check in.</p>
-        <label className={`${btn} mt-4 inline-block cursor-pointer`}>
+        <label aria-busy={busy === "photo" || undefined} className={`${btn} mt-4 inline-flex items-center gap-2 ${busy ? "cursor-not-allowed opacity-50" : "cursor-pointer"}`}>
+          {busy === "photo" && <Spinner />}
           {busy === "photo" ? "Uploading…" : "Choose a photo"}
-          <input type="file" accept="image/*" className="hidden" disabled={busy === "photo"} onChange={(e) => uploadPhoto(e.target.files?.[0] || null)} />
+          <input type="file" accept="image/*" className="hidden" disabled={!!busy} onChange={(e) => uploadPhoto(e.target.files?.[0] || null)} />
         </label>
       </section>
 
@@ -185,7 +187,8 @@ export const ProfileExtrasSection: React.FC<{ onChanged?: () => void }> = ({ onC
           </p>
         )}
         <div className="mt-4 flex justify-end">
-          <button type="button" className={primary} disabled={busy === "health"} onClick={saveHealth}>
+          <button type="button" className={primary} disabled={!!busy} aria-busy={busy === "health" || undefined} onClick={saveHealth}>
+            {busy === "health" && <Spinner />}
             {busy === "health" ? "Saving…" : "Save health details"}
           </button>
         </div>
@@ -212,7 +215,8 @@ export const ProfileExtrasSection: React.FC<{ onChanged?: () => void }> = ({ onC
                 </label>
               </div>
               <div className="mt-4 flex justify-end">
-                <button type="button" className={primary} disabled={busy === "waiver" || !agreed || signature.trim().length < 3} onClick={sign}>
+                <button type="button" className={primary} disabled={!!busy || !agreed || signature.trim().length < 3} aria-busy={busy === "waiver" || undefined} onClick={sign}>
+                  {busy === "waiver" && <Spinner />}
                   {busy === "waiver" ? "Signing…" : "Sign agreement"}
                 </button>
               </div>

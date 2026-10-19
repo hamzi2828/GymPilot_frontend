@@ -4,6 +4,8 @@ import React, { Dispatch, SetStateAction, useEffect, useMemo, useState } from "r
 import Link from "next/link";
 import { FORGOT_PASSWORD_PATH, getUserDetailForProfile, SessionEndedError } from "../service/userDetailService";
 import { toDateInputValue } from "@/helper/date";
+import Spinner from "@/components/ui/Spinner";
+import useAsyncAction from "@/components/ui/useAsyncAction";
 
 export interface UserProfileShape {
   firstName: string;
@@ -99,6 +101,9 @@ export function ProfileSection<T extends UserProfileShape>({
   // The account has no password (it signs in with Google): the refusal is
   // shown with the way to set one.
   const [setPasswordFirst, setSetPasswordFirst] = useState(false);
+  // The parent's isSaving arrives a render late; this locks Save at once.
+  const { busy: submitting, run } = useAsyncAction();
+  const saving = isSaving || submitting;
 
   const startEditing = () => {
     setBeforeEdit(userProfile);
@@ -172,7 +177,7 @@ export function ProfileSection<T extends UserProfileShape>({
     }
   }, [userProfile?.dateOfBirth]);
 
-  const handleSaveClick = async () => {
+  const saveProfile = async () => {
     if (!userProfile) {
       showToast("User profile is not loaded", "error");
       return;
@@ -216,6 +221,7 @@ export function ProfileSection<T extends UserProfileShape>({
     if (result.needsPassword) setPasswordAsked(true);
     setSetPasswordFirst(!!result.setPasswordFirst);
   };
+  const handleSaveClick = () => run(saveProfile);
 
   if (loading) {
     return (
@@ -233,7 +239,7 @@ export function ProfileSection<T extends UserProfileShape>({
           <button
             type="button"
             onClick={isEditing ? cancelEditing : startEditing}
-            disabled={isSaving}
+            disabled={saving}
             className="px-4 py-2 border-2 border-primary text-primary font-semibold rounded-lg hover:bg-primary hover:text-black disabled:opacity-60"
           >
             <i className={`fas ${isEditing ? "fa-times" : "fa-edit"} mr-2`} />
@@ -361,7 +367,7 @@ export function ProfileSection<T extends UserProfileShape>({
             type="button"
             onClick={cancelEditing}
             className="px-5 py-3 border-2 border-gray-300 rounded-lg hover:border-gray-400 disabled:opacity-60"
-            disabled={isSaving}
+            disabled={saving}
           >
             Cancel
           </button>
@@ -369,10 +375,11 @@ export function ProfileSection<T extends UserProfileShape>({
             type="button"
             onClick={handleSaveClick}
             className="px-5 py-3 bg-primary text-black font-semibold rounded-lg hover:opacity-90 disabled:opacity-60"
-            disabled={isSaving}
+            disabled={saving}
+            aria-busy={saving || undefined}
           >
-            <i className="fas fa-save mr-2" />
-            {isSaving ? "Saving..." : "Save"}
+            {saving ? <Spinner className="mr-2" /> : <i className="fas fa-save mr-2" />}
+            {saving ? "Saving..." : "Save"}
           </button>
         </div>
       )}
