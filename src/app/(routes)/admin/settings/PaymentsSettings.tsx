@@ -1,19 +1,23 @@
 "use client";
 
-// Settings → Payments: which gateway takes this gym's online payments (one at
-// a time), that gateway's keys, the reminders members get before, on and
-// after the day a membership falls due, and automatic card charges.
+// Settings → Payments, laid out for a gym owner rather than a developer, one
+// card per question:
+//   1. How members pay online (one option at a time).
+//   2. Connect that option: its keys in short numbered steps, or, for bank
+//      transfer, the gym's bank accounts.
+//   3. When members are reminded to pay.
+//   Automatic card payments, only with an option that can charge saved cards.
 //
-// The gateways come from the API (GET /settings/payment-gateways), each with
-// what it supports and the fields its form needs, so a gateway added there
-// shows up here without a change to this page. Stripe keeps its own panel
-// (the page passes it in): it has more to explain than a list of fields.
+// The options come from the API (GET /settings/payment-gateways) with the
+// fields each form needs, so a gateway added there still gets a form here;
+// the plain names and hints below are for the ones we know. Everything is
+// saved by the page's one Save (PUT /settings), from the bar at the bottom.
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ComponentType, type KeyboardEvent, type ReactNode } from "react";
 import Link from "next/link";
+import { Check, CreditCard, ExternalLink, Landmark, Smartphone, Store, Wallet } from "lucide-react";
 import { Card, PrimaryButton, SecondaryButton, TextField, SelectField, Toggle, Badge, useAsyncAction } from "../_shared/ui";
 import { API_BASE, ApiError, apiGet, apiJson, isMaskedSecret } from "../_shared/api";
-import { countryByCode } from "@/data/countries";
 import { CopyButton } from "../users/PasswordDialogs";
 
 export interface GatewayField {
@@ -43,11 +47,16 @@ export interface GatewayCapabilities {
 export interface Gateway {
   id: string;
   label: string;
+  description?: string;
   countries?: string[];
   capabilities?: GatewayCapabilities;
   config_fields?: GatewayField[];
   configured?: boolean;
   selected?: boolean;
+  /** Where its settings live in the settings document; null for one with none (bank transfer). */
+  settings_key?: string | null;
+  /** The address to register with the gateway for its payment updates. */
+  webhook_url?: string | null;
 }
 
 export interface BillingConfig {
@@ -61,7 +70,16 @@ export interface BillingConfig {
 export interface PaymentFields {
   onlinePayments?: { provider?: string };
   billing?: BillingConfig;
-  stripe?: { enabled?: boolean; secretKeySet?: boolean; webhookSecretSet?: boolean };
+  stripe?: {
+    enabled?: boolean;
+    publishableKey?: string;
+    secretKey?: string;
+    webhookSecret?: string;
+    secretKeySet?: boolean;
+    webhookSecretSet?: boolean;
+  };
+  /** Where Stripe sends its payment updates (read-only, from the API). */
+  stripeWebhookUrl?: string;
 }
 
 /** Whether members can pay online right now, as GET /payment/methods says. */
@@ -73,6 +91,15 @@ export interface OnlineStatus {
 
 type GatewayConfig = Record<string, unknown>;
 
+interface BankRow {
+  _id: string;
+  name: string;
+  accountTitle?: string;
+  accountNumber?: string;
+  qrCodeUrl?: string;
+  isActive?: boolean;
+}
+
 const NONE = "none";
 
 const BILLING_DEFAULTS = {
@@ -81,6 +108,83 @@ const BILLING_DEFAULTS = {
   lastDayAfterDue: 3,
   sendVia: { email: true, sms: false, whatsapp: true, push: true },
 };
+
+// What the gym's Stripe endpoint must send. Card sales stay off until its
+// signing secret is saved: renewals, abandoned checkouts and cancellations
+// only ever reach us this way. Same list as the setup wizard.
+const STRIPE_WEBHOOK_EVENTS = [
+  "checkout.session.completed",
+  "checkout.session.expired",
+  "invoice.paid",
+  "invoice.payment_failed",
+  "customer.subscription.updated",
+  "customer.subscription.deleted",
+  "payment_intent.succeeded",
+  "payment_intent.payment_failed",
+];
+
+const BANK_ORDERS_TO_VERIFY = "/admin/package-orders?paymentStatus=processing&paymentMethod=bank_transfer";
+
+/** The plain words for the options we know; the API's own wording for any other. */
+interface OptionCopy {
+  title: string;
+  short: string;
+  line: string;
+  icon: ComponentType<{ className?: string }>;
+  signup?: { url: string; label: string; note?: string };
+  fields?: Record<string, { label?: string; hint?: string }>;
+  webhookHow?: string;
+  webhookEvents?: string[];
+}
+
+const COPY: Record<string, OptionCopy> = {
+  generic: {
+    title: "Bank transfer + receipt",
+    short: "bank transfer",
+    line: "Members upload a receipt, you approve. No fees.",
+    icon: Landmark,
+  },
+  safepay: {
+    title: "Safepay (Pakistan)",
+    short: "Safepay",
+    line: "Card, JazzCash, Easypaisa. Marked paid automatically.",
+    icon: Smartphone,
+    signup: { url: "https://getsafepay.pk", label: "Open getsafepay.pk", note: "You'll need your CNIC, NTN and a bank account certificate." },
+    fields: {
+      publicKey: { label: "Public key", hint: "Safepay → Developer → API" },
+      secretKey: { label: "Secret key", hint: "Safepay → Developer → API" },
+      webhookSecret: { label: "Webhook secret", hint: "Safepay → Developer → Endpoints → View shared secret" },
+    },
+    webhookHow: "In Safepay, open Developer → Endpoints → Add an endpoint and paste this.",
+  },
+  stripe: {
+    title: "Stripe (international)",
+    short: "Stripe",
+    line: "Card payments worldwide.",
+    icon: CreditCard,
+    signup: { url: "https://dashboard.stripe.com/register", label: "Open stripe.com" },
+    fields: {
+      publishableKey: { label: "Publishable key", hint: "Stripe → Developers → API keys" },
+      secretKey: { label: "Secret key", hint: "Stripe → Developers → API keys" },
+      webhookSecret: { label: "Signing secret", hint: "Stripe → Developers → Webhooks → your endpoint" },
+    },
+    webhookHow: "In Stripe, open Developers → Webhooks → Add endpoint and paste this.",
+    webhookEvents: STRIPE_WEBHOOK_EVENTS,
+  },
+  [NONE]: {
+    title: "No online payments",
+    short: "no online payments",
+    line: "Members pay at the front desk.",
+    icon: Store,
+  },
+};
+
+// Bank transfer first: it needs no account with anyone.
+const ORDER: Record<string, number> = { generic: 0, safepay: 1, stripe: 2 };
+
+function copyFor(g: Gateway): OptionCopy {
+  return COPY[g.id] || { title: g.label, short: g.label, line: g.description || "", icon: Wallet };
+}
 
 // Used only while the API cannot list its gateways (an older API, which has
 // none but these two), with the fields the spec gives them.
@@ -109,20 +213,14 @@ function builtInGateways(settings: PaymentFields & Record<string, unknown>): Gat
       label: "Stripe",
       countries: ["*"],
       capabilities: { checkout: true, savedCards: true },
-      config_fields: [],
+      config_fields: [
+        { name: "publishableKey", label: "Publishable key", type: "text", required: true, placeholder: "pk_live_..." },
+        { name: "secretKey", label: "Secret key", type: "secret", secret: true, required: true, placeholder: "sk_live_..." },
+        { name: "webhookSecret", label: "Webhook signing secret", type: "secret", secret: true, required: true, placeholder: "whsec_..." },
+      ],
       configured: !!stripe.secretKeySet && !!stripe.webhookSecretSet,
     },
   ];
-}
-
-function worldwide(g: Gateway) {
-  const list = g.countries || [];
-  return !list.length || list.some((c) => c === "*" || /^(world|global|all)/i.test(c));
-}
-
-function whereLine(g: Gateway) {
-  if (worldwide(g)) return "Worldwide";
-  return (g.countries || []).map((c) => countryByCode(c)?.name || c).join(", ");
 }
 
 /** A gateway with no checkout of its own: bank transfer, and a receipt staff check. */
@@ -130,23 +228,22 @@ function receiptOnly(g: Gateway | null) {
   return !!g && g.capabilities?.checkout === false && !!g.capabilities?.receiptUpload;
 }
 
-/** What a gateway lets members do, as short chips. */
-function supports(g: Gateway): string[] {
-  const c = g.capabilities || {};
-  const pk = (g.countries || []).some((x) => x.toUpperCase() === "PK");
-  const out: string[] = [];
-  if (c.checkout !== false) out.push(worldwide(g) ? "Cards worldwide" : "Cards");
-  if (c.receiptUpload) out.push("Bank transfer + receipt");
-  if (c.wallets) out.push(...(pk ? ["JazzCash", "Easypaisa"] : ["Mobile wallets"]));
-  if (c.bankApps) out.push(pk ? "Any bank app (Raast)" : "Bank apps");
-  if (c.paymentLinks) out.push("Payment links");
-  if (c.savedCards) out.push("Saved cards");
-  if (c.autoCharge) out.push("Automatic charges");
-  return out;
-}
-
 function optionList(field: GatewayField) {
   return (field.options || []).map((o) => (typeof o === "string" ? { value: o, label: o.charAt(0).toUpperCase() + o.slice(1) } : o));
+}
+
+const TEST_MODE = /^(sandbox|test)$/i;
+const LIVE_MODE = /^(production|live)$/i;
+
+/** A choice between test and real payments (Safepay's environment): shown as a Test / Live switch. */
+function isModeField(field: GatewayField) {
+  if (field.type !== "select") return false;
+  const values = optionList(field).map((o) => o.value);
+  return values.some((v) => TEST_MODE.test(v)) && values.some((v) => LIVE_MODE.test(v));
+}
+
+function isSecretField(field: GatewayField) {
+  return !!field.secret || field.type === "password" || field.type === "secret";
 }
 
 /** "3, 1" as the days to send a reminder, or null when it cannot be read. */
@@ -158,12 +255,71 @@ function parseDays(text: string): number[] | null {
   return Array.from(new Set(days)).sort((a, b) => b - a);
 }
 
-function Heading({ title, hint }: { title: string; hint?: React.ReactNode }) {
+/** "Example: expires on 16 Oct → reminders on 13 Oct, 16 Oct and 19 Oct." */
+function exampleLine(daysBefore: number[], onTheDay: boolean, daysAfter: number) {
+  const now = new Date();
+  const expires = new Date(now.getFullYear(), now.getMonth(), 16);
+  const offsets = new Set<number>(daysBefore.map((d) => -d));
+  if (onTheDay) offsets.add(0);
+  if (daysAfter > 0) offsets.add(daysAfter);
+  const day = (offset: number) => {
+    const d = new Date(expires);
+    d.setDate(expires.getDate() + offset);
+    return d.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+  };
+  const dates = Array.from(offsets)
+    .sort((a, b) => a - b)
+    .map(day);
+  if (!dates.length) return "No reminders are sent.";
+  const joined = dates.length === 1 ? dates[0] : `${dates.slice(0, -1).join(", ")} and ${dates[dates.length - 1]}`;
+  return `Example: expires on ${day(0)} → reminder${dates.length === 1 ? "" : "s"} on ${joined}.`;
+}
+
+const linkButton =
+  "inline-flex h-9 items-center gap-1.5 rounded-lg border border-neutral-200 bg-white px-3 text-sm font-medium text-neutral-700 transition-colors hover:border-neutral-300 hover:bg-neutral-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-neutral-300";
+
+const smallInput =
+  "h-9 w-16 rounded-lg border border-neutral-200 bg-white px-2 text-center text-base sm:text-sm focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[color-mix(in_srgb,var(--accent)_25%,transparent)]";
+
+/** A card's header: its number, a title and one short line. */
+function CardHead({ step, title, line, aside }: { step?: ReactNode; title: string; line?: ReactNode; aside?: ReactNode }) {
   return (
-    <div className="mb-5">
-      <h2 className="text-sm font-semibold text-neutral-900">{title}</h2>
-      {hint && <p className="mt-1 text-xs text-neutral-500">{hint}</p>}
+    <div className="flex items-start justify-between gap-3 border-b border-neutral-100 px-4 py-4 sm:px-6">
+      <div className="flex min-w-0 items-start gap-3">
+        {step !== undefined && (
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-neutral-900 text-xs font-bold text-white" aria-hidden="true">
+            {step}
+          </span>
+        )}
+        <div className="min-w-0">
+          <h3 className="text-base font-semibold leading-7 text-neutral-900">{title}</h3>
+          {line && <p className="text-sm text-neutral-500">{line}</p>}
+        </div>
+      </div>
+      {aside && <div className="flex shrink-0 items-center pt-1">{aside}</div>}
     </div>
+  );
+}
+
+/** One numbered step inside a card, with what it needs right under it. */
+function Step({ n, title, done, last, children }: { n: number; title: string; done?: boolean; last?: boolean; children?: ReactNode }) {
+  return (
+    <li className="flex gap-3 sm:gap-4">
+      <div className="flex flex-col items-center">
+        <span
+          className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full border text-xs font-semibold ${
+            done ? "border-emerald-600 bg-emerald-600 text-white" : "border-neutral-300 bg-white text-neutral-700"
+          }`}
+        >
+          {done ? <Check className="h-4 w-4" aria-label="Done" /> : n}
+        </span>
+        {!last && <span className="mt-1 w-px flex-1 bg-neutral-200" aria-hidden="true" />}
+      </div>
+      <div className={`min-w-0 flex-1 ${last ? "" : "pb-7"}`}>
+        <p className="text-sm font-semibold leading-7 text-neutral-900">{title}</p>
+        {children && <div className="mt-2">{children}</div>}
+      </div>
+    </li>
   );
 }
 
@@ -176,7 +332,6 @@ export default function PaymentsSettings<T extends PaymentFields>({
   saveBusy,
   status,
   onReloadStatus,
-  stripePanel,
   secretError,
 }: {
   settings: T;
@@ -188,8 +343,6 @@ export default function PaymentsSettings<T extends PaymentFields>({
   saveBusy: boolean;
   status: OnlineStatus | null;
   onReloadStatus: () => Promise<unknown> | void;
-  /** The Stripe form, shown when Stripe is the chosen gateway. */
-  stripePanel: React.ReactNode;
   /** A secret the API asked to be typed again (SECRET_REQUIRED, "safepay.secretKey"), said beside its box. */
   secretError?: { field: string; message: string } | null;
 }) {
@@ -208,28 +361,83 @@ export default function PaymentsSettings<T extends PaymentFields>({
   useEffect(() => {
     loadGateways();
   }, [loadGateways]);
-  const list = gateways && gateways.length ? gateways : builtInGateways(all);
+  const list = (gateways && gateways.length ? gateways : builtInGateways(all))
+    .map((g, i) => ({ g, i }))
+    .sort((a, b) => (ORDER[a.g.id] ?? 9) - (ORDER[b.g.id] ?? 9) || a.i - b.i)
+    .map(({ g }) => g);
 
   const configOf = (id: string): GatewayConfig => ((all[id] as GatewayConfig) || {}) as GatewayConfig;
   const savedConfigOf = (id: string): GatewayConfig => ((was?.[id] as GatewayConfig) || {}) as GatewayConfig;
 
-  // The chosen gateway: as edited, else as the API derives it for a gym that
+  // The chosen option: as edited, else as the API derives it for a gym that
   // never chose (Stripe when it is switched on, otherwise none).
   const selectedId = all.onlinePayments?.provider || list.find((g) => g.selected)?.id || (all.stripe?.enabled ? "stripe" : NONE);
   const selected = list.find((g) => g.id === selectedId) || null;
+  const selectedCopy = selected ? copyFor(selected) : COPY[NONE];
 
   const choose = (id: string) => {
     const next: Record<string, unknown> = { ...all, onlinePayments: { ...(all.onlinePayments || {}), provider: id } };
     // The chosen gateway takes every new online payment (the server goes by
-    // onlinePayments.provider). The others are left as they are rather than
-    // switched off: members still on a Stripe subscription renew through
-    // Stripe's webhook, which stops being recorded once Stripe is off.
-    if (list.some((g) => g.id === id)) next[id] = { ...configOf(id), enabled: true };
+    // onlinePayments.provider), so choosing it switches it on. The others are
+    // left as they are rather than switched off: members still on a Stripe
+    // subscription renew through Stripe's webhook, which stops being recorded
+    // once Stripe is off. Bank transfer has no settings of its own to switch.
+    const g = list.find((x) => x.id === id);
+    if (g && g.settings_key !== null && configOf(id).enabled !== true) next[id] = { ...configOf(id), enabled: true };
     setSettings(next as unknown as T);
   };
 
   const setField = (id: string, name: string, value: unknown) =>
     setSettings({ ...all, [id]: { ...configOf(id), [name]: value } } as unknown as T);
+
+  // ---- The option tiles: a radio group, arrow keys move the choice ----
+  const options = [
+    ...list.map((g) => {
+      const c = copyFor(g);
+      const bank = receiptOnly(g);
+      return {
+        id: g.id,
+        title: c.title,
+        line: c.line,
+        icon: c.icon,
+        badge: bank
+          ? g.configured
+            ? { color: "green" as const, text: "Ready" }
+            : { color: "amber" as const, text: "Add a bank account" }
+          : g.configured
+          ? { color: "green" as const, text: "Ready" }
+          : { color: "neutral" as const, text: "Needs setup" },
+      };
+    }),
+    { id: NONE, title: COPY[NONE].title, line: COPY[NONE].line, icon: COPY[NONE].icon, badge: null },
+  ];
+  const tileRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const onTileKey = (e: KeyboardEvent<HTMLButtonElement>, index: number) => {
+    const move = e.key === "ArrowRight" || e.key === "ArrowDown" ? 1 : e.key === "ArrowLeft" || e.key === "ArrowUp" ? -1 : 0;
+    if (!move) return;
+    e.preventDefault();
+    const next = options[(index + move + options.length) % options.length];
+    choose(next.id);
+    tileRefs.current[next.id]?.focus();
+  };
+
+  // ---- Bank transfer: the gym's bank accounts ----
+  const bankOption = receiptOnly(selected);
+  const [banks, setBanks] = useState<BankRow[] | null>(null);
+  const [banksFailed, setBanksFailed] = useState(false);
+  const loadBanks = useCallback(async () => {
+    try {
+      const r = await apiGet<{ data?: BankRow[]; banks?: BankRow[] }>(`${API_BASE}/banks`);
+      setBanks((r.data || r.banks || []).filter((b) => b.isActive !== false));
+      setBanksFailed(false);
+    } catch {
+      setBanksFailed(true);
+    }
+  }, []);
+  useEffect(() => {
+    if (bankOption) loadBanks();
+  }, [bankOption, loadBanks]);
+  const banksRetry = useAsyncAction();
 
   // ---- Reminders ----
   const billing: BillingConfig = all.billing || {};
@@ -248,370 +456,502 @@ export default function PaymentsSettings<T extends PaymentFields>({
   const setBilling = (patch: Partial<BillingConfig>) => setSettings({ ...all, billing: { ...billing, ...patch } } as unknown as T);
   const lastDay = billing.lastDayAfterDue ?? BILLING_DEFAULTS.lastDayAfterDue;
   const lastDayBad = !Number.isInteger(lastDay) || lastDay < 0 || lastDay > 60;
+  const onTheDay = billing.dueDayReminder ?? BILLING_DEFAULTS.dueDayReminder;
+  const noChannel = !sendVia.email && !sendVia.sms && !sendVia.whatsapp && !sendVia.push;
 
   // ---- Test connection ----
   const tester = useAsyncAction();
   const [testResult, setTestResult] = useState<{ ok: boolean; text: string } | null>(null);
   useEffect(() => setTestResult(null), [selectedId]);
   const unsavedKeys = !!selected && JSON.stringify(configOf(selected.id)) !== JSON.stringify(savedConfigOf(selected.id));
-  const test = (id: string) =>
+  const test = (id: string, name: string) =>
     tester.run(async () => {
       setTestResult(null);
       try {
         const r = await apiJson<{ success?: boolean; message?: string }>(`${API_BASE}/settings/${encodeURIComponent(id)}/test`, "POST");
-        setTestResult(
-          r.success === false
-            ? { ok: false, text: r.message || "The keys did not work." }
-            : { ok: true, text: r.message || "Connected: the keys work." }
-        );
+        setTestResult(r.success === false ? { ok: false, text: r.message || "The keys did not work." } : { ok: true, text: `Connected — ${name} accepted your keys.` });
       } catch (e) {
         setTestResult({
           ok: false,
-          text: e instanceof ApiError && e.status === 404 ? "This gateway cannot be tested from here yet." : e instanceof Error ? e.message : "The test could not run.",
+          text: e instanceof ApiError && e.status === 404 ? "This option can't be tested from here yet." : e instanceof Error ? e.message : "The test could not run.",
         });
       }
     });
 
+  // ---- Save ----
+  // What Save sends for this tab, to tell whether anything is unsaved.
+  const snapshot = (s: (PaymentFields & Record<string, unknown>) | null) =>
+    JSON.stringify([s?.onlinePayments?.provider ?? null, s?.billing ?? null, s?.stripe ?? null, ...list.map((g) => s?.[g.id] ?? null)]);
+  const dirty = !!was && snapshot(all) !== snapshot(was);
+  // The last Save pressed, as it was: still unsaved and unchanged since means it failed.
+  const [attempt, setAttempt] = useState<string | null>(null);
+  const saveFailed = dirty && attempt === snapshot(all);
+  const remindersBad = parsedDays === null || lastDayBad;
   const save = async () => {
-    if (parsedDays === null || lastDayBad) return;
+    if (remindersBad) return;
+    setAttempt(snapshot(all));
     await onSave();
-    await Promise.all([loadGateways(), onReloadStatus()]);
+    await Promise.all([loadGateways(), onReloadStatus(), bankOption ? loadBanks() : null]);
   };
 
-  const live = !!status?.online && status.online.provider === selectedId;
+  const live = !!status && (status.online?.provider === selectedId || (selectedId === "stripe" && status.card));
   const autoChargeOn = !!billing.autoCharge?.enabled;
   const canAutoCharge = !!selected?.capabilities?.autoCharge;
+  const autoChargeWith = list.filter((g) => g.capabilities?.autoCharge).map((g) => copyFor(g).short);
+
+  const showConnect = !!selected;
+  const remindersStep = showConnect ? 3 : 2;
+
+  // ---- The keys form (Safepay, Stripe, or any gateway the API adds) ----
+  const keysForm = (g: Gateway) => {
+    const c = copyFor(g);
+    const cfg = configOf(g.id);
+    const fields = (g.config_fields || []).filter((f) => !(f.type === "boolean" && f.name === "enabled"));
+    const modeField = fields.find(isModeField);
+    const webhookFields = fields.filter((f) => f !== modeField && /webhook/i.test(f.name));
+    const keyFields = fields.filter((f) => f !== modeField && !webhookFields.includes(f));
+    const webhookUrl = String(cfg.webhook_url || (g.id === "stripe" ? all.stripeWebhookUrl : "") || g.webhook_url || "");
+    const hasValue = (f: GatewayField) => {
+      const v = cfg[f.name];
+      if (isSecretField(f)) return isMaskedSecret(v) || cfg[`${f.name}Set`] === true || (typeof v === "string" && v.trim() !== "");
+      return typeof v === "string" ? v.trim() !== "" : v !== undefined && v !== null;
+    };
+    const textKeys = keyFields.filter((f) => f.type !== "boolean");
+    const keysDone = textKeys.length > 0 && textKeys.every(hasValue);
+    const webhookDone = webhookFields.length > 0 && webhookFields.every(hasValue);
+    const hasAccount = [...textKeys, ...webhookFields].some(hasValue);
+
+    const field = (f: GatewayField) => {
+      const label = c.fields?.[f.name]?.label || f.label;
+      const hint = c.fields?.[f.name]?.hint || f.help;
+      const value = cfg[f.name];
+      if (f.type === "boolean") {
+        return (
+          <div key={f.name} className="sm:col-span-2">
+            <Toggle label={label} checked={value === true || value === "true"} onChange={(v) => setField(g.id, f.name, v)} />
+            {hint ? <p className="mt-1 text-xs text-neutral-500">{hint}</p> : null}
+          </div>
+        );
+      }
+      if (f.type === "select") {
+        return (
+          <SelectField
+            key={f.name}
+            label={label}
+            value={typeof value === "string" ? value : undefined}
+            onChange={(v) => setField(g.id, f.name, v)}
+            options={optionList(f)}
+            placeholder="Choose…"
+            allowClear={false}
+          />
+        );
+      }
+      const secret = isSecretField(f);
+      const secretSaved = secret && (isMaskedSecret(value) || cfg[`${f.name}Set`] === true);
+      return (
+        <div key={f.name}>
+          <TextField
+            label={label}
+            type={secret ? "password" : "text"}
+            value={typeof value === "string" || typeof value === "number" ? value : ""}
+            onChange={(v) => setField(g.id, f.name, v)}
+            placeholder={f.placeholder}
+          />
+          {secretError?.field === `${g.id}.${f.name}` ? (
+            <p role="alert" className="mt-1 text-xs text-rose-700">
+              {secretError.message}
+            </p>
+          ) : secretSaved ? (
+            <p className="mt-1 inline-flex items-center gap-1 text-xs text-emerald-700">
+              <Check className="h-3.5 w-3.5" aria-hidden="true" /> Saved. Type a new one to replace it.
+            </p>
+          ) : hint ? (
+            <p className="mt-1 text-xs text-neutral-500">{hint}</p>
+          ) : null}
+        </div>
+      );
+    };
+
+    const modeOptions = modeField ? optionList(modeField) : [];
+    const modeValue = modeField ? (typeof cfg[modeField.name] === "string" && cfg[modeField.name] !== "" ? String(cfg[modeField.name]) : modeOptions.find((o) => TEST_MODE.test(o.value))?.value) : undefined;
+
+    const steps: { title: string; done?: boolean; body?: ReactNode }[] = [];
+    if (c.signup) {
+      steps.push({
+        title: `Create your ${c.short} account`,
+        done: hasAccount,
+        body: hasAccount ? null : (
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <a href={c.signup.url} target="_blank" rel="noopener noreferrer" className={linkButton}>
+              {c.signup.label}
+              <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+            </a>
+            {c.signup.note && <p className="text-xs text-neutral-500">{c.signup.note}</p>}
+          </div>
+        ),
+      });
+    }
+    if (modeField || keyFields.length) {
+      steps.push({
+        title: "Paste your keys",
+        done: keysDone,
+        body: (
+          <div className="space-y-4">
+            {modeField && (
+              <div role="radiogroup" aria-label="Test or live payments" className="inline-flex rounded-lg border border-neutral-200 bg-neutral-50 p-0.5">
+                {modeOptions.map((o) => {
+                  const on = modeValue === o.value;
+                  return (
+                    <button
+                      key={o.value}
+                      type="button"
+                      role="radio"
+                      aria-checked={on}
+                      onClick={() => setField(g.id, modeField.name, o.value)}
+                      className={`rounded-md px-4 py-1.5 text-sm font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-neutral-300 ${
+                        on ? "bg-white text-neutral-900 shadow-sm ring-1 ring-neutral-200" : "text-neutral-500 hover:text-neutral-800"
+                      }`}
+                    >
+                      {TEST_MODE.test(o.value) ? "Test mode" : LIVE_MODE.test(o.value) ? "Live mode" : o.label}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            {keyFields.length > 0 && <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">{keyFields.map(field)}</div>}
+          </div>
+        ),
+      });
+    }
+    if (webhookUrl || webhookFields.length) {
+      steps.push({
+        title: "Turn on payment updates",
+        done: webhookDone,
+        body: (
+          <div className="space-y-4">
+            {webhookUrl && (
+              <div>
+                <div className="flex items-center gap-2 rounded-lg border border-neutral-200 bg-neutral-50 py-2 pl-3 pr-2">
+                  <code className="min-w-0 flex-1 break-all font-mono text-xs text-neutral-800">{webhookUrl}</code>
+                  <CopyButton text={webhookUrl} />
+                </div>
+                <p className="mt-1.5 text-xs text-neutral-500">{c.webhookHow || `In ${c.short}, add this as your webhook endpoint.`}</p>
+                {c.webhookEvents && (
+                  <details className="mt-1.5 text-xs text-neutral-500">
+                    <summary className="cursor-pointer font-medium text-neutral-700">Events to pick ({c.webhookEvents.length})</summary>
+                    <p className="mt-1 break-words font-mono">{c.webhookEvents.join(", ")}</p>
+                  </details>
+                )}
+              </div>
+            )}
+            {webhookFields.length > 0 && <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">{webhookFields.map(field)}</div>}
+          </div>
+        ),
+      });
+    }
+
+    return (
+      <>
+        <div className="px-4 py-5 sm:px-6">
+          <ol>
+            {steps.map((s, i) => (
+              <Step key={s.title} n={i + 1} title={s.title} done={s.done} last={i === steps.length - 1}>
+                {s.body}
+              </Step>
+            ))}
+          </ol>
+        </div>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-b-xl border-t border-neutral-100 bg-neutral-50/70 px-4 py-4 sm:px-6">
+          <SecondaryButton onClick={() => test(g.id, c.short)} loading={tester.busy} disabled={saving || unsavedKeys}>
+            Test connection
+          </SecondaryButton>
+          {testResult ? (
+            <p role={testResult.ok ? "status" : "alert"} className={`text-sm font-medium ${testResult.ok ? "text-emerald-700" : "text-rose-700"}`}>
+              {testResult.text}
+            </p>
+          ) : (
+            unsavedKeys && <p className="text-xs text-neutral-500">Save first, then test.</p>
+          )}
+        </div>
+      </>
+    );
+  };
+
+  // ---- The bank accounts (bank transfer + receipt) ----
+  const banksReady = banks ? banks.length > 0 : !!selected?.configured;
+  const bankPanel = (
+    <>
+      <div className="px-4 py-5 sm:px-6">
+        {banks === null && banksFailed ? (
+          <div className="flex flex-wrap items-center gap-3">
+            <p className="text-sm text-rose-700">Your bank accounts could not be loaded.</p>
+            <SecondaryButton onClick={() => banksRetry.run(loadBanks)} loading={banksRetry.busy}>
+              Try again
+            </SecondaryButton>
+          </div>
+        ) : banks === null ? (
+          <p className="text-sm text-neutral-500">Loading your bank accounts…</p>
+        ) : banks.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-amber-300 bg-amber-50/50 px-4 py-5 text-center">
+            <p className="text-sm font-medium text-neutral-900">No bank account yet</p>
+            <p className="mt-0.5 text-xs text-neutral-500">Add one so members know where to pay.</p>
+          </div>
+        ) : (
+          <ul className="divide-y divide-neutral-100 rounded-lg border border-neutral-200">
+            {banks.map((b) => (
+              <li key={b._id} className="flex items-center gap-3 px-3 py-3 sm:px-4">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-neutral-100 text-neutral-600">
+                  <Landmark className="h-4 w-4" aria-hidden="true" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold text-neutral-900">{b.name}</p>
+                  <p className="truncate text-xs text-neutral-500">{[b.accountTitle, b.accountNumber].filter(Boolean).join(" · ")}</p>
+                </div>
+                {b.qrCodeUrl && <Badge color="blue">QR code</Badge>}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-b-xl border-t border-neutral-100 bg-neutral-50/70 px-4 py-4 sm:px-6">
+        <Link href="/admin/settings?tab=banks" className={linkButton}>
+          {banks && banks.length === 0 ? "Add a bank account" : "Manage bank accounts"}
+        </Link>
+        <Link href={BANK_ORDERS_TO_VERIFY} className="text-sm font-semibold text-neutral-700 underline-offset-4 hover:text-neutral-900 hover:underline">
+          Payments to verify →
+        </Link>
+      </div>
+    </>
+  );
 
   return (
     <div className="space-y-6">
-      {/* ---- The gateway ---- */}
-      <Card className="p-6">
-        <Heading
-          title="Choose your payment gateway"
-          hint="How your members pay you online, straight into your own account. Only one gateway handles online payments at a time."
-        />
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {list.map((g) => {
-            const active = g.id === selectedId;
-            return (
-              <button
-                key={g.id}
-                type="button"
-                onClick={() => choose(g.id)}
-                aria-pressed={active}
-                className={`rounded-xl border p-4 text-left transition-all ${
-                  active ? "border-neutral-900 bg-neutral-50 ring-2 ring-neutral-900/10" : "border-neutral-200 hover:border-neutral-400"
-                }`}
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-neutral-900">{g.label}</p>
-                    <p className="text-xs text-neutral-500">{whereLine(g)}</p>
-                  </div>
-                  <div className="flex shrink-0 flex-col items-end gap-1">
-                    {active && <span className="rounded bg-neutral-900 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">Selected</span>}
-                    <Badge color={g.configured ? "green" : "neutral"}>
-                      {receiptOnly(g) ? (g.configured ? "Bank account ready" : "No bank account yet") : g.configured ? "Keys saved" : "Not set up"}
-                    </Badge>
-                  </div>
-                </div>
-                <div className="mt-3 flex flex-wrap gap-1.5">
-                  {supports(g).map((s) => (
-                    <span key={s} className="rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] font-medium text-neutral-700">
-                      {s}
-                    </span>
-                  ))}
-                </div>
-              </button>
-            );
-          })}
-          <button
-            type="button"
-            onClick={() => choose(NONE)}
-            aria-pressed={selectedId === NONE}
-            className={`rounded-xl border p-4 text-left transition-all ${
-              selectedId === NONE ? "border-neutral-900 bg-neutral-50 ring-2 ring-neutral-900/10" : "border-neutral-200 hover:border-neutral-400"
-            }`}
-          >
-            <div className="flex items-start justify-between gap-2">
-              <p className="text-sm font-semibold text-neutral-900">No online payments</p>
-              {selectedId === NONE && <span className="rounded bg-neutral-900 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">Selected</span>}
-            </div>
-            <p className="mt-1 text-xs text-neutral-500">Members pay at the desk, or by bank transfer when you have bank accounts set up.</p>
-          </button>
-        </div>
-        {selectedId !== (was?.onlinePayments?.provider || list.find((g) => g.selected)?.id || (was?.stripe?.enabled ? "stripe" : NONE)) && (
-          <p className="mt-4 text-xs font-medium text-amber-700">Not saved yet: press Save payment settings below to switch.</p>
-        )}
-      </Card>
+      <div>
+        <h2 className="text-lg font-semibold text-neutral-900">Payments</h2>
+        <p className="mt-0.5 text-sm text-neutral-500">Choose how members pay you online and when they are reminded.</p>
+      </div>
 
-      {/* ---- The chosen gateway's own form ---- */}
-      {selected?.id === "stripe" && stripePanel}
-
-      {selected && receiptOnly(selected) && (
-        <Card className="p-6">
-          <Heading title="Bank transfer with receipt" hint="No gateway account and no card fees: members pay straight into your own bank accounts, and your staff confirm each payment." />
-
-          <div className={`mb-5 rounded-lg border px-4 py-3 text-sm ${selected.configured ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-amber-200 bg-amber-50 text-amber-900"}`}>
-            {selected.configured ? (
-              "Ready: payment links show your bank accounts, and members can upload their receipts."
-            ) : (
-              <>
-                Add at least one bank account, with its QR code if you have one, so members know where to pay.{" "}
-                <Link href="/admin/settings?tab=banks" className="font-semibold underline">
-                  Go to Banks
-                </Link>
-              </>
-            )}
-          </div>
-
-          <ol className="list-decimal space-y-1.5 pl-5 text-sm text-neutral-700">
-            <li>Before the due date, members get a payment link by email and WhatsApp with the package, the amount, the due date and the last day to pay.</li>
-            <li>
-              The link shows the bank accounts and QR codes you keep under{" "}
-              <Link href="/admin/settings?tab=banks" className="font-semibold underline">
-                Banks
-              </Link>
-              .
-            </li>
-            <li>The member transfers the money from any bank app and uploads a screenshot of the receipt on the same page.</li>
-            <li>
-              Your staff check it under{" "}
-              <Link href="/admin/package-orders?paymentStatus=processing&paymentMethod=bank_transfer" className="font-semibold underline">
-                Package Orders → Payments to verify
-              </Link>
-              : approving renews the membership and sends a receipt; rejecting, with a reason, lets the member upload a new one.
-            </li>
-          </ol>
-
-          <div className="mt-5 flex flex-wrap items-center gap-3">
-            <SecondaryButton onClick={() => test(selected.id)} loading={tester.busy} disabled={saving}>
-              Check bank accounts
-            </SecondaryButton>
-          </div>
-          {testResult && (
-            <p role={testResult.ok ? "status" : "alert"} className={`mt-3 rounded-lg px-3 py-2 text-sm ${testResult.ok ? "bg-emerald-50 text-emerald-800" : "bg-rose-50 text-rose-700"}`}>
-              {testResult.text}
-            </p>
-          )}
-        </Card>
-      )}
-
-      {selected && selected.id !== "stripe" && !receiptOnly(selected) && (
-        <Card className="p-6">
-          <Heading
-            title={`${selected.label} settings`}
-            hint="Stored securely on the server. Saved secrets are shown masked — leave a masked field untouched to keep the existing value."
-          />
-
-          {status && (
-            <div className={`mb-5 rounded-lg border px-4 py-3 text-sm ${live ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-amber-200 bg-amber-50 text-amber-900"}`}>
-              {live
-                ? `Online payments are live on your website through ${selected.label}${status.online?.label ? `: ${status.online.label.charAt(0).toLowerCase()}${status.online.label.slice(1)}` : ""}.`
-                : `Online payments are off on your website until ${selected.label} is chosen, its keys are saved and the webhook secret is in place.`}
-            </div>
-          )}
-
-          {selected.id === "safepay" && (
-            <div className="mb-5 rounded-lg border border-neutral-200 bg-neutral-50 p-4">
-              <p className="text-xs font-semibold text-neutral-700">Before you start: what Safepay asks for</p>
-              <ol className="mt-2 list-decimal space-y-1 pl-5 text-xs text-neutral-700">
-                <li>The owner&apos;s CNIC.</li>
-                <li>Your NTN (National Tax Number) from FBR.</li>
-                <li>A bank account certificate, issued in the last 3 months, for the account the money should go to.</li>
-                <li>
-                  A Safepay merchant account: sign up at{" "}
-                  <a href="https://getsafepay.pk" target="_blank" rel="noopener noreferrer" className="font-semibold underline">
-                    getsafepay.pk
-                  </a>
-                  .
-                </li>
-                <li>Then copy your keys from the Safepay dashboard and paste them below.</li>
-              </ol>
-              <p className="mt-2 text-xs text-neutral-500">
-                Members then pay by card, JazzCash, Easypaisa or any bank app, straight into your own bank account. GymsPilotPro never holds the money.
-              </p>
-            </div>
-          )}
-
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            {(selected.config_fields || []).map((field) => {
-              const cfg = configOf(selected.id);
-              const value = cfg[field.name];
-              const secretSaved = isMaskedSecret(value) || cfg[`${field.name}Set`] === true;
-              if (field.type === "boolean") {
-                // Choosing the gateway above already switches it on, so its own
-                // "enabled" switch is not shown again; any other yes/no setting
-                // is a toggle, never a text box.
-                if (field.name === "enabled") return null;
-                return (
-                  <div key={field.name} className="md:col-span-2">
-                    <Toggle label={field.label} checked={value === true || value === "true"} onChange={(v) => setField(selected.id, field.name, v)} />
-                    {field.help ? <p className="mt-1 text-xs text-neutral-500">{field.help}</p> : null}
-                  </div>
-                );
-              }
-              if (field.type === "select") {
-                return (
-                  <SelectField
-                    key={field.name}
-                    label={`${field.label}${field.required ? " *" : ""}`}
-                    value={typeof value === "string" ? value : undefined}
-                    onChange={(v) => setField(selected.id, field.name, v)}
-                    options={optionList(field)}
-                    placeholder="Choose…"
-                    allowClear={false}
-                  />
-                );
-              }
-              const secret = field.secret || field.type === "password" || field.type === "secret";
+      {/* ---- 1. How members pay online ---- */}
+      <Card>
+        <CardHead step={1} title="How members pay online" line="Pick one. Only one option is used at a time." />
+        <div className="px-4 py-5 sm:px-6">
+          <div role="radiogroup" aria-label="How members pay online" className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {options.map((o, index) => {
+              const active = o.id === selectedId;
+              const Icon = o.icon;
               return (
-                <div key={field.name}>
-                  <TextField
-                    label={field.label}
-                    type={secret ? "password" : "text"}
-                    required={field.required}
-                    value={typeof value === "string" || typeof value === "number" ? value : ""}
-                    onChange={(v) => setField(selected.id, field.name, v)}
-                    placeholder={field.placeholder}
-                  />
-                  {secretError?.field === `${selected.id}.${field.name}` ? (
-                    <p role="alert" className="mt-1 text-xs text-rose-700">{secretError.message}</p>
-                  ) : secret && secretSaved ? (
-                    <p className="mt-1 text-xs text-neutral-500">Saved. Type a new one to replace it.</p>
-                  ) : field.help ? (
-                    <p className="mt-1 text-xs text-neutral-500">{field.help}</p>
-                  ) : null}
-                </div>
+                <button
+                  key={o.id}
+                  ref={(el) => {
+                    tileRefs.current[o.id] = el;
+                  }}
+                  type="button"
+                  role="radio"
+                  aria-checked={active}
+                  tabIndex={active ? 0 : -1}
+                  onClick={() => choose(o.id)}
+                  onKeyDown={(e) => onTileKey(e, index)}
+                  className={`flex items-start gap-3 rounded-xl border-2 p-4 text-left transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400 focus-visible:ring-offset-2 ${
+                    active ? "border-neutral-900 bg-neutral-50" : "border-neutral-200 bg-white hover:border-neutral-400"
+                  }`}
+                >
+                  <span
+                    className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${active ? "bg-neutral-900 text-white" : "bg-neutral-100 text-neutral-600"}`}
+                    aria-hidden="true"
+                  >
+                    <Icon className="h-5 w-5" />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-start justify-between gap-2">
+                      <span className="text-[15px] font-semibold leading-5 text-neutral-900">{o.title}</span>
+                      <span
+                        className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 ${active ? "border-neutral-900" : "border-neutral-300"}`}
+                        aria-hidden="true"
+                      >
+                        {active && <span className="h-2.5 w-2.5 rounded-full bg-neutral-900" />}
+                      </span>
+                    </span>
+                    {o.line && <span className="mt-1 block text-sm text-neutral-500">{o.line}</span>}
+                    {o.badge && (
+                      <span className="mt-2 block">
+                        <Badge color={o.badge.color}>{o.badge.text}</Badge>
+                      </span>
+                    )}
+                  </span>
+                </button>
               );
             })}
           </div>
+        </div>
+      </Card>
 
-          {typeof configOf(selected.id).webhook_url === "string" && configOf(selected.id).webhook_url !== "" && (
-            <div className="mt-5 rounded-lg border border-neutral-200 bg-neutral-50 p-4">
-              <p className="text-xs font-semibold text-neutral-700">Your webhook address</p>
-              <div className="mt-1 flex flex-wrap items-center gap-2">
-                <p className="min-w-0 flex-1 break-all font-mono text-xs text-neutral-800">{String(configOf(selected.id).webhook_url)}</p>
-                <CopyButton text={String(configOf(selected.id).webhook_url)} />
-              </div>
-              <p className="mt-2 text-xs text-neutral-500">
-                In your {selected.label} dashboard, add this address as your webhook endpoint and paste the webhook secret it gives you above. Payments are confirmed
-                to your members&apos; records through it, so online payments stay off until the secret is saved.
-              </p>
-            </div>
+      {/* ---- 2. Connect the chosen option ---- */}
+      {selected && (
+        <Card>
+          {bankOption ? (
+            <CardHead
+              step={2}
+              title="Your bank accounts"
+              line="Members see these and your QR code when they pay."
+              aside={<Badge color={banksReady ? "green" : "amber"}>{banksReady ? "Ready" : "Add a bank account"}</Badge>}
+            />
+          ) : (
+            <CardHead
+              step={2}
+              title={`Connect ${selectedCopy.short}`}
+              line="Follow the steps, then press Save."
+              aside={status ? <Badge color={live ? "green" : "amber"}>{live ? "Live" : "Not live yet"}</Badge> : null}
+            />
           )}
-
-          <div className="mt-5 flex flex-wrap items-center gap-3">
-            <SecondaryButton onClick={() => test(selected.id)} loading={tester.busy} disabled={saving || unsavedKeys}>
-              Test connection
-            </SecondaryButton>
-            <span className="text-xs text-neutral-500">{unsavedKeys ? "Save first: the test checks the saved keys." : `Checks the saved keys with ${selected.label}. Nothing is charged.`}</span>
-          </div>
-          {testResult && (
-            <p role={testResult.ok ? "status" : "alert"} className={`mt-3 rounded-lg px-3 py-2 text-sm ${testResult.ok ? "bg-emerald-50 text-emerald-800" : "bg-rose-50 text-rose-700"}`}>
-              {testResult.text}
-            </p>
-          )}
+          {bankOption ? bankPanel : keysForm(selected)}
         </Card>
       )}
 
-      {/* ---- Reminders ---- */}
-      <Card className="p-6">
-        <Heading
-          title="Payment reminders"
-          hint={
-            receiptOnly(selected)
-              ? "Before a membership falls due, on the day and on the last day to pay, members get a message with a link to your bank details, where they upload their receipt."
-              : selected?.capabilities?.paymentLinks
-              ? `Before a membership falls due, on the day and on the last day to pay, members get a message with a link to pay online through ${selected.label}. The link also offers your bank accounts for a transfer, when you have them set up.`
-              : "Before a membership falls due, on the day and on the last day to pay, members get a reminder. A payment link is added once your gateway supports payment links."
-          }
-        />
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+      {/* ---- 3. Payment reminders ---- */}
+      <Card>
+        <CardHead step={remindersStep} title="Payment reminders" line="When members are reminded to pay." />
+        <div className="space-y-5 px-4 py-5 sm:px-6">
           <div>
-            <TextField
-              label="Remind this many days before the due date"
-              value={daysText}
-              onChange={(v) => {
-                // What is typed stays as typed (commas and all); the list is
-                // stored once it reads as one.
-                setDaysText(v);
-                const days = parseDays(v);
-                if (days) setBilling({ reminderDaysBefore: days });
-              }}
-              placeholder="3"
-            />
-            {parsedDays === null ? (
-              <p role="alert" className="mt-1 text-xs text-rose-700">Whole days from 0 to 30, separated by commas (for example 7, 3).</p>
-            ) : (
-              <p className="mt-1 text-xs text-neutral-500">One or more, separated by commas: 7, 3 sends two reminders. Leave empty for none.</p>
+            <div className="flex flex-wrap items-center gap-2 text-sm text-neutral-800">
+              <span>Send a reminder</span>
+              <input
+                type="text"
+                value={daysText}
+                onChange={(e) => {
+                  // What is typed stays as typed (commas and all); the list is
+                  // stored once it reads as one.
+                  const v = e.target.value;
+                  setDaysText(v);
+                  const days = parseDays(v);
+                  if (days) setBilling({ reminderDaysBefore: days });
+                }}
+                placeholder="3"
+                aria-label="Days before the membership expires"
+                title="One or more days, separated by commas (for example 7, 3)"
+                aria-invalid={parsedDays === null || undefined}
+                className={`${smallInput} ${parsedDays === null ? "border-rose-400" : ""}`}
+              />
+              <span>days before the membership expires</span>
+            </div>
+            {parsedDays === null && (
+              <p role="alert" className="mt-1 text-xs text-rose-700">
+                Use whole days from 0 to 30, like 7, 3.
+              </p>
             )}
           </div>
+
+          <Toggle label="Also on the day it expires" checked={onTheDay} onChange={(v) => setBilling({ dueDayReminder: v })} />
+
           <div>
-            <TextField
-              label="Last day to pay (days after the due date)"
-              type="number"
-              value={lastDay}
-              onChange={(v) => setBilling({ lastDayAfterDue: v.trim() === "" ? 0 : Number(v) })}
-            />
-            {lastDayBad ? (
-              <p role="alert" className="mt-1 text-xs text-rose-700">A whole number of days from 0 to 60.</p>
-            ) : (
-              <p className="mt-1 text-xs text-neutral-500">{lastDay === 0 ? "No last-day message." : `A final reminder ${lastDay} day${lastDay === 1 ? "" : "s"} after the due date. After that the membership simply lapses.`}</p>
+            <div className="flex flex-wrap items-center gap-2 text-sm text-neutral-800">
+              <span>Final reminder</span>
+              <input
+                type="number"
+                min={0}
+                max={60}
+                value={lastDay}
+                onChange={(e) => setBilling({ lastDayAfterDue: e.target.value.trim() === "" ? 0 : Number(e.target.value) })}
+                aria-label="Days after the membership expires"
+                aria-invalid={lastDayBad || undefined}
+                className={`${smallInput} ${lastDayBad ? "border-rose-400" : ""}`}
+              />
+              <span>days after it expires</span>
+              <span className="text-xs text-neutral-400">(0 = off)</span>
+            </div>
+            {lastDayBad && (
+              <p role="alert" className="mt-1 text-xs text-rose-700">
+                Use a whole number from 0 to 60.
+              </p>
             )}
           </div>
-          <div className="flex items-end pb-1">
-            <Toggle label="Remind on the day the membership expires (e.g. expires on the 16th → reminder on the 16th)" checked={billing.dueDayReminder ?? BILLING_DEFAULTS.dueDayReminder} onChange={(v) => setBilling({ dueDayReminder: v })} />
+
+          <div className="border-t border-neutral-100 pt-5">
+            <p className="text-sm font-medium text-neutral-800">Send by</p>
+            <div role="group" aria-label="Send reminders by" className="mt-2 flex flex-wrap gap-2">
+              {(
+                [
+                  ["email", "Email"],
+                  ["whatsapp", "WhatsApp"],
+                  ["sms", "SMS"],
+                  ["push", "App notification"],
+                ] as const
+              ).map(([key, label]) => {
+                const on = !!sendVia[key];
+                return (
+                  <label
+                    key={key}
+                    className={`inline-flex cursor-pointer select-none items-center gap-1.5 rounded-full border px-3.5 py-2 text-sm font-medium transition-colors focus-within:ring-2 focus-within:ring-neutral-400 focus-within:ring-offset-1 ${
+                      on ? "border-neutral-900 bg-neutral-900 text-white" : "border-neutral-200 bg-white text-neutral-700 hover:border-neutral-400"
+                    }`}
+                  >
+                    <input type="checkbox" className="sr-only" checked={on} onChange={(e) => setBilling({ sendVia: { ...sendVia, [key]: e.target.checked } })} />
+                    {on ? <Check className="h-4 w-4" aria-hidden="true" /> : <span className="h-3.5 w-3.5 rounded-full border border-neutral-300" aria-hidden="true" />}
+                    {label}
+                  </label>
+                );
+              })}
+            </div>
+            <p className="mt-2 text-xs text-neutral-500">
+              WhatsApp and SMS go from your own account in the{" "}
+              <Link href="/admin/settings?tab=messaging" className="font-medium text-neutral-700 underline underline-offset-2">
+                Messaging tab
+              </Link>
+              .
+            </p>
           </div>
-        </div>
-        <div className="mt-5 border-t border-neutral-100 pt-5">
-          <p className="text-xs font-semibold text-neutral-700">Send by</p>
-          <div className="mt-2 grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <Toggle label="Email" checked={sendVia.email} onChange={(v) => setBilling({ sendVia: { ...sendVia, email: v } })} />
-            <Toggle label="SMS" checked={sendVia.sms} onChange={(v) => setBilling({ sendVia: { ...sendVia, sms: v } })} />
-            <Toggle label="WhatsApp" checked={sendVia.whatsapp} onChange={(v) => setBilling({ sendVia: { ...sendVia, whatsapp: v } })} />
-            <Toggle label="Push notification" checked={sendVia.push} onChange={(v) => setBilling({ sendVia: { ...sendVia, push: v } })} />
-          </div>
-          <p className="mt-2 text-xs text-neutral-500">SMS and WhatsApp go through the providers set up under Messaging. Members who switched a channel off in their account are not sent it.</p>
+
+          <p className={`rounded-lg px-3 py-2.5 text-sm ${noChannel ? "bg-amber-50 text-amber-900" : "bg-neutral-50 text-neutral-700"}`}>
+            {noChannel
+              ? "Pick at least one way to send, or no reminders go out."
+              : exampleLine(parsedDays ?? billing.reminderDaysBefore ?? BILLING_DEFAULTS.reminderDaysBefore, onTheDay, lastDayBad ? 0 : lastDay)}
+          </p>
         </div>
       </Card>
 
-      {/* ---- Automatic charges ---- */}
-      <Card className="p-6">
-        <Heading
+      {/* ---- Automatic card payments (optional) ---- */}
+      <Card>
+        <CardHead
+          step={remindersStep + 1}
           title="Automatic card payments"
-          hint="Members who tick “Save my card and pay automatically” when they pay online are charged on each due date. If the charge fails, they get the payment link instead. They can turn it off in their account at any time."
+          line={
+            canAutoCharge || autoChargeOn
+              ? "Members who save their card are charged on the due date."
+              : autoChargeWith.length
+              ? `Available with ${autoChargeWith.join(" or ")}.`
+              : "Not available with these options."
+          }
+          aside={<Badge>Optional</Badge>}
         />
-        {canAutoCharge || autoChargeOn ? (
-          <>
-            <Toggle
-              label="Charge saved cards automatically on the due date"
-              checked={autoChargeOn}
-              onChange={(v) => setBilling({ autoCharge: { ...(billing.autoCharge || {}), enabled: v } })}
-            />
-            <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900">
-              Switch on only after {selected?.label || "your gateway"} confirms automatic (merchant-initiated) charges for your account.
-            </p>
-            {autoChargeOn && !canAutoCharge && (
-              <p className="mt-2 text-xs text-rose-700">{selected ? "The chosen gateway cannot charge saved cards, so nothing is charged automatically." : "No gateway is chosen, so nothing is charged automatically."}</p>
+        {(canAutoCharge || autoChargeOn) && (
+          <div className="space-y-2 px-4 py-5 sm:px-6">
+            <Toggle label="Charge saved cards automatically" checked={autoChargeOn} onChange={(v) => setBilling({ autoCharge: { ...(billing.autoCharge || {}), enabled: v } })} />
+            {canAutoCharge ? (
+              <p className="text-xs text-amber-800">Turn on only after {selectedCopy.short} confirms automatic charges for your account.</p>
+            ) : (
+              <p className="text-xs text-rose-700">
+                {selected ? `${selectedCopy.short} can't charge saved cards, so nothing is charged.` : "Nothing is charged without online payments."} Turn this off.
+              </p>
             )}
-          </>
-        ) : (
-          <p className="text-sm text-neutral-600">
-            {receiptOnly(selected)
-              ? "Members paying by bank transfer pay each time from their payment link."
-              : selected
-              ? `${selected.label} does not offer automatic charges of saved cards here.`
-              : "Choose a gateway that supports saved cards to offer this."}
-          </p>
+          </div>
         )}
       </Card>
 
-      <div className="flex flex-wrap items-center justify-end gap-3">
-        {(parsedDays === null || lastDayBad) && <span className="text-xs text-rose-700">Fix the reminder days above to save.</span>}
-        <PrimaryButton onClick={save} loading={saveBusy} disabled={saving || parsedDays === null || lastDayBad}>
-          Save payment settings
-        </PrimaryButton>
+      {/* ---- Save: the page's one Save, for everything on this tab ---- */}
+      <div className="sticky bottom-0 z-10 pb-1">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-neutral-200 bg-white/95 px-4 py-3 shadow-[0_-4px_16px_rgba(16,24,40,0.08)] backdrop-blur sm:px-5">
+          <p className={`text-sm ${remindersBad || saveFailed ? "text-rose-700" : dirty ? "font-medium text-amber-700" : "text-neutral-500"}`} role="status">
+            {remindersBad
+              ? "Fix the reminder days to save."
+              : saveFailed
+              ? "Not saved. See the message at the top of the page."
+              : dirty
+              ? "You have unsaved changes."
+              : "All changes saved."}
+          </p>
+          <PrimaryButton onClick={save} loading={saveBusy} disabled={saving || remindersBad}>
+            Save payment settings
+          </PrimaryButton>
+        </div>
       </div>
     </div>
   );
