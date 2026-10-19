@@ -208,7 +208,12 @@ function AdminShell({ children }: { children: React.ReactNode }) {
   const banner = canViewSettings ? billingBanner(subscription) : null;
 
   return (
-    <div className="admin-scroll flex h-screen bg-white text-neutral-900">
+    // Every field in the panel is 16px on a phone, whatever size its page
+    // gives it -- the header search, the filters, the forms in dialogs -- as
+    // iOS zooms the page into a field set smaller and leaves it zoomed. The
+    // kit's fields (_shared/ui.tsx) say the same themselves, for the ones
+    // drawn outside this shell (the confirm dialog, a dropdown's search box).
+    <div className="admin-scroll flex h-screen bg-white text-neutral-900 max-sm:[&_input]:text-base max-sm:[&_select]:text-base max-sm:[&_textarea]:text-base">
       <AdminSidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
       <div className="flex flex-1 flex-col overflow-hidden">

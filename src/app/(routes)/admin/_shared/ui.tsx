@@ -214,7 +214,8 @@ export function TextField({
         // The panel's password boxes hold API keys and mail passwords, never
         // the admin's own sign-in: the browser must not fill that in here.
         autoComplete={type === "password" ? "new-password" : undefined}
-        className="mt-1 w-full h-9 px-3 text-sm bg-white border border-neutral-200 rounded-lg focus:outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[color-mix(in_srgb,var(--accent)_25%,transparent)] transition-colors"
+        // 16px below sm: iOS zooms the page into any field set smaller.
+        className="mt-1 w-full h-9 px-3 text-base sm:text-sm bg-white border border-neutral-200 rounded-lg focus:outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[color-mix(in_srgb,var(--accent)_25%,transparent)] transition-colors"
       />
     </label>
   );
@@ -241,7 +242,7 @@ export function TextArea({
         onChange={(e) => onChange(e.target.value)}
         rows={rows}
         placeholder={placeholder}
-        className="mt-1 w-full px-3 py-2 text-sm bg-white border border-neutral-200 rounded-lg focus:outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[color-mix(in_srgb,var(--accent)_25%,transparent)] transition-colors resize-none"
+        className="mt-1 w-full px-3 py-2 text-base sm:text-sm bg-white border border-neutral-200 rounded-lg focus:outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[color-mix(in_srgb,var(--accent)_25%,transparent)] transition-colors resize-none"
       />
     </label>
   );
@@ -518,7 +519,7 @@ export function Select2({
                   onChange={(event) => setQuery(event.target.value)}
                   onKeyDown={onKeyDown}
                   placeholder={searchPlaceholder}
-                  className="h-8 w-full rounded-md border border-neutral-200 px-2.5 text-[13px] text-neutral-800 focus:border-[var(--accent)] focus:outline-none"
+                  className="h-8 w-full rounded-md border border-neutral-200 px-2.5 text-base sm:text-[13px] text-neutral-800 focus:border-[var(--accent)] focus:outline-none"
                 />
               </div>
             )}
