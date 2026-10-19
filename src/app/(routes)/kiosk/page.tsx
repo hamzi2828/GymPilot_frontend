@@ -2,7 +2,8 @@
 
 // The web check-in screen: a tablet or any PC at the door, no fingerprint
 // reader needed. Staff sign in once with an account that has "Allow
-// attendance app"; the screen then shows a check-in QR code that changes
+// attendance app" (and the code too, for an account with two-step sign-in,
+// as on the website); the screen then shows a check-in QR code that changes
 // every few seconds. Members scan it with their signed-in phone -- the
 // GymsPilotPro app, or the phone's camera, which opens the gym website's
 // /checkin page -- and are checked in or out there, on their own phone.
@@ -129,6 +130,9 @@ function newRequestId(): string {
 // proxy in front of the API answered for it (502/503/504) -- comes back as
 // `offline`, which every caller checks: it used to be an unhandled rejection,
 // so a punch with the network down did nothing at all, no message, no sound.
+// A 503 the API wrote itself keeps its sentence (signing in with an emailed
+// code when the gym cannot send email, say): still no sign-out, but the form
+// can say why.
 async function desk<T>(path: string, body: Record<string, unknown> = {}, token?: string | null): Promise<DeskAnswer<T>> {
   const unreachable = { success: false, offline: true, http_status: 0, message: NOT_CONNECTED } as unknown as DeskAnswer<T>;
   let res: Response;
@@ -141,10 +145,34 @@ async function desk<T>(path: string, body: Record<string, unknown> = {}, token?:
   } catch {
     return unreachable;
   }
-  if (res.status === 502 || res.status === 503 || res.status === 504) return { ...unreachable, http_status: res.status };
+  if (res.status === 502 || res.status === 503 || res.status === 504) {
+    const said = await res.json().catch(() => null);
+    const message = said && typeof said.message === "string" && said.message.trim() ? said.message.trim() : NOT_CONNECTED;
+    return { ...unreachable, http_status: res.status, message, code: said && typeof said.code === "string" ? said.code : undefined };
+  }
   const json = await res.json().catch(() => ({}));
   return { ...json, http_status: res.status };
 }
+
+// POST /api/desktop/login and /login/2fa. An account with two-step sign-in
+// gets no token from the password: `requires2fa` and a challenge to answer
+// with the code instead.
+interface DeskLogin {
+  token?: string;
+  user?: { name: string; location?: string };
+  requires2fa?: boolean;
+  challenge_id?: string;
+  challengeId?: string;
+  method?: "email" | "app";
+}
+// The code step's refusals: a wrong code, or one that has run out.
+const TWO_FACTOR_EXPIRED = "TWO_FACTOR_EXPIRED";
+// How long "Send a new code" rests after each send (as on the website's own
+// sign-in), so a slow email is not answered with a burst of them.
+const RESEND_WAIT_S = 30;
+// Six digits from the email or the authenticator app; an app account may
+// type one of its backup codes instead, which is longer and not all digits.
+const digitsOnly = (value: string) => value.replace(/\D/g, "");
 
 /** The server's number of seconds, within sane bounds, or the fallback. */
 function seconds(value: unknown, fallback: number, min: number, max: number): number {
@@ -233,6 +261,13 @@ export default function KioskPage() {
   const [loginError, setLoginError] = useState<string | null>(null);
   const loginAction = useAsyncAction();
   const loggingIn = loginAction.busy;
+  // The second step, once the password was accepted for an account with
+  // two-step sign-in: the challenge to answer, and how the code arrives.
+  const [twoStep, setTwoStep] = useState<{ challengeId: string; method: "email" | "app"; message: string } | null>(null);
+  const [twoStepCode, setTwoStepCode] = useState("");
+  const [twoStepNotice, setTwoStepNotice] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
+  const [resendWait, setResendWait] = useState(0);
+  const resendAction = useAsyncAction();
 
   const [receipt, setReceipt] = useState<Receipt | null>(null);
   const [flash, setFlash] = useState<{ tone: FlashTone; text: string } | null>(null);
@@ -614,23 +649,123 @@ export default function KioskPage() {
     [token, loadRecent, endSession, lockStaff, markOffline, markOnline]
   );
 
+  // A token in hand, from the password or from the code step.
+  const startSession = (res: DeskAnswer<DeskLogin>) => {
+    if (!res.token) return;
+    localStorage.setItem(TOKEN_KEY, res.token);
+    setToken(res.token);
+    setOperator(res.user || null);
+    setPassword("");
+    setTwoStep(null);
+    setTwoStepCode("");
+    setTwoStepNotice(null);
+    loadRecent(res.token);
+  };
+
+  // The password step's answer when it asks for a code: the challenge to
+  // answer, or null when it is not that.
+  const challengeFrom = (res: DeskAnswer<DeskLogin>) => {
+    if (!res.requires2fa) return null;
+    const challengeId = res.challenge_id || res.challengeId;
+    if (!challengeId) return null;
+    const method: "email" | "app" = res.method === "app" ? "app" : "email";
+    const message =
+      res.message ||
+      (method === "app" ? "Enter the 6-digit code from your authenticator app." : "Enter the 6-digit code we emailed you.");
+    return { challengeId, method, message };
+  };
+
   const login = (e: React.FormEvent) => {
     e.preventDefault();
     loginAction.run(async () => {
       setLoginError(null);
       try {
-        const res = await desk<{ token: string; user: { name: string; location?: string } }>("login", { email, password });
+        const res = await desk<DeskLogin>("login", { email, password });
+        // Two-step sign-in: the password was right, and no token comes
+        // until the code is given too. The password stays in the form, so
+        // "Send a new code" can ask again.
+        const challenge = challengeFrom(res);
+        if (challenge) {
+          setTwoStep(challenge);
+          setTwoStepCode("");
+          setTwoStepNotice(null);
+          setResendWait(challenge.method === "email" ? RESEND_WAIT_S : 0);
+          return;
+        }
         if (!res.success || !res.token) throw new Error(res.message || "Sign in failed");
-        localStorage.setItem(TOKEN_KEY, res.token);
-        setToken(res.token);
-        setOperator(res.user);
-        setPassword("");
-        loadRecent(res.token);
+        startSession(res);
       } catch (err) {
         setLoginError(err instanceof Error ? err.message : "Sign in failed");
       }
     });
   };
+
+  // The code step: POST /api/desktop/login/2fa answers exactly as a
+  // successful password sign-in does. A wrong or expired code is a 401 with
+  // its own code, shown beside the box -- not a sign-out, there is no
+  // session yet.
+  const verifyTwoStep = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!twoStep) return;
+    const typed = twoStepCode.trim();
+    const code = twoStep.method === "app" && !/^[\d\s]+$/.test(typed) ? typed : digitsOnly(typed);
+    if (!code) return;
+    loginAction.run(async () => {
+      setTwoStepNotice(null);
+      const res = await desk<DeskLogin>("login/2fa", { challenge_id: twoStep.challengeId, code });
+      if (res.success && res.token) {
+        startSession(res);
+        return;
+      }
+      if (res.code === TWO_FACTOR_EXPIRED) {
+        setTwoStepCode("");
+        setTwoStepNotice({
+          tone: "error",
+          text: res.message || (twoStep.method === "email" ? "That code has expired. Send a new code." : "That code has expired. Go back and sign in again."),
+        });
+        if (twoStep.method === "email") setResendWait(0);
+        return;
+      }
+      // TWO_FACTOR_INVALID, a rate limit, no connection: the server's words.
+      setTwoStepNotice({ tone: "error", text: res.message || "That code is not right. Check it and try again." });
+    });
+  };
+
+  // "Send a new code": signing in again is what issues one (as on the
+  // website), with the email and password still in the form behind this step.
+  const resendTwoStep = () =>
+    resendAction.run(async () => {
+      setTwoStepNotice(null);
+      const res = await desk<DeskLogin>("login", { email, password });
+      const challenge = challengeFrom(res);
+      if (challenge) {
+        setTwoStep(challenge);
+        setTwoStepCode("");
+        setResendWait(RESEND_WAIT_S);
+        setTwoStepNotice({ tone: "ok", text: "A new code is on its way. The earlier one no longer works." });
+        return;
+      }
+      // Two-step sign-in was switched off in the meantime: the password was enough.
+      if (res.success && res.token) {
+        startSession(res);
+        return;
+      }
+      setTwoStepNotice({ tone: "error", text: res.message || "Could not send a new code." });
+    });
+
+  const leaveTwoStep = () => {
+    setTwoStep(null);
+    setTwoStepCode("");
+    setTwoStepNotice(null);
+    setLoginError(null);
+  };
+
+  // The rest between new codes.
+  useEffect(() => {
+    if (resendWait <= 0) return;
+    const timer = setTimeout(() => setResendWait((s) => s - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [resendWait]);
 
   const logout = () =>
     signOutAction.run(async () => {
@@ -718,6 +853,60 @@ export default function KioskPage() {
     return (
       <main className="flex min-h-screen items-center justify-center bg-neutral-950 text-neutral-400">
         <div className="h-10 w-10 animate-spin rounded-full border-2 border-neutral-700 border-t-white" />
+      </main>
+    );
+  }
+
+  if (!token && twoStep) {
+    const typed = twoStepCode.trim();
+    // Six digits, or (an authenticator-app account) a backup code.
+    const ready = /^[\d\s]+$/.test(typed) ? digitsOnly(typed).length === 6 : twoStep.method === "app" && typed.length >= 6;
+    const busy = loggingIn || resendAction.busy;
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-neutral-950 px-6">
+        <form onSubmit={verifyTwoStep} className="w-full max-w-sm rounded-2xl border border-white/10 bg-neutral-900 p-8 text-neutral-100 shadow-2xl">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-500">GymsPilotPro</p>
+          <h1 className="mt-1 text-xl font-semibold text-white">Enter your sign-in code</h1>
+          <p className="mt-1 text-sm text-neutral-400">{twoStep.message}</p>
+          <label className="mt-6 block">
+            <span className="text-xs font-semibold text-neutral-300">{twoStep.method === "app" ? "6-digit code or backup code" : "6-digit code"}</span>
+            <input
+              type="text"
+              autoFocus
+              required
+              inputMode={twoStep.method === "app" ? "text" : "numeric"}
+              autoComplete="one-time-code"
+              autoCapitalize="none"
+              spellCheck={false}
+              maxLength={twoStep.method === "app" ? 32 : 7}
+              value={twoStepCode}
+              onChange={(e) => setTwoStepCode(e.target.value)}
+              placeholder="••••••"
+              className="mt-1 h-12 w-full rounded-lg border border-white/10 bg-neutral-950 px-3 text-center text-xl font-semibold tracking-[0.3em] text-white outline-none focus:border-white/30"
+            />
+          </label>
+          {twoStep.method === "app" && (
+            <p className="mt-2 text-xs text-neutral-500">No phone to hand? Type one of the backup codes you saved when you set up the app.</p>
+          )}
+          {twoStepNotice && (
+            <p className={`mt-4 rounded-lg px-3 py-2 text-xs ${twoStepNotice.tone === "ok" ? "bg-emerald-500/10 text-emerald-300" : "bg-rose-500/10 text-rose-300"}`}>
+              {twoStepNotice.text}
+            </p>
+          )}
+          <button type="submit" disabled={busy || !ready} aria-busy={loggingIn || undefined} className="mt-6 inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-white text-sm font-semibold text-neutral-900 hover:opacity-90 disabled:opacity-50">
+            {loggingIn && <Spinner />}
+            {loggingIn ? "Checking…" : "Start check-in screen"}
+          </button>
+          {twoStep.method === "email" && (
+            <button type="button" onClick={resendTwoStep} disabled={busy || resendWait > 0} aria-busy={resendAction.busy || undefined} className="mt-3 inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-white/15 text-sm font-semibold text-neutral-200 hover:bg-white/5 disabled:opacity-50">
+              {resendAction.busy && <Spinner />}
+              {resendAction.busy ? "Sending…" : resendWait > 0 ? `Send a new code (in ${resendWait}s)` : "Send a new code"}
+            </button>
+          )}
+          <button type="button" onClick={leaveTwoStep} disabled={busy} className="mt-3 w-full text-xs text-neutral-400 underline underline-offset-2 hover:text-white disabled:opacity-50">
+            Back to sign in
+          </button>
+        </form>
       </main>
     );
   }
