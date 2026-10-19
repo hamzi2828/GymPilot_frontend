@@ -287,7 +287,7 @@ export default function PaymentsSettings<T extends PaymentFields>({
       <Card className="p-6">
         <Heading
           title="Choose your payment gateway"
-          hint="The company that takes your members' online payments and pays them into your own account. Only one gateway handles online payments at a time."
+          hint="How your members pay you online, straight into your own account. Only one gateway handles online payments at a time."
         />
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
           {list.map((g) => {
@@ -580,12 +580,16 @@ export default function PaymentsSettings<T extends PaymentFields>({
               Switch on only after {selected?.label || "your gateway"} confirms automatic (merchant-initiated) charges for your account.
             </p>
             {autoChargeOn && !canAutoCharge && (
-              <p className="mt-2 text-xs text-rose-700">{selected ? `${selected.label} cannot charge saved cards, so nothing is charged automatically.` : "No gateway is chosen, so nothing is charged automatically."}</p>
+              <p className="mt-2 text-xs text-rose-700">{selected ? "The chosen gateway cannot charge saved cards, so nothing is charged automatically." : "No gateway is chosen, so nothing is charged automatically."}</p>
             )}
           </>
         ) : (
           <p className="text-sm text-neutral-600">
-            {selected ? `${selected.label} does not offer automatic charges of saved cards here.` : "Choose a gateway that supports saved cards to offer this."}
+            {receiptOnly(selected)
+              ? "Members paying by bank transfer pay each time from their payment link."
+              : selected
+              ? `${selected.label} does not offer automatic charges of saved cards here.`
+              : "Choose a gateway that supports saved cards to offer this."}
           </p>
         )}
       </Card>
