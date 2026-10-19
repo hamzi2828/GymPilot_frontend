@@ -14,6 +14,7 @@ import { downloadExport, FORMAT_LABELS, type ExportFormat } from "./download";
 import DailySales from "./DailySales";
 import { PrintHeader, PrintStyles, printReport } from "./Print";
 import { useGymToday, useSiteSettings } from "@/components/ThemeProvider";
+import { usePermissions } from "@/components/admin/PermissionsProvider";
 
 interface Report {
   range: { from: string; to: string; label: string; grain: "day" | "month" };
@@ -55,17 +56,20 @@ const shift = (key: string, n: number) => {
 };
 const monthStart = (key: string) => `${key.slice(0, 7)}-01`;
 // Every export covers the chosen range; "All members" is the one that
-// ignores it.
-const EXPORTS: { id: string; kind: string; label: string; query?: string }[] = [
-  { id: "members", kind: "members", label: "Members joined" },
-  { id: "members-all", kind: "members", label: "All members", query: "all=1" },
-  { id: "orders", kind: "orders", label: "Orders" },
-  { id: "attendance", kind: "attendance", label: "Attendance" },
-  { id: "bookings", kind: "bookings", label: "Bookings" },
-  { id: "leads", kind: "leads", label: "Leads" },
-  { id: "pt-sessions", kind: "pt-sessions", label: "PT sessions" },
-  { id: "expenses", kind: "expenses", label: "Expenses" },
-  { id: "payslips", kind: "payslips", label: "Payslips" },
+// ignores it. Beside Reports, each needs view access to the tab its rows
+// come from (`tab`, named as the sidebar names it): the API refuses the rest
+// with 403 EXPORT_NOT_ALLOWED (reportsController EXPORT_TABS), so they are
+// offered greyed out with what they need.
+const EXPORTS: { id: string; kind: string; label: string; query?: string; tab: string; tabLabel: string }[] = [
+  { id: "members", kind: "members", label: "Members joined", tab: "users", tabLabel: "Users" },
+  { id: "members-all", kind: "members", label: "All members", query: "all=1", tab: "users", tabLabel: "Users" },
+  { id: "orders", kind: "orders", label: "Orders", tab: "package-orders", tabLabel: "Package Orders" },
+  { id: "attendance", kind: "attendance", label: "Attendance", tab: "attendance", tabLabel: "Attendance" },
+  { id: "bookings", kind: "bookings", label: "Bookings", tab: "bookings", tabLabel: "Bookings" },
+  { id: "leads", kind: "leads", label: "Leads", tab: "leads", tabLabel: "Leads" },
+  { id: "pt-sessions", kind: "pt-sessions", label: "PT sessions", tab: "pt", tabLabel: "Personal Training" },
+  { id: "expenses", kind: "expenses", label: "Expenses", tab: "accounts", tabLabel: "Accounts" },
+  { id: "payslips", kind: "payslips", label: "Payslips", tab: "staff", tabLabel: "Staff" },
 ];
 
 function Kpi({ label, value, hint, tone }: { label: string; value: string | number; hint?: string; tone?: string }) {
@@ -147,6 +151,12 @@ function ReportsPageInner() {
   // The export picker: one list, one format, one button.
   const [exportId, setExportId] = useState(EXPORTS[0].id);
   const [exportFormat, setExportFormat] = useState<ExportFormat>("xlsx");
+  // Why the last download was refused, said beside the button.
+  const [exportErr, setExportErr] = useState<string | null>(null);
+  // The downloads this role may have; the chosen one, or the first of them.
+  const { can } = usePermissions();
+  const mayExport = (item: (typeof EXPORTS)[number]) => can(item.tab);
+  const chosenExport = EXPORTS.find((item) => item.id === exportId && mayExport(item)) || EXPORTS.find(mayExport) || null;
 
   const begin = useLatestRequest();
   const load = useCallback(async () => {
@@ -181,11 +191,14 @@ function ReportsPageInner() {
   };
 
   const download = ({ kind, query }: (typeof EXPORTS)[number], format: ExportFormat) => exporting.run(async () => {
+    setExportErr(null);
     try {
       const params = `from=${from}&to=${to}${query ? `&${query}` : ""}${format === "xlsx" ? "&format=xlsx" : ""}`;
       await downloadExport(`${API_BASE}/admin/reports/export/${kind}?${params}`, `${kind}.${format}`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Export failed");
+      // The server's own sentence, a 403 EXPORT_NOT_ALLOWED's included: it
+      // names the tab the role is missing.
+      setExportErr(e instanceof Error ? e.message : "Export failed");
     }
   });
 
@@ -251,14 +264,19 @@ function ReportsPageInner() {
             <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-neutral-100 pt-4 text-sm">
               <span className="font-medium text-neutral-700">Download</span>
               <select
-                value={exportId}
-                onChange={(e) => setExportId(e.target.value)}
+                value={chosenExport?.id ?? ""}
+                onChange={(e) => {
+                  setExportId(e.target.value);
+                  setExportErr(null);
+                }}
                 aria-label="What to download"
-                className="h-9 rounded-lg border border-neutral-300 bg-white px-3 text-sm text-neutral-900 focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/30"
+                disabled={!chosenExport}
+                className="h-9 rounded-lg border border-neutral-300 bg-white px-3 text-sm text-neutral-900 focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/30 disabled:opacity-50"
               >
+                {!chosenExport && <option value="">Nothing to download</option>}
                 {EXPORTS.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.label}
+                  <option key={item.id} value={item.id} disabled={!mayExport(item)}>
+                    {mayExport(item) ? item.label : `${item.label} — needs ${item.tabLabel} access`}
                   </option>
                 ))}
               </select>
@@ -277,10 +295,19 @@ function ReportsPageInner() {
                   </button>
                 ))}
               </div>
-              <PrimaryButton onClick={() => download(EXPORTS.find((e) => e.id === exportId) || EXPORTS[0], exportFormat)} loading={exporting.busy}>
+              <PrimaryButton onClick={() => chosenExport && download(chosenExport, exportFormat)} loading={exporting.busy} disabled={!chosenExport}>
                 Download
               </PrimaryButton>
-              <span className="text-xs text-neutral-400">for the dates above</span>
+              <span className="text-xs text-neutral-400">
+                {chosenExport
+                  ? "for the dates above"
+                  : "Each of these needs access to the section its rows come from, and your role has none of them. Daily sales has its own download."}
+              </span>
+              {exportErr && (
+                <p role="alert" className="basis-full rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                  {exportErr}
+                </p>
+              )}
             </div>
           )}
         </Card>
