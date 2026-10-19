@@ -95,6 +95,9 @@ export default function PackagesAdminPage() {
   const removing = useAsyncAction();
   const toggling = useAsyncAction();
   const [error, setError] = useState<string | null>(null);
+  // A length the server could not read (400 PERIOD_NOT_UNDERSTOOD: "12
+  // classes per month" is not twelve months), said under the length field.
+  const [periodError, setPeriodError] = useState<string | null>(null);
   // A delete the backend refused because members still hold the package.
   const [refusal, setRefusal] = useState<{ message: string; pkg: Package } | null>(null);
   // The gym's currency (Settings → General): every package is priced in it.
@@ -127,6 +130,7 @@ export default function PackagesAdminPage() {
     setByDays(false);
     setFeaturesText("");
     setError(null);
+    setPeriodError(null);
     setOpen(true);
   };
 
@@ -140,6 +144,7 @@ export default function PackagesAdminPage() {
     setBilling({ ...DEFAULT_BILLING, ...(p.billing || {}) });
     setFeaturesText((p.features || []).join("\n"));
     setError(null);
+    setPeriodError(null);
     setOpen(true);
   };
 
@@ -155,6 +160,7 @@ export default function PackagesAdminPage() {
       return;
     }
     setError(null);
+    setPeriodError(null);
     try {
       const period = oneOff ? form.period : billing.interval;
       const payload = {
@@ -179,7 +185,13 @@ export default function PackagesAdminPage() {
       setOpen(false);
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Save failed");
+      if (oneOff && e instanceof ApiError && e.code === "PERIOD_NOT_UNDERSTOOD") {
+        setPeriodError(e.message);
+        // Beside Save too, which is a long way below the field.
+        setError("Not saved: how long the package lasts needs changing (see “How long it lasts” above).");
+      } else {
+        setError(e instanceof Error ? e.message : "Save failed");
+      }
     }
   });
 
@@ -370,6 +382,7 @@ export default function PackagesAdminPage() {
                       placeholder="Choose a length"
                       options={termOptions(form.period || "")}
                       onChange={(v) => {
+                        setPeriodError(null);
                         if (v === TERM_IN_DAYS) {
                           const days = Number(form.durationDays) || 30;
                           setByDays(true);
@@ -380,6 +393,11 @@ export default function PackagesAdminPage() {
                         }
                       }}
                     />
+                    {periodError && (
+                      <p role="alert" className="mt-1 text-xs text-rose-700">
+                        {periodError}
+                      </p>
+                    )}
                     {!byDays && !!(form.period || "").trim() && !PACKAGE_TERMS.some((t) => t.label === (form.period || "").trim()) && (
                       <p className="mt-1 text-xs text-amber-700">
                         This package&apos;s length is read from its old label, which may not be what you meant. Pick a length from the list to be sure.
@@ -397,6 +415,7 @@ export default function PackagesAdminPage() {
                         // The label shown after the price follows the days,
                         // unless it is wording of the gym's own.
                         const period = !form.period || isDaysLabel(form.period) ? (days ? daysLabel(days) : "") : form.period;
+                        setPeriodError(null);
                         setForm({ ...form, durationDays: days, period });
                       }}
                     />
