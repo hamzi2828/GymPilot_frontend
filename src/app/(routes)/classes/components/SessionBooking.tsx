@@ -10,6 +10,9 @@ import { useRouter } from "next/navigation";
 import { bookSession, cancelBooking, type BookingRules, type ClassSession } from "../services/bookingService";
 import { isAuthenticated } from "@/helper/helper";
 import { useLanguage } from "@/i18n/LanguageProvider";
+import Spinner from "@/components/ui/Spinner";
+import useAsyncAction from "@/components/ui/useAsyncAction";
+import { startNavigationProgress } from "@/components/NavigationProgress";
 
 export type BookingNoticeValue = { tone: "ok" | "error"; text: string };
 
@@ -59,47 +62,50 @@ export function useSessionBooking({
   rules: BookingRules | null;
 }) {
   const router = useRouter();
-  const [busy, setBusy] = useState<string | null>(null);
+  // One booking or cancellation at a time; the session pressed spins.
+  const { busyKey: busy, run } = useAsyncAction();
   // The session whose Cancel was tapped and is waiting for a yes or no.
   const [confirming, setConfirming] = useState<string | null>(null);
   const [notice, setNotice] = useState<BookingNoticeValue | null>(null);
 
-  const onBook = async (s: ClassSession) => {
+  const onBook = (s: ClassSession) => {
     if (!isAuthenticated()) {
       const signIn = `/authentication?redirect=${encodeURIComponent(backTo)}`;
       if (window.top !== window.self) openInTopWindow(signIn);
-      else router.push(signIn);
+      else {
+        startNavigationProgress(signIn);
+        router.push(signIn);
+      }
       return;
     }
-    setBusy(sessionKey(s));
-    setNotice(null);
-    try {
-      const res = await bookSession({ classId: s.class_id, date: s.date, startTime: s.start_time });
-      // The server's own wording: it distinguishes a place from a waiting-list
-      // position, and it is the only thing that knows which one you got.
-      setNotice({ tone: "ok", text: res.membership_warning ? `${res.message} ${res.membership_warning}` : res.message });
-      await reload();
-    } catch (e) {
-      setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not book" });
-    } finally {
-      setBusy(null);
-    }
+    run(async () => {
+      setNotice(null);
+      try {
+        const res = await bookSession({ classId: s.class_id, date: s.date, startTime: s.start_time });
+        // The server's own wording: it distinguishes a place from a waiting-list
+        // position, and it is the only thing that knows which one you got.
+        setNotice({ tone: "ok", text: res.membership_warning ? `${res.message} ${res.membership_warning}` : res.message });
+        await reload();
+      } catch (e) {
+        setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not book" });
+      }
+    }, sessionKey(s));
   };
 
-  const onCancel = async (s: ClassSession) => {
+  const onCancel = (s: ClassSession) => {
     if (!s.my_booking) return;
+    const bookingId = s.my_booking.id;
     setConfirming(null);
-    setBusy(sessionKey(s));
-    setNotice(null);
-    try {
-      const res = await cancelBooking(s.my_booking.id);
-      setNotice({ tone: "ok", text: res.message });
-      await reload();
-    } catch (e) {
-      setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not cancel" });
-    } finally {
-      setBusy(null);
-    }
+    run(async () => {
+      setNotice(null);
+      try {
+        const res = await cancelBooking(bookingId);
+        setNotice({ tone: "ok", text: res.message });
+        await reload();
+      } catch (e) {
+        setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not cancel" });
+      }
+    }, sessionKey(s));
   };
 
   // Whether cancelling now is inside the gym's cancel-by window, where the
@@ -209,7 +215,8 @@ export function SessionCard({
               <button
                 type="button"
                 onClick={() => onCancel(s)}
-                className="rounded-lg bg-neutral-900 px-4 py-2 text-sm font-bold text-white hover:bg-neutral-800"
+                disabled={busy !== null}
+                className="rounded-lg bg-neutral-900 px-4 py-2 text-sm font-bold text-white hover:bg-neutral-800 disabled:opacity-50"
               >
                 {t("tt.cancelYes")}
               </button>
@@ -231,9 +238,11 @@ export function SessionCard({
               <button
                 type="button"
                 onClick={() => setConfirming(key)}
-                disabled={busy === key}
-                className="text-sm font-semibold text-neutral-600 underline underline-offset-4 disabled:opacity-40"
+                disabled={busy !== null}
+                aria-busy={busy === key || undefined}
+                className="inline-flex items-center gap-1.5 text-sm font-semibold text-neutral-600 underline underline-offset-4 disabled:opacity-40"
               >
+                {busy === key && <Spinner />}
                 {busy === key ? t("tt.cancelling") : t("tt.cancel")}
               </button>
             )}
@@ -246,9 +255,11 @@ export function SessionCard({
           <button
             type="button"
             onClick={() => onBook(s)}
-            disabled={busy === key}
-            className="w-full rounded-lg bg-neutral-900 px-4 py-2.5 text-sm font-bold text-white hover:bg-neutral-800 disabled:opacity-50"
+            disabled={busy !== null}
+            aria-busy={busy === key || undefined}
+            className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-neutral-900 px-4 py-2.5 text-sm font-bold text-white hover:bg-neutral-800 disabled:opacity-50"
           >
+            {busy === key && <Spinner />}
             {busy === key ? t("tt.booking") : s.is_full ? t("tt.waitlist") : t("tt.book")}
           </button>
         )}

@@ -8,6 +8,7 @@ import { ArrowRight, LogOut, Menu, ShieldCheck, UserRound, X } from "lucide-reac
 import { getAuthHeader, getAuthToken, getCurrentUser, getRole, signOut } from "@/helper/helper";
 import { useSiteSettings } from "@/components/ThemeProvider";
 import { useLanguage } from "@/i18n/LanguageProvider";
+import { startNavigationProgress } from "@/components/NavigationProgress";
 
 /** Distance scrolled before the bar leaves its "over the hero" state. */
 const CONDENSE_AT = 28;
@@ -57,6 +58,7 @@ const Header = () => {
       setIsAdmin(false);
     } finally {
       closeMobileMenu();
+      startNavigationProgress("/");
       router.replace("/");
       // Ensure components re-render to reflect auth change
       router.refresh();

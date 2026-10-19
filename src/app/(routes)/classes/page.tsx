@@ -7,13 +7,16 @@ import ContactSection from "../main/components/ContactSection";
 import GymfolioAllClasses from "./components/GymfolioAllClasses";
 import HeroAbout from "../about-us/components/HeroAbout";
 import { GymClass } from "../main/services/gymClassService";
+import { startNavigationProgress } from "@/components/NavigationProgress";
 
 const Classes = () => {
   const router = useRouter();
 
   const handleClassClick = useCallback((gymClass: GymClass) => {
     // Navigate to class detail page with the class ID
-    router.push(`/classdetail?id=${gymClass._id}`);
+    const href = `/classdetail?id=${gymClass._id}`;
+    startNavigationProgress(href);
+    router.push(href);
   }, [router]);
 
   return (

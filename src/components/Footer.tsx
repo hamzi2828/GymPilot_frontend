@@ -6,6 +6,8 @@ import { useLanguage } from "@/i18n/LanguageProvider";
 import { newsletterService } from "@/app/(routes)/blogs-detail/services/newsletterService";
 import Image from "next/image";
 import Link from "next/link";
+import Spinner from "@/components/ui/Spinner";
+import useAsyncAction from "@/components/ui/useAsyncAction";
 
 const Footer = () => {
   // Logo and business name come from admin settings rather than a hardcoded
@@ -26,25 +28,24 @@ const Footer = () => {
   // The sign-up joins the gym's newsletter list, the one its campaigns are
   // sent to. The form used to do nothing at all when submitted.
   const [email, setEmail] = useState("");
-  const [sending, setSending] = useState(false);
+  const { busy: sending, run } = useAsyncAction();
   const [notice, setNotice] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
 
   const subscribe = async (e: React.FormEvent) => {
     e.preventDefault();
     const value = email.trim();
-    if (!value || sending) return;
-    setSending(true);
-    setNotice(null);
-    try {
-      await newsletterService.subscribe(value, "footer");
-      setNotice({ tone: "ok", text: t("footer.newsDone") });
-      setEmail("");
-    } catch (err) {
-      const already = (err as { status?: number } | null)?.status === 409;
-      setNotice({ tone: already ? "ok" : "error", text: t(already ? "footer.newsAlready" : "footer.newsError") });
-    } finally {
-      setSending(false);
-    }
+    if (!value) return;
+    await run(async () => {
+      setNotice(null);
+      try {
+        await newsletterService.subscribe(value, "footer");
+        setNotice({ tone: "ok", text: t("footer.newsDone") });
+        setEmail("");
+      } catch (err) {
+        const already = (err as { status?: number } | null)?.status === 409;
+        setNotice({ tone: already ? "ok" : "error", text: t(already ? "footer.newsAlready" : "footer.newsError") });
+      }
+    });
   };
 
   // Only profiles the admin has actually filled in get a link — an unset
@@ -89,8 +90,9 @@ const Footer = () => {
               </p>
             )}
           </div>
-          <button type="submit" className="footer-subscribe-button" disabled={sending}>
+          <button type="submit" className="footer-subscribe-button" disabled={sending} aria-busy={sending || undefined}>
             <span className="footer-subscribe-text">
+              {sending && <Spinner className="mr-2" />}
               {sending ? t("footer.newsSending") : t("footer.newsSubscribe")}
             </span>
           </button>

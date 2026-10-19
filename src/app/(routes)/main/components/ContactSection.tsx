@@ -5,6 +5,8 @@ import axios from 'axios';
 import { ArrowRight } from 'lucide-react';
 import { ContactContent, DEFAULT_CONTACT } from '../services/homeService';
 import { AccentText, Reveal } from './SectionHeading';
+import Spinner from "@/components/ui/Spinner";
+import useAsyncAction from "@/components/ui/useAsyncAction";
 
 // The gym's enquiry form. It lands in Admin -> Leads as a website lead (or a
 // note on the lead already open for the same email or phone), where the
@@ -23,7 +25,7 @@ const emptyForm: FormData = { name: '', phone: '', email: '', website: '' };
 
 const ContactSection = ({ content = DEFAULT_CONTACT }: { content?: ContactContent }) => {
   const [formData, setFormData] = useState<FormData>(emptyForm);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const { busy: isSubmitting, run } = useAsyncAction();
   const [successMessage, setSuccessMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
 
@@ -35,9 +37,12 @@ const ContactSection = ({ content = DEFAULT_CONTACT }: { content?: ContactConten
     }));
   };
 
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    run(() => sendEnquiry());
+  };
 
+  const sendEnquiry = async () => {
     // Clear previous messages
     setSuccessMessage('');
     setErrorMessage('');
@@ -47,8 +52,6 @@ const ContactSection = ({ content = DEFAULT_CONTACT }: { content?: ContactConten
       setErrorMessage('Please fill in all fields');
       return;
     }
-
-    setIsSubmitting(true);
 
     try {
       const response = await axios.post<{ success: boolean; message?: string }>(
@@ -75,8 +78,6 @@ const ContactSection = ({ content = DEFAULT_CONTACT }: { content?: ContactConten
             ? 'Could not reach us just now. Please check your connection and try again.'
             : 'Could not send your details. Please try again.')
       );
-    } finally {
-      setIsSubmitting(false);
     }
   };
 
@@ -219,8 +220,10 @@ const ContactSection = ({ content = DEFAULT_CONTACT }: { content?: ContactConten
                 <button
                   type="submit"
                   disabled={isSubmitting}
+                  aria-busy={isSubmitting || undefined}
                   className="gymfolio8-contact-button w-full px-6 py-3 rounded-lg flex items-center justify-center gap-2 gymfolio8-font-manrope font-semibold text-sm leading-5 text-black"
                 >
+                  {isSubmitting && <Spinner />}
                   <span>{isSubmitting ? 'Submitting...' : content.buttonText}</span>
                   {!isSubmitting && (
                     <svg

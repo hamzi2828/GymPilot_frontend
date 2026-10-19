@@ -7,6 +7,8 @@ import { contactService, ContactFormData, ContactTopic, ContactValidationErrors 
 import { useSiteSettings } from "@/components/ThemeProvider";
 import { useLanguage } from "@/i18n/LanguageProvider";
 import type { DictKey } from "@/i18n/dictionaries";
+import Spinner from "@/components/ui/Spinner";
+import useAsyncAction from "@/components/ui/useAsyncAction";
 
 // Each topic's button label, and the opening line offered for the message.
 const TOPIC_TEXT: Record<ContactTopic, { label: DictKey; ask: DictKey }> = {
@@ -32,7 +34,7 @@ const ContactUsPage = () => {
   });
 
   const [validationErrors, setValidationErrors] = useState<ContactValidationErrors>({});
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const { busy: isSubmitting, run } = useAsyncAction();
   const [submitStatus, setSubmitStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [submitMessage, setSubmitMessage] = useState('');
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
@@ -68,12 +70,12 @@ const ContactUsPage = () => {
   };
 
   // Handle form submission
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    run(() => sendMessage());
+  };
 
-    if (isSubmitting) return;
-
-    setIsSubmitting(true);
+  const sendMessage = async () => {
     setSubmitStatus('idle');
     setValidationErrors({});
 
@@ -108,8 +110,6 @@ const ContactUsPage = () => {
       console.error('Unexpected error:', error);
       setSubmitStatus('error');
       setSubmitMessage('An unexpected error occurred. Please try again.');
-    } finally {
-      setIsSubmitting(false);
     }
   };
 
@@ -433,6 +433,7 @@ const ContactUsPage = () => {
                       <button
                         type="submit"
                         disabled={isSubmitting || messageCharCount.isOverLimit}
+                        aria-busy={isSubmitting || undefined}
                         className={`privacy-faq-submit-btn inline-block w-full py-4 px-6 text-center text-white font-semibold rounded-lg transition-colors duration-300 hover:shadow-lg ${
                           isSubmitting || messageCharCount.isOverLimit
                             ? 'opacity-50 cursor-not-allowed'
@@ -441,7 +442,7 @@ const ContactUsPage = () => {
                       >
                         {isSubmitting ? (
                           <>
-                            <i className="fas fa-spinner fa-spin mr-2"></i>
+                            <Spinner className="mr-2" />
                             SUBMITTING...
                           </>
                         ) : (

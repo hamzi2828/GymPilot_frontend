@@ -138,8 +138,8 @@ function TimetableContent() {
           type="button"
           onClick={() => setFrom(addDays(from, -DAYS_SHOWN))}
           // Nothing before today is bookable, so there is no reason to page
-          // backwards past it.
-          disabled={from <= todayKey()}
+          // backwards past it. Each week waits for the one being loaded.
+          disabled={loading || from <= todayKey()}
           className="rounded-full border border-neutral-300 px-4 py-2 text-sm font-semibold text-neutral-700 disabled:opacity-40 hover:border-neutral-400"
         >
           {t("tt.prev")}
@@ -147,14 +147,16 @@ function TimetableContent() {
         <button
           type="button"
           onClick={() => setFrom(todayKey())}
-          className="rounded-full border border-neutral-300 px-4 py-2 text-sm font-semibold text-neutral-700 hover:border-neutral-400"
+          disabled={loading}
+          className="rounded-full border border-neutral-300 px-4 py-2 text-sm font-semibold text-neutral-700 disabled:opacity-40 hover:border-neutral-400"
         >
           {t("tt.thisWeek")}
         </button>
         <button
           type="button"
           onClick={() => setFrom(addDays(from, DAYS_SHOWN))}
-          className="rounded-full border border-neutral-300 px-4 py-2 text-sm font-semibold text-neutral-700 hover:border-neutral-400"
+          disabled={loading}
+          className="rounded-full border border-neutral-300 px-4 py-2 text-sm font-semibold text-neutral-700 disabled:opacity-40 hover:border-neutral-400"
         >
           {t("tt.next")}
         </button>

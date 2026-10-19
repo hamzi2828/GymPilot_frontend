@@ -11,6 +11,8 @@
 import { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useSiteSettings } from "@/components/ThemeProvider";
+import Spinner from "@/components/ui/Spinner";
+import useAsyncAction from "@/components/ui/useAsyncAction";
 
 const API_BASE = process.env.NEXT_PUBLIC_BACKEND_URL || "";
 
@@ -21,8 +23,11 @@ function UnsubscribeContent() {
   const token = (params.get("token") || "").trim();
   const [state, setState] = useState<"idle" | "busy" | "done" | "error">("idle");
   const [message, setMessage] = useState("");
+  const { run } = useAsyncAction();
 
-  const submit = async () => {
+  const submit = () => run(unsubscribe);
+
+  const unsubscribe = async () => {
     setState("busy");
     try {
       const res = await fetch(`${API_BASE}/api/newsletter/unsubscribe`, {
@@ -59,8 +64,10 @@ function UnsubscribeContent() {
             type="button"
             onClick={submit}
             disabled={state === "busy"}
-            className="mt-4 h-11 w-full rounded-lg bg-black text-sm font-semibold text-white disabled:opacity-50"
+            aria-busy={state === "busy" || undefined}
+            className="mt-4 inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-black text-sm font-semibold text-white disabled:opacity-50"
           >
+            {state === "busy" && <Spinner />}
             {state === "busy" ? "Please wait…" : "Unsubscribe"}
           </button>
         </div>

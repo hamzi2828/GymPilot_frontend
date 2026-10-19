@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { newsletterService } from '../services/newsletterService';
+import Spinner from "@/components/ui/Spinner";
+import useAsyncAction from "@/components/ui/useAsyncAction";
 
 interface NewsletterProps {
   source?: string;
@@ -15,14 +17,17 @@ const Newsletter: React.FC<NewsletterProps> = ({
   className = ""
 }) => {
   const [email, setEmail] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+  const { busy: isLoading, run } = useAsyncAction();
   const [message, setMessage] = useState('');
   const [isSuccess, setIsSuccess] = useState(false);
   const [isSubscribed, setIsSubscribed] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    run(() => subscribe());
+  };
 
+  const subscribe = async () => {
     if (!email.trim()) {
       setMessage('Please enter your email address');
       setIsSuccess(false);
@@ -36,7 +41,6 @@ const Newsletter: React.FC<NewsletterProps> = ({
     }
 
     try {
-      setIsLoading(true);
       setMessage('');
 
       const response = await newsletterService.subscribe(email, source);
@@ -60,8 +64,6 @@ const Newsletter: React.FC<NewsletterProps> = ({
       setTimeout(() => {
         setMessage('');
       }, 5000);
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -112,11 +114,12 @@ const Newsletter: React.FC<NewsletterProps> = ({
           <button
             type="submit"
             disabled={isLoading || !email.trim()}
+            aria-busy={isLoading || undefined}
             className="gym-blog-custom-bg-green text-black px-6 py-3 rounded-lg font-semibold hover:scale-105 transition-all duration-300 whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
           >
             {isLoading ? (
               <span className="flex items-center gap-2">
-                <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-black"></div>
+                <Spinner />
                 Subscribing...
               </span>
             ) : (

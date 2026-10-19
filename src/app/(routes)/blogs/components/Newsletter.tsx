@@ -2,10 +2,12 @@
 
 import React, { useState } from "react";
 import { newsletterService } from "../../blogs-detail/services/newsletterService";
+import Spinner from "@/components/ui/Spinner";
+import useAsyncAction from "@/components/ui/useAsyncAction";
 
 const Newsletter: React.FC = () => {
   const [email, setEmail] = useState<string>("");
-  const [isLoading, setIsLoading] = useState(false);
+  const { busy: isLoading, run } = useAsyncAction();
   const [notice, setNotice] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
 
   // Subscribes for real: the gym's newsletter list is what campaigns are sent
@@ -14,21 +16,20 @@ const Newsletter: React.FC = () => {
   const handleSubscribe = async (e: React.FormEvent) => {
     e.preventDefault();
     const value = email.trim();
-    if (!value || isLoading) return;
-    setIsLoading(true);
-    setNotice(null);
-    try {
-      const res = await newsletterService.subscribe(value, "blog");
-      setNotice({ tone: "ok", text: res.message || "You're subscribed. Thanks for joining!" });
-      setEmail("");
-    } catch (err) {
-      setNotice({
-        tone: "error",
-        text: err instanceof Error ? err.message : "Could not subscribe right now. Please try again.",
-      });
-    } finally {
-      setIsLoading(false);
-    }
+    if (!value) return;
+    await run(async () => {
+      setNotice(null);
+      try {
+        const res = await newsletterService.subscribe(value, "blog");
+        setNotice({ tone: "ok", text: res.message || "You're subscribed. Thanks for joining!" });
+        setEmail("");
+      } catch (err) {
+        setNotice({
+          tone: "error",
+          text: err instanceof Error ? err.message : "Could not subscribe right now. Please try again.",
+        });
+      }
+    });
   };
 
   return (
@@ -54,8 +55,10 @@ const Newsletter: React.FC = () => {
             <button
               type="submit"
               disabled={isLoading || !email.trim()}
-              className="gym-blog-custom-gradient-green text-black font-bold px-6 py-3 rounded-lg hover:scale-105 transition-all duration-300 whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+              aria-busy={isLoading || undefined}
+              className="gym-blog-custom-gradient-green inline-flex items-center justify-center gap-2 text-black font-bold px-6 py-3 rounded-lg hover:scale-105 transition-all duration-300 whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
             >
+              {isLoading && <Spinner />}
               {isLoading ? "Subscribing..." : "Subscribe Now"}
             </button>
           </form>
