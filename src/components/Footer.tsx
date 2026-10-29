@@ -66,148 +66,161 @@ const Footer = () => {
     { label: "TikTok", href: tiktokUrl, icon: "fab fa-tiktok" },
   ].filter((s): s is { label: string; href: string; icon: string } => !!s.href?.trim());
 
-  return (
-  <footer className="footer-main">
-    <div className="footer-container">
-      {/* Newsletter: heading on the left, sign-up on the right. */}
-      <section className="footer-newsletter-section">
-        <div className="footer-newsletter-text">
-          <h2 className="footer-main-heading">{t("footer.newsTitle")}</h2>
-          <p className="footer-newsletter-subtext">{t("footer.newsText")}</p>
-        </div>
+  const columns = [
+    {
+      heading: t("footer.programs"),
+      links: [
+        { href: "/packages", label: t("footer.packages") },
+        { href: "/classes", label: t("footer.classes") },
+        { href: "/trainers", label: t("footer.trainers") },
+      ],
+    },
+    {
+      heading: t("footer.support"),
+      links: [
+        { href: "/contact-us", label: t("footer.contact") },
+        { href: "/trainers", label: t("footer.trainerDetails") },
+        { href: "/faqs", label: t("footer.faqs") },
+      ],
+    },
+    {
+      heading: t("footer.company"),
+      links: [
+        { href: "/about-us", label: t("footer.about") },
+        { href: "/privacy-policy", label: t("footer.privacy") },
+        { href: "/contact-us", label: t("footer.getInTouch") },
+      ],
+    },
+  ];
+  const linkClass =
+    "text-[15px] text-white/60 transition-colors hover:text-white focus-visible:text-white focus-visible:outline-none focus-visible:underline underline-offset-4";
 
-        <form className="footer-email-form" onSubmit={subscribe}>
-          <div className="footer-input-wrapper">
-            <input
-              type="email"
-              className="footer-email-input"
-              placeholder={t("footer.newsPlaceholder")}
-              aria-label={t("footer.newsEmail")}
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              disabled={sending}
-              required
-            />
+  return (
+    <footer className="relative overflow-hidden border-t border-[var(--border-subtle)] bg-[var(--base)] px-4 pb-10 pt-16 text-white sm:px-8 lg:px-16 lg:pt-20">
+      {/* Accent hairline and soft glow along the top edge */}
+      <div
+        className="pointer-events-none absolute inset-x-0 top-0 h-px"
+        style={{ background: "linear-gradient(90deg, transparent, var(--accent), transparent)", opacity: 0.6 }}
+        aria-hidden="true"
+      />
+      <div
+        className="pointer-events-none absolute left-1/2 top-0 h-64 w-[80%] -translate-x-1/2 -translate-y-1/2 rounded-full"
+        style={{ background: "radial-gradient(ellipse, color-mix(in srgb, var(--accent) 14%, transparent), transparent 70%)" }}
+        aria-hidden="true"
+      />
+
+      <div className="relative mx-auto max-w-[1400px]">
+        {/* Newsletter */}
+        <section className="grid grid-cols-1 items-end gap-8 rounded-[28px] border border-[var(--border-subtle)] bg-[var(--surface)] p-6 sm:p-10 lg:grid-cols-2 lg:gap-12">
+          <div>
+            <h2 className="font-['Montserrat'] text-3xl font-extrabold tracking-tight sm:text-4xl">{t("footer.newsTitle")}</h2>
+            <p className="mt-3 max-w-md text-[15px] leading-relaxed text-[var(--text-muted)]">{t("footer.newsText")}</p>
+          </div>
+          <form className="w-full" onSubmit={subscribe}>
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <input
+                type="email"
+                className="h-14 min-w-0 flex-1 rounded-full border border-white/15 bg-white/5 px-5 text-white placeholder-white/40 transition-colors focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[color:color-mix(in_srgb,var(--accent)_30%,transparent)]"
+                placeholder={t("footer.newsPlaceholder")}
+                aria-label={t("footer.newsEmail")}
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                disabled={sending}
+                required
+              />
+              <button
+                type="submit"
+                className="btn btn--primary btn--lg"
+                disabled={sending}
+                aria-busy={sending || undefined}
+              >
+                <span className="inline-flex items-center">
+                  {sending && <Spinner className="mr-2" />}
+                  {sending ? t("footer.newsSending") : t("footer.newsSubscribe")}
+                </span>
+              </button>
+            </div>
             {notice && (
               <p
                 role="status"
                 aria-live="polite"
-                className={`footer-newsletter-status ${notice.tone === "ok" ? "is-ok" : "is-error"}`}
+                className={`mt-3 text-sm ${notice.tone === "ok" ? "text-emerald-300" : "text-red-300"}`}
               >
                 {notice.text}
               </p>
             )}
-          </div>
-          <button type="submit" className="footer-subscribe-button" disabled={sending} aria-busy={sending || undefined}>
-            <span className="footer-subscribe-text">
-              {sending && <Spinner className="mr-2" />}
-              {sending ? t("footer.newsSending") : t("footer.newsSubscribe")}
-            </span>
-          </button>
-        </form>
-      </section>
+          </form>
+        </section>
 
-      {/* Main Footer Links */}
-      <section className="footer-links-section">
-        <div className="footer-links-container">
-          {/* Logo */}
-          <div className="footer-logo-section">
-            <div className="footer-logo-wrapper">
-              <Link href="/" className="footer-logo-link" aria-label="Go to homepage">
-                <Image
-                  width={100}
-                  height={100}
-                  src={brandLogo}
-                  alt={`${siteName} logo`}
-                  className="footer-logo-image"
-                />
-              </Link>
-            </div>
+        {/* Links */}
+        <div className="mt-14 grid grid-cols-2 gap-x-6 gap-y-10 md:grid-cols-5">
+          <div className="col-span-2 md:col-span-1">
+            <Link href="/" className="inline-block rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--accent)]" aria-label="Go to homepage">
+              <Image
+                width={160}
+                height={56}
+                src={brandLogo}
+                alt={`${siteName} logo`}
+                className="h-auto max-h-12 w-auto max-w-[200px] object-contain"
+              />
+            </Link>
           </div>
 
-          {/* Columns */}
-          <div className="footer-links-content">
-            {/* Programs */}
-            <div className="footer-links-column">
-              <h4 className="footer-column-heading">{t("footer.programs")}</h4>
-              <nav className="footer-nav-links">
-                <Link href="/packages" className="footer-nav-link">{t("footer.packages")}</Link>
-                <Link href="/classes" className="footer-nav-link">{t("footer.classes")}</Link>
-                <Link href="/trainers" className="footer-nav-link">{t("footer.trainers")}</Link>
-              </nav>
-            </div>
+          {columns.map((col) => (
+            <nav key={col.heading} aria-label={col.heading}>
+              <h4 className="text-sm font-bold uppercase tracking-[0.14em] text-white">{col.heading}</h4>
+              <ul className="mt-4 space-y-3">
+                {col.links.map((l) => (
+                  <li key={l.label}>
+                    <Link href={l.href} className={linkClass}>{l.label}</Link>
+                  </li>
+                ))}
+              </ul>
+            </nav>
+          ))}
 
-            {/* Support */}
-            <div className="footer-links-column">
-              <h4 className="footer-column-heading">{t("footer.support")}</h4>
-              <nav className="footer-nav-links">
-                <Link href="/contact-us" className="footer-nav-link">{t("footer.contact")}</Link>
-                <Link href="/trainers" className="footer-nav-link">{t("footer.trainerDetails")}</Link>
-                <Link href="/faqs" className="footer-nav-link">{t("footer.faqs")}</Link>
-              
-              </nav>
-            </div>
-
-            {/* Company */}
-            <div className="footer-links-column">
-              <h4 className="footer-column-heading">{t("footer.company")}</h4>
-              <nav className="footer-nav-links">
-                <Link href="/about-us" className="footer-nav-link">{t("footer.about")}</Link>
-                <Link href="/privacy-policy" className="footer-nav-link">{t("footer.privacy")}</Link>
-               
-                <Link href="/contact-us" className="footer-nav-link">{t("footer.getInTouch")}</Link>
-              </nav>
-            </div>
-
-            {/* Social */}
-            <div className="footer-links-column footer-social-column">
-              <h4 className="footer-column-heading">{t("footer.follow")}</h4>
-              <nav className="footer-nav-links">
-                {socials.length > 0 ? (
-                  socials.map((s) => (
+          <div>
+            <h4 className="text-sm font-bold uppercase tracking-[0.14em] text-white">{t("footer.follow")}</h4>
+            {socials.length > 0 ? (
+              <ul className="mt-4 flex flex-wrap gap-2">
+                {socials.map((s) => (
+                  <li key={s.label}>
                     <a
-                      key={s.label}
                       href={s.href}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="footer-social-link"
                       aria-label={s.label}
+                      title={s.label}
+                      className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-[var(--border-subtle)] text-white/70 transition-colors hover:border-[var(--accent)] hover:bg-[var(--accent)] hover:text-[var(--on-accent)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
                     >
                       <i className={s.icon} aria-hidden="true"></i>
-                      <span>{s.label}</span>
                     </a>
-                  ))
-                ) : (
-                  <Link href="/contact-us" className="footer-nav-link">
-                    {t("footer.getInTouch")}
-                  </Link>
-                )}
-              </nav>
-            </div>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <ul className="mt-4">
+                <li>
+                  <Link href="/contact-us" className={linkClass}>{t("footer.getInTouch")}</Link>
+                </li>
+              </ul>
+            )}
           </div>
         </div>
 
-        {/* Footer Bottom */}
-        <div className="footer-bottom-section">
-          <div className="footer-bottom-content">
-            <p className="footer-copyright">
-              <span className="footer-copyright-symbol">©</span>
-              <span className="footer-copyright-year">{new Date().getFullYear()}</span>
-              <span className="footer-copyright-text">
-                {" "}{siteName ? `${siteName} — ` : ""}{t("footer.rights")}
-              </span>
-            </p>
-            <nav className="footer-legal-links">
-              <Link href="/privacy-policy" className="footer-legal-link">{t("footer.privacy")}</Link>
-              <Link href="/terms" className="footer-legal-link">{t("footer.terms")}</Link>
-              <Link href="/contact-us" className="footer-legal-link">{t("footer.contact")}</Link>
-            </nav>
-          </div>
+        {/* Bottom */}
+        <div className="mt-14 flex flex-col gap-4 border-t border-[var(--border-subtle)] pt-6 text-sm text-white/50 sm:flex-row sm:items-center sm:justify-between">
+          <p>
+            © {new Date().getFullYear()} {siteName ? `${siteName} — ` : ""}{t("footer.rights")}
+          </p>
+          <nav aria-label="Legal" className="flex flex-wrap gap-x-5 gap-y-2">
+            <Link href="/privacy-policy" className={linkClass}>{t("footer.privacy")}</Link>
+            <Link href="/terms" className={linkClass}>{t("footer.terms")}</Link>
+            <Link href="/contact-us" className={linkClass}>{t("footer.contact")}</Link>
+          </nav>
         </div>
-      </section>
-
-    </div>
-  </footer>
+      </div>
+    </footer>
   );
 };
 

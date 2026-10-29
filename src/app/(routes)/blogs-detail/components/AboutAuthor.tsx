@@ -54,7 +54,7 @@ const AboutAuthor: React.FC<AboutAuthorProps> = ({ author }) => {
             {/* Author Stats */}
             <div className="flex gap-4 text-sm">
               <div className="text-center">
-                <div className="font-bold text-green-500 text-lg">
+                <div className="font-bold text-[var(--accent)] text-lg">
                   {author.blogCount || 0}
                 </div>
                 <div className="text-gray-400">Articles</div>
@@ -75,7 +75,7 @@ const AboutAuthor: React.FC<AboutAuthorProps> = ({ author }) => {
           <div className="flex items-center gap-4 text-sm">
             <a
               href={`mailto:${author.email}`}
-              className="flex items-center gap-2 text-green-500 hover:text-green-400 transition-colors"
+              className="flex items-center gap-2 text-[var(--accent)] hover:opacity-80 transition-colors"
             >
               <i className="far fa-envelope"></i>
               <span>Contact Author</span>

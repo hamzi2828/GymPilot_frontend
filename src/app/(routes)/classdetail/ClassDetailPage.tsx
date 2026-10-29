@@ -41,9 +41,9 @@ const ClassDetailContent = () => {
 
   if (loading) {
     return (
-      <main className="pt-20">
+      <main className="pt-20 bg-[var(--base)]">
         <div className="flex justify-center items-center min-h-screen">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#91b200]"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[var(--accent)]"></div>
         </div>
       </main>
     );
@@ -51,7 +51,7 @@ const ClassDetailContent = () => {
 
   if (error || !selectedClass) {
     return (
-      <main className="pt-20">
+      <main className="pt-20 bg-[var(--base)]">
         <div className="flex justify-center items-center min-h-screen">
           <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded text-center max-w-2xl">
             {error || "Class not found"}
@@ -62,8 +62,13 @@ const ClassDetailContent = () => {
   }
 
   return (
-    <main className="pt-20">
-        <HeroAbout title={selectedClass.name} />
+    <main>
+      <HeroAbout
+        title={selectedClass.name}
+        lead={selectedClass.shortDescription}
+        image={selectedClass.thumbnail}
+        parent={{ label: "Classes", href: "/classes" }}
+      />
       <GymClassDetailSection gymClass={selectedClass} />
 <GymTrainersSection />
         <ContactSection />
@@ -74,9 +79,9 @@ const ClassDetailContent = () => {
 const ClassDetail = () => {
   return (
     <Suspense fallback={
-      <main className="pt-20">
+      <main className="pt-20 bg-[var(--base)]">
         <div className="flex justify-center items-center min-h-screen">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#91b200]"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[var(--accent)]"></div>
         </div>
       </main>
     }>

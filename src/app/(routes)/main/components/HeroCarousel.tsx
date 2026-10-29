@@ -7,6 +7,8 @@ import { resolveMediaUrl } from "../services/homeService";
 import { gymClassService } from "../services/gymClassService";
 import { checkoutService, type PaymentMethods } from "../../checkout/services/checkoutService";
 import { useSiteSettings } from "@/components/ThemeProvider";
+import { Words3D, prefersReducedMotion } from "./motion3d";
+import s from "./home3d.module.css";
 
 /** How long a slide holds before advancing. Slower than a typical banner on
  *  purpose — the imagery is the product, and fast cuts read as cheap. */
@@ -158,6 +160,64 @@ const HeroCarousel: React.FC<{ compact?: boolean }> = ({ compact = false }) => {
     }
   };
 
+  // Depth: the photo drifts against the pointer and scrolls slower than the
+  // page, the copy moves the other way. Written straight to CSS variables so
+  // React never re-renders. Off for reduced motion; pointer part off on touch.
+  useEffect(() => {
+    const el = sectionRef.current;
+    if (!el || loading || prefersReducedMotion()) return;
+    const fine =
+      typeof window.matchMedia === "function" && window.matchMedia("(hover: hover) and (pointer: fine)").matches;
+    let tx = 0;
+    let ty = 0;
+    let cx = 0;
+    let cy = 0;
+    let raf = 0;
+    let sraf = 0;
+    const ease = () => {
+      cx += (tx - cx) * 0.08;
+      cy += (ty - cy) * 0.08;
+      el.style.setProperty("--px", cx.toFixed(4));
+      el.style.setProperty("--py", cy.toFixed(4));
+      raf = Math.abs(tx - cx) > 0.001 || Math.abs(ty - cy) > 0.001 ? requestAnimationFrame(ease) : 0;
+    };
+    const onMove = (e: PointerEvent) => {
+      if (e.pointerType === "touch") return;
+      const r = el.getBoundingClientRect();
+      tx = ((e.clientX - r.left) / r.width - 0.5) * 2;
+      ty = ((e.clientY - r.top) / r.height - 0.5) * 2;
+      if (!raf) raf = requestAnimationFrame(ease);
+    };
+    const onLeave = () => {
+      tx = 0;
+      ty = 0;
+      if (!raf) raf = requestAnimationFrame(ease);
+    };
+    const onScroll = () => {
+      if (sraf) return;
+      sraf = requestAnimationFrame(() => {
+        sraf = 0;
+        const h = el.offsetHeight || window.innerHeight;
+        const y = Math.min(Math.max(window.scrollY, 0), h);
+        el.style.setProperty("--sy", `${(y * 0.3).toFixed(1)}px`);
+        el.style.setProperty("--sp", ((y / h) * 0.85).toFixed(3));
+      });
+    };
+    if (fine) {
+      el.addEventListener("pointermove", onMove);
+      el.addEventListener("pointerleave", onLeave);
+    }
+    window.addEventListener("scroll", onScroll, { passive: true });
+    onScroll();
+    return () => {
+      el.removeEventListener("pointermove", onMove);
+      el.removeEventListener("pointerleave", onLeave);
+      window.removeEventListener("scroll", onScroll);
+      cancelAnimationFrame(raf);
+      cancelAnimationFrame(sraf);
+    };
+  }, [loading]);
+
   const scrollPastHero = () => {
     const next = sectionRef.current?.nextElementSibling;
     if (next) next.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -184,7 +244,7 @@ const HeroCarousel: React.FC<{ compact?: boolean }> = ({ compact = false }) => {
     <section
       ref={sectionRef}
       id="hero"
-      className={`hero${compact ? " hero--compact" : ""}`}
+      className={`hero ${s.hero}${compact ? " hero--compact" : ""}`}
       aria-roledescription="carousel"
       aria-label="Featured highlights"
       tabIndex={-1}
@@ -196,7 +256,7 @@ const HeroCarousel: React.FC<{ compact?: boolean }> = ({ compact = false }) => {
     >
       {/* Stage: every slide stays mounted so the cross-fade has something to
           fade between, and only the active one is exposed to assistive tech. */}
-      <div className="hero__stage" aria-live="polite">
+      <div className={`hero__stage ${s.heroStage}`} aria-live="polite">
         {slides.map((s, idx) => {
           // The gym's own upload, or the plain dark plate: never a stock photo.
           const image = resolveMediaUrl(s.imageUrl);
@@ -221,7 +281,7 @@ const HeroCarousel: React.FC<{ compact?: boolean }> = ({ compact = false }) => {
         <div className="hero__vignette" aria-hidden="true" />
       </div>
 
-      <div className="hero__inner">
+      <div className={`hero__inner ${s.heroInner}`}>
         {/* Remounting on slide change is what replays the staggered entrance. */}
         <div className="hero__content" key={slide._id}>
           {siteName && (
@@ -231,7 +291,10 @@ const HeroCarousel: React.FC<{ compact?: boolean }> = ({ compact = false }) => {
             </span>
           )}
 
-          <h1 className="hero__title">{slide.title}</h1>
+          {/* Words flip up in 3D on every slide change (the block remounts). */}
+          <h1 className={`hero__title ${s.heroTitle}`}>
+            <Words3D text={slide.title} />
+          </h1>
 
           {slide.description && <p className="hero__lede">{slide.description}</p>}
 
@@ -255,16 +318,20 @@ const HeroCarousel: React.FC<{ compact?: boolean }> = ({ compact = false }) => {
       {/* What the site does for a member, floating over the photo on wide
           screens: only what this gym has set up (see `perks`). Checking in at
           the door, with the visit in the member's account, is every gym's. */}
-      <ul className="hero-perks" aria-label="What you can do here">
+      <ul className={`hero-perks ${s.perks}`} aria-label="What you can do here">
         {perks.map(({ icon: Icon, title, text }, i) => (
-          <li key={title} className="hero-perk" style={{ "--perk-i": i } as React.CSSProperties}>
-            <span className="hero-perk__icon" aria-hidden="true">
-              <Icon size={18} strokeWidth={2.2} />
-            </span>
-            <span>
-              <span className="hero-perk__title">{title}</span>
-              <span className="hero-perk__text">{text}</span>
-            </span>
+          // The slot carries the 3D depth; the card inside keeps its own
+          // entrance and float animations.
+          <li key={title} className={s.perkSlot}>
+            <div className="hero-perk" style={{ "--perk-i": i } as React.CSSProperties}>
+              <span className="hero-perk__icon" aria-hidden="true">
+                <Icon size={18} strokeWidth={2.2} />
+              </span>
+              <span>
+                <span className="hero-perk__title">{title}</span>
+                <span className="hero-perk__text">{text}</span>
+              </span>
+            </div>
           </li>
         ))}
       </ul>

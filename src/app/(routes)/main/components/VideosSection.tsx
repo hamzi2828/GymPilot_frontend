@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import Image from "next/image";
 import { DEFAULT_VIDEOS, VideosContent, resolveMediaUrl } from "../services/homeService";
 import { SectionHeading, Reveal } from "./SectionHeading";
+import { Depth, Tilt3D } from "./motion3d";
 
 /** Returns an embeddable player URL for YouTube/Vimeo links, else null. */
 function toEmbedUrl(url: string): string | null {
@@ -42,7 +43,7 @@ const VideosSection = ({ content = DEFAULT_VIDEOS }: { content?: VideosContent }
           />
         </Reveal>
 
-        <div className={`grid grid-cols-1 gap-6 ${videos.length === 1 ? "max-w-3xl mx-auto" : "md:grid-cols-2"}`}>
+        <div className={`flex flex-col gap-6 ${videos.length === 1 ? "max-w-3xl mx-auto" : "md:grid md:grid-cols-2"}`}>
           {videos.map((video, idx) => {
             const url = resolveMediaUrl(video.url);
             const poster = resolveMediaUrl(video.poster);
@@ -50,62 +51,64 @@ const VideosSection = ({ content = DEFAULT_VIDEOS }: { content?: VideosContent }
             const isPlaying = playing === idx;
 
             return (
-              <Reveal key={idx} delay={(idx % 2) * 90}>
-                <figure className="home-video-card group">
-                  <div className="home-video-frame">
-                    {isPlaying ? (
-                      embed ? (
-                        <iframe
-                          src={embed}
-                          title={video.title || `Video ${idx + 1}`}
-                          allow="autoplay; fullscreen; picture-in-picture"
-                          allowFullScreen
-                          className="absolute inset-0 h-full w-full"
-                        />
-                      ) : (
-                        <video
-                          src={url}
-                          poster={poster || undefined}
-                          controls
-                          autoPlay
-                          // Muted so playback starts instantly — browsers block
-                          // unmuted autoplay; viewers unmute via the controls.
-                          muted
-                          playsInline
-                          className="absolute inset-0 h-full w-full object-cover"
-                        />
-                      )
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => setPlaying(idx)}
-                        className="absolute inset-0 h-full w-full text-left"
-                        aria-label={`Play ${video.title || "video"}`}
-                      >
-                        {poster ? (
-                          <Image
-                            src={poster}
-                            alt={video.title || "Video poster"}
-                            fill
-                            sizes="(max-width: 768px) 100vw, 50vw"
-                            className="object-cover transition-transform duration-500 ease-out group-hover:scale-105"
-                            unoptimized={/^https?:\/\//i.test(poster)}
+              <Depth key={idx} index={idx % 2}>
+                <Tilt3D max={4} radius={20} disabled={isPlaying}>
+                  <figure className="home-video-card group">
+                    <div className="home-video-frame">
+                      {isPlaying ? (
+                        embed ? (
+                          <iframe
+                            src={embed}
+                            title={video.title || `Video ${idx + 1}`}
+                            allow="autoplay; fullscreen; picture-in-picture"
+                            allowFullScreen
+                            className="absolute inset-0 h-full w-full"
                           />
                         ) : (
-                          <span className="home-video-placeholder" aria-hidden="true"></span>
-                        )}
-                        <span className="home-video-scrim" aria-hidden="true"></span>
-                        <span className="home-video-play" aria-hidden="true">
-                          <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                            <path d="M8 5v14l11-7z" />
-                          </svg>
-                        </span>
-                      </button>
-                    )}
-                  </div>
-                  {video.title && <figcaption className="home-video-title">{video.title}</figcaption>}
-                </figure>
-              </Reveal>
+                          <video
+                            src={url}
+                            poster={poster || undefined}
+                            controls
+                            autoPlay
+                            // Muted so playback starts instantly — browsers block
+                            // unmuted autoplay; viewers unmute via the controls.
+                            muted
+                            playsInline
+                            className="absolute inset-0 h-full w-full object-cover"
+                          />
+                        )
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setPlaying(idx)}
+                          className="absolute inset-0 h-full w-full text-left"
+                          aria-label={`Play ${video.title || "video"}`}
+                        >
+                          {poster ? (
+                            <Image
+                              src={poster}
+                              alt={video.title || "Video poster"}
+                              fill
+                              sizes="(max-width: 768px) 100vw, 50vw"
+                              className="object-cover transition-transform duration-500 ease-out group-hover:scale-105"
+                              unoptimized={/^https?:\/\//i.test(poster)}
+                            />
+                          ) : (
+                            <span className="home-video-placeholder" aria-hidden="true"></span>
+                          )}
+                          <span className="home-video-scrim" aria-hidden="true"></span>
+                          <span className="home-video-play" aria-hidden="true">
+                            <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                              <path d="M8 5v14l11-7z" />
+                            </svg>
+                          </span>
+                        </button>
+                      )}
+                    </div>
+                    {video.title && <figcaption className="home-video-title">{video.title}</figcaption>}
+                  </figure>
+                </Tilt3D>
+              </Depth>
             );
           })}
         </div>

@@ -2,6 +2,8 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import { DEFAULT_STATS, StatsContent } from "../services/homeService";
+import { Depth, Tilt3D } from "./motion3d";
+import s from "./home3d.module.css";
 
 const COUNT_DURATION = 1400;
 
@@ -73,8 +75,8 @@ const StatsSection = ({ content = DEFAULT_STATS }: { content?: StatsContent }) =
     <section className="home-stats-band" aria-label="Gym statistics">
       <div className="home-stats-glow" aria-hidden="true" />
       <div className="mx-auto px-4 md:px-8 lg:px-20">
-        <dl
-          className="home-stats-grid"
+        <div
+          className={s.statsGrid}
           style={
             {
               "--cols": Math.min(items.length, 4),
@@ -82,16 +84,21 @@ const StatsSection = ({ content = DEFAULT_STATS }: { content?: StatsContent }) =
             } as React.CSSProperties
           }
         >
+          {/* Each figure is a glass card that flips up in turn, then counts. */}
           {items.map((item, idx) => (
-            <div key={idx} className="home-stat-item">
-              <dd className="home-stat-value">
-                <CountUp value={String(item.value)} />
-                {item.suffix && <span className="home-stat-suffix">{item.suffix}</span>}
-              </dd>
-              <dt className="home-stat-label">{item.label}</dt>
-            </div>
+            <Depth key={idx} index={idx}>
+              <Tilt3D max={6} radius={22}>
+                <div className={s.statCard}>
+                  <p className="home-stat-value m-0">
+                    <CountUp value={String(item.value)} />
+                    {item.suffix && <span className="home-stat-suffix">{item.suffix}</span>}
+                  </p>
+                  <p className="home-stat-label mb-0">{item.label}</p>
+                </div>
+              </Tilt3D>
+            </Depth>
           ))}
-        </dl>
+        </div>
       </div>
     </section>
   );

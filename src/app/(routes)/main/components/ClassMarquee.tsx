@@ -9,6 +9,7 @@
 
 import { useEffect, useState } from "react";
 import { gymClassService } from "../services/gymClassService";
+import s from "./home3d.module.css";
 
 export default function ClassMarquee() {
   const [names, setNames] = useState<string[]>([]);
@@ -33,20 +34,29 @@ export default function ClassMarquee() {
   // Short lists are repeated so one copy is always wider than the screen.
   const run = names.length < 6 ? [...names, ...names, ...names] : names;
 
+  const band = (
+    <div className="class-marquee__track" aria-hidden="true">
+      {[0, 1].map((copy) => (
+        <div key={copy} className="class-marquee__run">
+          {run.map((name, i) => (
+            <span key={`${copy}-${i}`} className="class-marquee__item">
+              {name}
+              <span className="class-marquee__star">✦</span>
+            </span>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+
+  // Two crossed tapes: the accent one in front, a darker one behind running
+  // the other way, for depth.
   return (
-    <div className="class-marquee" aria-label={`Classes: ${names.join(", ")}`}>
-      <div className="class-marquee__track" aria-hidden="true">
-        {[0, 1].map((copy) => (
-          <div key={copy} className="class-marquee__run">
-            {run.map((name, i) => (
-              <span key={`${copy}-${i}`} className="class-marquee__item">
-                {name}
-                <span className="class-marquee__star">✦</span>
-              </span>
-            ))}
-          </div>
-        ))}
+    <div className={s.tapes} aria-label={`Classes: ${names.join(", ")}`} role="region">
+      <div className={`class-marquee ${s.tapeBack}`} aria-hidden="true">
+        {band}
       </div>
+      <div className={`class-marquee ${s.tapeFront}`}>{band}</div>
     </div>
   );
 }

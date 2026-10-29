@@ -10,6 +10,8 @@ import {
 } from "../services/homeService";
 import { SectionHeading, Reveal } from "./SectionHeading";
 import GalleryLightbox from "./GalleryLightbox";
+import { Depth, Tilt3D } from "./motion3d";
+import s from "./home3d.module.css";
 
 /**
  * Photo gallery split into admin-defined sub-sections (Strength, Cardio, …).
@@ -74,35 +76,44 @@ const GymfolioGallery = ({ content = DEFAULT_GALLERY }: { content?: GalleryConte
 
         {/* Photo grid: 4 per row, max 2 rows per page */}
         <Reveal delay={140}>
-          <div
-            key={`${activeGroup}-${safePage}`}
-            className="home-gallery-page grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 lg:gap-6"
-          >
+          {/* A wide lead photo when the page is full enough to carry one;
+              every tile tilts toward the pointer and rises in with depth. */}
+          <div key={`${activeGroup}-${safePage}`} className={`home-gallery-page ${s.galleryGrid}`}>
             {visible.map((image, index) => {
               const src = resolveMediaUrl(image.src);
+              // Lead tile spans 2x2 on desktop; with a multiple of four
+              // photos the last one goes wide so the grid has no hole.
+              const n = visible.length;
+              const useLead = n >= 5 && (n % 4 === 0 || n % 4 === 1);
+              const lead = useLead && index === 0;
+              const wide = useLead && n % 4 === 0 && index === n - 1;
               return (
-                <button
-                  key={`${safePage}-${index}`}
-                  type="button"
-                  onClick={() => setViewing(safePage * GALLERY_PAGE_SIZE + index)}
-                  aria-label={`Open photo ${safePage * GALLERY_PAGE_SIZE + index + 1} of ${images.length}`}
-                  className="home-gallery-tile home-gallery-tile--open group"
-                >
-                  <Image
-                    src={src}
-                    alt={image.alt || group.title || "Gym gallery image"}
-                    width={420}
-                    height={320}
-                    className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-105"
-                    loading="lazy"
-                    unoptimized={/^https?:\/\//i.test(src)}
-                  />
-                  <span className="home-gallery-tile__zoom" aria-hidden="true">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
-                    </svg>
-                  </span>
-                </button>
+                <Depth key={`${safePage}-${index}`} index={index} className={lead ? s.galleryLead : wide ? s.galleryWide : ""}>
+                  <Tilt3D max={7} radius={18}>
+                    <button
+                      type="button"
+                      onClick={() => setViewing(safePage * GALLERY_PAGE_SIZE + index)}
+                      aria-label={`Open photo ${safePage * GALLERY_PAGE_SIZE + index + 1} of ${images.length}`}
+                      className={`home-gallery-tile home-gallery-tile--open group ${s.galleryTile}`}
+                    >
+                      <Image
+                        src={src}
+                        alt={image.alt || group.title || "Gym gallery image"}
+                        width={lead ? 840 : 420}
+                        height={lead ? 640 : 320}
+                        className="h-full w-full object-cover transition-transform duration-700 ease-out group-hover:scale-110"
+                        loading="lazy"
+                        unoptimized={/^https?:\/\//i.test(src)}
+                      />
+                      <span className={s.galleryShade} aria-hidden="true" />
+                      <span className="home-gallery-tile__zoom" aria-hidden="true">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
+                        </svg>
+                      </span>
+                    </button>
+                  </Tilt3D>
+                </Depth>
               );
             })}
           </div>

@@ -8,13 +8,16 @@ interface NewsletterProps {
   title?: string;
   description?: string;
   className?: string;
+  /** Narrow column: input and button stack. */
+  stacked?: boolean;
 }
 
 const Newsletter: React.FC<NewsletterProps> = ({
   source = 'blog',
   title = "Subscribe to our newsletter",
   description = "News and updates from us, by email.",
-  className = ""
+  className = "",
+  stacked = false
 }) => {
   const [email, setEmail] = useState('');
   const { busy: isLoading, run } = useAsyncAction();
@@ -69,12 +72,12 @@ const Newsletter: React.FC<NewsletterProps> = ({
 
   if (isSubscribed) {
     return (
-      <div className={`gym-blog-custom-bg-darker rounded-2xl p-8 lg:p-12 text-center ${className}`}>
+      <div className={`rounded-3xl border border-[var(--border-subtle)] bg-[var(--surface)] ${stacked ? "p-6" : "p-8 lg:p-12"} text-center ${className}`}>
         <div className="mb-6">
-          <div className="w-16 h-16 bg-brand-500 rounded-full flex items-center justify-center mx-auto mb-4">
-            <i className="fas fa-check text-white text-2xl"></i>
+          <div className="w-16 h-16 bg-[var(--accent)] text-[var(--on-accent)] rounded-full flex items-center justify-center mx-auto mb-4">
+            <i className="fas fa-check text-2xl" aria-hidden="true"></i>
           </div>
-          <h3 className="font-montserrat font-bold text-2xl lg:text-3xl text-white mb-4">
+          <h3 className={`font-montserrat font-bold text-white mb-4 ${stacked ? "text-xl" : "text-2xl lg:text-3xl"}`}>
             You&apos;re subscribed
           </h3>
           <p className="text-gray-300 mb-6">
@@ -82,7 +85,7 @@ const Newsletter: React.FC<NewsletterProps> = ({
           </p>
           <button
             onClick={() => setIsSubscribed(false)}
-            className="text-green-500 hover:text-green-400 transition-colors text-sm"
+            className="text-[var(--accent)] hover:opacity-80 transition-colors text-sm"
           >
             Subscribe another email
           </button>
@@ -92,8 +95,8 @@ const Newsletter: React.FC<NewsletterProps> = ({
   }
 
   return (
-    <div className={`gym-blog-custom-bg-darker rounded-2xl p-8 lg:p-12 text-center ${className}`}>
-      <h3 className="font-montserrat font-bold text-2xl lg:text-3xl text-white mb-4">
+    <div className={`rounded-3xl border border-[var(--border-subtle)] bg-[var(--surface)] ${stacked ? "p-6" : "p-8 lg:p-12"} text-center ${className}`}>
+      <h3 className={`font-montserrat font-bold text-white mb-4 ${stacked ? "text-xl" : "text-2xl lg:text-3xl"}`}>
         {title}
       </h3>
       <p className="text-gray-300 mb-8 max-w-2xl mx-auto">
@@ -101,13 +104,15 @@ const Newsletter: React.FC<NewsletterProps> = ({
       </p>
 
       <form onSubmit={handleSubmit} className="max-w-md mx-auto">
-        <div className="flex flex-col sm:flex-row gap-4 mb-4">
+        <div className={`flex flex-col gap-3 mb-4 ${stacked ? "" : "sm:flex-row"}`}>
+          <label htmlFor="related-newsletter-email" className="sr-only">Email address</label>
           <input
+            id="related-newsletter-email"
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="Enter your email address"
-            className="flex-1 px-4 py-3 gym-blog-custom-bg-dark text-white rounded-lg border border-gray-600 focus:border-brand-500 focus:outline-none transition-colors"
+            className="min-w-0 flex-1 px-4 py-3 gym-blog-custom-bg-dark text-white rounded-full border border-white/15 focus:border-[var(--accent)] focus:outline-none transition-colors"
             disabled={isLoading}
             required
           />
@@ -115,7 +120,7 @@ const Newsletter: React.FC<NewsletterProps> = ({
             type="submit"
             disabled={isLoading || !email.trim()}
             aria-busy={isLoading || undefined}
-            className="gym-blog-custom-bg-green text-black px-6 py-3 rounded-lg font-semibold hover:scale-105 transition-all duration-300 whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+            className="btn btn--primary"
           >
             {isLoading ? (
               <span className="flex items-center gap-2">
@@ -123,7 +128,7 @@ const Newsletter: React.FC<NewsletterProps> = ({
                 Subscribing...
               </span>
             ) : (
-              'Subscribe'
+              <span>Subscribe</span>
             )}
           </button>
         </div>

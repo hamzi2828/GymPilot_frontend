@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
+import { Title3D } from "./motion3d";
+import s from "./home3d.module.css";
 
 /**
  * Renders admin-entered heading text, turning `*word*` markers into
@@ -24,9 +26,30 @@ export function AccentText({ text }: { text: string }) {
   );
 }
 
+/** Accent dot + label in a soft pill, used above every section title. */
+export function Eyebrow({ label, dark = false }: { label?: string; dark?: boolean }) {
+  if (!label) return null;
+  return (
+    <div className={`${s.eyebrow} ${dark ? s.eyebrowDark : ""}`}>
+      <span className="home-eyebrow-dot" aria-hidden="true"></span>
+      <span className={`home-eyebrow-label ${dark ? "home-eyebrow-label-dark" : ""}`}>{label}</span>
+    </div>
+  );
+}
+
+/** Big uppercase title whose words flip up in 3D as it scrolls in. */
+export function SectionTitle({ text, dark = false, className = "" }: { text: string; dark?: boolean; className?: string }) {
+  return (
+    <Title3D
+      text={text}
+      className={`home-section-title ${s.title} ${dark ? "text-white" : "text-black"} ${className}`}
+    />
+  );
+}
+
 /**
- * The shared section header: accent dot + eyebrow label, uppercase title and
- * optional description. Keeps every homepage section on the same rhythm.
+ * The shared section header: eyebrow pill, uppercase 3D title, a short accent
+ * rule and optional description. Keeps every homepage section on one rhythm.
  */
 export function SectionHeading({
   badge,
@@ -43,22 +66,13 @@ export function SectionHeading({
   dark?: boolean;
   className?: string;
 }) {
-  const alignCls = align === "center" ? "text-center items-center" : "text-left items-start for-mobile-center";
+  const alignCls =
+    align === "center" ? `text-center items-center ${s.center}` : "text-left items-start for-mobile-center";
   return (
     <header className={`flex flex-col ${alignCls} ${className}`}>
-      {badge && (
-        <div className="inline-flex items-center gap-2 mb-4">
-          <span className="home-eyebrow-dot" aria-hidden="true"></span>
-          <span className={`home-eyebrow-label ${dark ? "home-eyebrow-label-dark" : ""}`}>{badge}</span>
-        </div>
-      )}
-      <h2
-        className={`home-section-title text-2xl md:text-3xl lg:text-4xl ${
-          dark ? "text-white" : "text-black"
-        }`}
-      >
-        <AccentText text={heading} />
-      </h2>
+      <Eyebrow label={badge} dark={dark} />
+      <SectionTitle text={heading} dark={dark} className="max-w-4xl" />
+      <span className={s.titleRule} aria-hidden="true" />
       {description && (
         <p
           className={`home-section-description mt-5 max-w-3xl ${
@@ -103,7 +117,7 @@ export function Reveal({
           observer.disconnect();
         }
       },
-      { rootMargin: "0px 0px -10% 0px", threshold: 0.05 }
+      { rootMargin: "0px 0px 15% 0px", threshold: 0 }
     );
     observer.observe(el);
     return () => observer.disconnect();
@@ -113,7 +127,7 @@ export function Reveal({
     <div
       ref={ref}
       className={`home-reveal ${visible ? "is-visible" : ""} ${className}`}
-      style={delay ? { transitionDelay: `${delay}ms` } : undefined}
+      style={{ transitionDuration: "0.5s", ...(delay ? { transitionDelay: `${Math.round(delay * 0.6)}ms` } : {}) }}
     >
       {children}
     </div>

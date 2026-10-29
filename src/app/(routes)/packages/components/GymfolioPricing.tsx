@@ -1,8 +1,12 @@
 "use client";
 import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { ArrowRight, Check, Sparkles } from "lucide-react";
 import { packageService, Package } from "../services/packageService";
 import { parseAmount } from "@/helper/money";
+import TiltCard from "@/components/site/TiltCard";
+import Reveal from "@/components/site/Reveal";
+import { SectionHeading, surfaceClass } from "@/components/site/PageHero";
 
 // A package with nothing to charge (price 0, or a price like "Free" that is
 // not a number) cannot go through card or bank checkout -- the API refuses
@@ -11,55 +15,6 @@ function joinedAtTheDesk(plan: Package) {
   const price = parseAmount(plan.price);
   return price === null || price <= 0;
 }
-
-const CheckIcon = () => (
-  <svg
-    className="w-6 h-6 flex-none"
-    width="24"
-    height="24"
-    viewBox="0 0 24 24"
-    fill="none"
-    aria-hidden="true"
-    xmlns="http://www.w3.org/2000/svg"
-  >
-    <path d="M0 12C0 5.37258 5.37258 0 12 0C18.6274 0 24 5.37258 24 12C24 18.6274 18.6274 24 12 24C5.37258 24 0 18.6274 0 12Z" fill="#F5F5F6" />
-    <path
-      fillRule="evenodd"
-      clipRule="evenodd"
-      d="M17.096 7.39004L9.93602 14.3L8.03602 12.27C7.68602 11.94 7.13602 11.92 6.73602 12.2C6.34602 12.49 6.23602 13 6.47602 13.41L8.72602 17.07C8.94602 17.41 9.32601 17.62 9.75601 17.62C10.166 17.62 10.556 17.41 10.776 17.07C11.136 16.6 18.006 8.41004 18.006 8.41004C18.906 7.49004 17.816 6.68004 17.096 7.38004V7.39004Z"
-      fill="black"
-    />
-  </svg>
-);
-
-const ArrowRightIcon = () => (
-  <svg
-    className="w-6 h-6"
-    width="24"
-    height="24"
-    viewBox="0 0 24 24"
-    fill="none"
-    aria-hidden="true"
-    xmlns="http://www.w3.org/2000/svg"
-  >
-    <path
-      d="M14.4297 5.93005L20.4997 12.0001L14.4297 18.0701"
-      stroke="black"
-      strokeWidth="1.5"
-      strokeMiterlimit="10"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-    <path
-      d="M3.5 12L20.33 12"
-      stroke="black"
-      strokeWidth="1.5"
-      strokeMiterlimit="10"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-  </svg>
-);
 
 const GymfolioPricing: React.FC = () => {
   const [packages, setPackages] = useState<Package[]>([]);
@@ -86,217 +41,134 @@ const GymfolioPricing: React.FC = () => {
 
   return (
     <section
-      className="GymfolioPricing relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-12 py-16 lg:py-20"
+      className={`${surfaceClass} px-4 sm:px-6 lg:px-12 py-20 lg:py-28`}
       aria-labelledby="GymfolioPricing-title"
     >
-      <header className="flex flex-col items-center gap-4 text-center mb-12 lg:mb-16">
-        <div className="GymfolioPricing-badge inline-flex items-center gap-2">
-          <span className="inline-block h-2 w-2 rounded-full bg-[#91b200]" aria-hidden="true" />
-          <span className="text-sm font-semibold text-[#85868b]">Pricing</span>
-        </div>
-        <h2
-          id="GymfolioPricing-title"
-          className="text-2xl sm:text-3xl lg:text-4xl font-extrabold uppercase tracking-tight text-black/90"
-        >
-          Membership packages
-        </h2>
-      </header>
+      <div className="relative mx-auto max-w-7xl">
+        <SectionHeading id="GymfolioPricing-title" eyebrow="Pricing" title="Membership packages" center />
 
-      {/* Loading State */}
-      {loading && (
-        <div className="flex items-center justify-center py-20">
-          <div className="flex flex-col items-center gap-4">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#ff6b2c]"></div>
-            <p className="text-gray-600">Loading packages...</p>
+        {loading && (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" aria-busy="true" aria-label="Loading packages">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="h-[520px] rounded-[28px] bg-[var(--surface)] animate-pulse" />
+            ))}
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Error State: say so, and offer another go rather than a dead end. */}
-      {error && !loading && (
-        <div className="flex items-center justify-center py-20">
-          <div className="rounded-lg bg-red-50 p-6 max-w-md text-center" role="alert">
-            <p className="text-red-800">{error}</p>
+        {/* Error State: say so, and offer another go rather than a dead end. */}
+        {error && !loading && (
+          <div className="mx-auto max-w-md rounded-2xl border border-red-500/30 bg-red-500/10 p-6 text-center" role="alert">
+            <p className="text-red-200">{error}</p>
             <button
               type="button"
               onClick={fetchPackages}
-              className="mt-4 inline-flex items-center justify-center rounded-full bg-neutral-900 px-6 py-2.5 text-sm font-semibold text-white hover:bg-neutral-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black"
+              className="btn btn--primary mt-4"
             >
-              Try again
+              <span>Try again</span>
             </button>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Empty State: the gym has no package on sale. Under a heading alone
-          the page read as broken. */}
-      {!loading && !error && packages.length === 0 && (
-        <div className="flex items-center justify-center py-16">
-          <div className="max-w-md text-center">
-            <p className="text-[#4d4d51]">No packages are listed here yet.</p>
+        {/* Empty State: the gym has no package on sale. Under a heading alone
+            the page read as broken. */}
+        {!loading && !error && packages.length === 0 && (
+          <div className="mx-auto max-w-md py-10 text-center">
+            <p className="text-[var(--text-muted)]">No packages are listed here yet.</p>
             <Link
               href="/contact-us"
-              className="mt-4 inline-flex items-center justify-center rounded-full border border-neutral-300 px-6 py-2.5 text-sm font-semibold text-neutral-800 hover:border-neutral-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black"
+              className="btn btn--glass mt-4"
             >
-              Ask us about joining
+              <span>Ask us about joining</span>
             </Link>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Packages Grid */}
-      {!loading && !error && packages.length > 0 && (
-        <div
-          className="GymfolioPricing-grid grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-8"
-          role="list"
-          aria-label="Pricing plans"
-        >
-          {packages.map((plan) => {
-            const isDark = plan.theme === "dark";
-            const titleId = `GymfolioPricing-${plan._id}-title`;
+        {!loading && !error && packages.length > 0 && (
+          <ul className="grid grid-cols-1 items-stretch gap-6 md:grid-cols-2 lg:grid-cols-3 lg:gap-8" aria-label="Pricing plans">
+            {packages.map((plan, idx) => {
+              // The gym marks its featured plan with a badge or the dark style.
+              const featured = !!plan.badge || plan.theme === "dark";
+              const titleId = `GymfolioPricing-${plan._id}-title`;
+              const desk = joinedAtTheDesk(plan);
 
-            return (
-              <article
-                key={plan._id}
-                aria-labelledby={titleId}
-              className={[
-                "GymfolioPricing-card relative flex flex-col overflow-hidden rounded-2xl border",
-                isDark ? "GymfolioPricing-card--dark border-gray-200 bg-[#181b20] shadow-lg" : "border-[#cfd0d2] bg-white",
-              ].join(" ")}
-              role="listitem"
-            >
-              {/* Card header */}
-              <header
-                className={[
-                  "border-b px-8 pt-8 pb-6",
-                  isDark ? "border-white/10" : "border-[#eaecf0]",
-                ].join(" ")}
-              >
-                <div className="flex flex-wrap items-start justify-between gap-4">
-                  <div className="min-w-[240px]">
-                    <h3
-                      id={titleId}
-                      className={[
-                        "GymfolioPricing-cardTitle text-2xl font-semibold",
-                        isDark ? "text-[#ff6b2c]" : "text-[#c74e1b]",
-                      ].join(" ")}
-                    >
-                      {plan.name}
-                    </h3>
-                  </div>
-
-                  <div className="flex items-end gap-1">
-                    <span
-                      className={[
-                        "GymfolioPricing-price block text-6xl font-semibold tracking-tight",
-                        isDark ? "text-white" : "text-[#141415]",
-                      ].join(" ")}
-                      aria-label={`${plan.price} ${plan.currency}`}
-                    >
-                      {plan.price}
-                    </span>
-                    <div className="pb-2">
-                      <span
-                        className={[
-                          "GymfolioPricing-currency block text-sm font-bold",
-                          isDark ? "text-white" : "text-[#141415]",
-                        ].join(" ")}
-                      >
-                        {plan.currency}
-                      </span>
-                    </div>
-                    <div className="pb-2">
-                      <span
-                        className={[
-                          "GymfolioPricing-period block text-sm",
-                          isDark ? "text-gray-300" : "text-[#6a6b70]",
-                        ].join(" ")}
-                      >
-                        {plan.period}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </header>
-
-              {/* Card content */}
-              <div className="px-8 pt-6 pb-10">
-                <div className="mb-4">
-                  <p
+              return (
+                <Reveal as="li" key={plan._id} delay={idx * 0.1} className={featured ? "lg:-mt-4 lg:mb-4" : ""}>
+                  <TiltCard
+                    max={6}
+                    as="article"
+                    aria-labelledby={titleId}
                     className={[
-                      "GymfolioPricing-featuresHeading text-sm font-semibold",
-                      isDark ? "text-gray-50" : "text-[#141415]",
+                      "relative flex h-full flex-col overflow-hidden rounded-[28px] border p-7 sm:p-8",
+                      featured
+                        ? "border-[color:color-mix(in_srgb,var(--accent)_60%,transparent)] bg-[var(--surface)] shadow-[0_30px_80px_-30px_color-mix(in_srgb,var(--accent)_45%,transparent)]"
+                        : "border-[var(--border-subtle)] bg-[color:color-mix(in_srgb,var(--surface)_70%,transparent)]",
                     ].join(" ")}
                   >
-                    FEATURES
-                  </p>
-                  {plan.supportingText && (
-                    <p className={["mt-1 text-sm", isDark ? "text-gray-300" : "text-gray-500"].join(" ")}>
-                      {plan.supportingText}
-                    </p>
-                  )}
-                </div>
+                    {featured && (
+                      <div
+                        className="pointer-events-none absolute -top-32 left-1/2 h-64 w-[140%] -translate-x-1/2 rounded-full"
+                        style={{ background: "radial-gradient(ellipse at center, color-mix(in srgb, var(--accent) 28%, transparent), transparent 65%)" }}
+                        aria-hidden="true"
+                      />
+                    )}
 
-                <ul className="GymfolioPricing-features space-y-4">
-                  {plan.features.map((f, idx) => (
-                    <li key={idx} className="GymfolioPricing-feature flex items-start gap-3">
-                      <span aria-hidden="true">
-                        <CheckIcon />
-                      </span>
-                      <span
-                        className={[
-                          "text-base",
-                          isDark ? "text-gray-300" : "text-[#4d4d51]",
-                        ].join(" ")}
+                    <header className="relative">
+                      <div className="flex items-start justify-between gap-3">
+                        <h3 id={titleId} className="font-['Montserrat'] text-xl font-extrabold text-white">
+                          {plan.name}
+                        </h3>
+                        {plan.badge && (
+                          <span className="inline-flex flex-none items-center gap-1.5 rounded-full bg-[var(--accent)] px-3 py-1 text-xs font-bold uppercase tracking-wider text-[var(--on-accent)]">
+                            <Sparkles size={12} aria-hidden="true" />
+                            {plan.badge}
+                          </span>
+                        )}
+                      </div>
+                      {plan.supportingText && (
+                        <p className="mt-3 text-sm leading-relaxed text-[var(--text-muted)]">{plan.supportingText}</p>
+                      )}
+                      <p className="mt-7 flex flex-wrap items-baseline gap-x-2" aria-label={`${plan.price} ${plan.currency} ${plan.period || ""}`.trim()}>
+                        <span className="font-['Montserrat'] text-6xl font-extrabold tracking-tight text-white">{plan.price}</span>
+                        <span className="text-sm font-bold text-white">{plan.currency}</span>
+                        {plan.period && <span className="text-sm text-[var(--text-muted)]">/ {plan.period}</span>}
+                      </p>
+                    </header>
+
+                    <div className="relative my-7 h-px bg-[var(--border-subtle)]" aria-hidden="true" />
+
+                    <ul className="relative space-y-3.5">
+                      {plan.features.map((f, i) => (
+                        <li key={i} className="flex items-start gap-3 text-[15px] text-white/80">
+                          <span
+                            className={`mt-0.5 inline-flex h-5 w-5 flex-none items-center justify-center rounded-full ${
+                              featured ? "bg-[var(--accent)] text-[var(--on-accent)]" : "bg-white/10 text-[var(--accent)]"
+                            }`}
+                            aria-hidden="true"
+                          >
+                            <Check size={12} strokeWidth={3} />
+                          </span>
+                          {f}
+                        </li>
+                      ))}
+                    </ul>
+
+                    <div className="relative mt-auto pt-9">
+                      <Link
+                        href={desk ? "/contact-us" : `/checkout?packageId=${plan._id}`}
+                        className={`btn btn--lg btn--block ${featured ? "btn--primary" : "btn--glass"}`}
+                        aria-label={desk ? `Ask at the front desk about the ${plan.name} plan` : `Get started with ${plan.name} plan`}
                       >
-                        {f}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-
-              {/* Card footer */}
-              <footer
-                className={[
-                  "mt-auto px-4 pb-8",
-                  isDark ? "bg-[#181b20]" : "bg-white",
-                ].join(" ")}
-              >
-                {joinedAtTheDesk(plan) ? (
-                  <Link
-                    href="/contact-us"
-                    className="GymfolioPricing-cta inline-flex w-full items-center justify-center gap-2 rounded-full bg-[#ff6b2c] px-6 py-3 font-semibold text-black shadow-[4px_4px_12px_rgba(0,132,255,0.25)] transition-transform hover:scale-[1.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black"
-                    aria-label={`Ask at the front desk about the ${plan.name} plan`}
-                  >
-                    Ask at the front desk
-                    <ArrowRightIcon />
-                  </Link>
-                ) : (
-                  <Link
-                    href={`/checkout?packageId=${plan._id}`}
-                    className="GymfolioPricing-cta inline-flex w-full items-center justify-center gap-2 rounded-full bg-[#ff6b2c] px-6 py-3 font-semibold text-black shadow-[4px_4px_12px_rgba(0,132,255,0.25)] transition-transform hover:scale-[1.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black"
-                    aria-label={`Get started with ${plan.name} plan`}
-                  >
-                    Get Started
-                    <ArrowRightIcon />
-                  </Link>
-                )}
-              </footer>
-
-              {/* Popular badge for dark (Pro) */}
-              {plan.badge && (
-                <div className="absolute right-4 top-4">
-                  <span className="inline-flex items-center rounded-full border border-[#f5ff94] bg-[#feffe5] px-3 py-0.5 text-sm font-medium text-black">
-                    {plan.badge}
-                  </span>
-                </div>
-              )}
-            </article>
-          );
-          })}
-        </div>
-      )}
+                        <span>{desk ? "Ask at the front desk" : "Get Started"}</span>
+                        <ArrowRight size={18} aria-hidden="true" />
+                      </Link>
+                    </div>
+                  </TiltCard>
+                </Reveal>
+              );
+            })}
+          </ul>
+        )}
+      </div>
     </section>
   );
 };

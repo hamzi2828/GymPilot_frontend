@@ -556,29 +556,37 @@ body {
      button; anything sitting next to it takes `--glass` (on artwork) or
      `--outline` (on paper), which is what gives the page a hierarchy instead
      of a row of equally loud blocks.
+     Colours come from the theme (--accent / --on-accent), so every gym's
+     palette works. Each variant sets --btn-shadow so the focus ring can be
+     added on top without losing the depth.
      =================================== */
 
 .btn {
+  --btn-shadow: 0 0 0 0 transparent;
   position: relative;
+  isolation: isolate;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 10px;
-  height: 46px;
-  padding: 0 22px;
+  height: 48px;
+  padding: 0 24px;
   border-radius: 999px;
   border: 1px solid transparent;
   font-family: "Sora", sans-serif;
   font-size: 13.5px;
   line-height: 1;
   font-weight: 600;
-  letter-spacing: 0.005em;
+  letter-spacing: 0.01em;
   white-space: nowrap;
   text-decoration: none;
   cursor: pointer;
   overflow: hidden;
-  transition: transform 0.28s cubic-bezier(0.22, 0.61, 0.36, 1),
-    background-color 0.28s ease, border-color 0.28s ease, box-shadow 0.28s ease,
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  box-shadow: var(--btn-shadow);
+  transition: transform 0.32s cubic-bezier(0.22, 0.61, 0.36, 1),
+    background-color 0.28s ease, border-color 0.28s ease, box-shadow 0.32s ease,
     color 0.28s ease;
 }
 
@@ -588,23 +596,44 @@ body {
 }
 
 .btn svg {
-  transition: transform 0.28s cubic-bezier(0.22, 0.61, 0.36, 1);
+  flex-shrink: 0;
+  transition: transform 0.32s cubic-bezier(0.22, 0.61, 0.36, 1), color 0.28s ease;
 }
 
 .btn:hover svg {
-  transform: translateX(3px);
+  transform: translateX(4px);
+}
+
+.btn:hover {
+  transform: translateY(-2px);
+}
+
+/* Press: drop back down and squash slightly. */
+.btn:active {
+  transform: translateY(0) scale(0.97);
+  transition-duration: 0.08s;
 }
 
 .btn--lg {
-  height: 54px;
-  padding: 0 28px;
+  height: 56px;
+  padding: 0 30px;
   font-size: 14.5px;
 }
 
+/* --- Primary: accent fill with a top bevel and a soft glow ------------ */
+
 .btn--primary {
-  background: var(--accent);
+  --btn-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4),
+    inset 0 -2px 0 rgba(0, 0, 0, 0.14), 0 1px 2px rgba(0, 0, 0, 0.22),
+    0 12px 28px -12px color-mix(in srgb, var(--accent) 80%, transparent);
   color: var(--on-accent);
-  box-shadow: 0 14px 30px -16px color-mix(in srgb, var(--accent) 95%, transparent);
+  background-color: var(--accent);
+  background-image: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--white) 22%, transparent) 0%,
+    transparent 50%,
+    color-mix(in srgb, #000 8%, transparent) 100%
+  );
 }
 
 /* Light sweep on hover. */
@@ -613,58 +642,129 @@ body {
   position: absolute;
   inset: 0;
   z-index: 0;
+  pointer-events: none;
   background: linear-gradient(
-    100deg,
-    transparent 22%,
-    color-mix(in srgb, var(--white) 55%, transparent) 50%,
-    transparent 78%
+    105deg,
+    transparent 25%,
+    color-mix(in srgb, var(--white) 50%, transparent) 50%,
+    transparent 75%
   );
-  transform: translateX(-125%);
-  transition: transform 0.75s cubic-bezier(0.22, 0.61, 0.36, 1);
+  transform: translateX(-130%);
+  transition: transform 0.8s cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 
 .btn--primary:hover::before {
-  transform: translateX(125%);
+  transform: translateX(130%);
 }
 
 .btn--primary:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 22px 40px -18px color-mix(in srgb, var(--accent) 100%, transparent);
+  --btn-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45),
+    inset 0 -2px 0 rgba(0, 0, 0, 0.14), 0 2px 4px rgba(0, 0, 0, 0.2),
+    0 20px 40px -14px color-mix(in srgb, var(--accent) 90%, transparent);
 }
 
+.btn--primary:active {
+  --btn-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.18),
+    0 6px 16px -10px color-mix(in srgb, var(--accent) 80%, transparent);
+}
+
+/* --- Glass: frosted, thin bright edge, for use on photos/dark ---------- */
+
 .btn--glass {
+  --btn-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    0 10px 24px -14px rgba(0, 0, 0, 0.6);
   color: var(--white);
-  background: rgba(255, 255, 255, 0.1);
-  border-color: rgba(255, 255, 255, 0.24);
-  -webkit-backdrop-filter: blur(14px);
-  backdrop-filter: blur(14px);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.16) 0%,
+    rgba(255, 255, 255, 0.06) 100%
+  );
+  border-color: rgba(255, 255, 255, 0.26);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  backdrop-filter: blur(16px) saturate(140%);
 }
 
 .btn--glass:hover {
-  transform: translateY(-2px);
-  background: rgba(255, 255, 255, 0.18);
-  border-color: rgba(255, 255, 255, 0.44);
+  --btn-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3),
+    0 16px 32px -16px rgba(0, 0, 0, 0.7);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.24) 0%,
+    rgba(255, 255, 255, 0.1) 100%
+  );
+  border-color: rgba(255, 255, 255, 0.5);
 }
+
+.btn--glass:hover svg {
+  color: var(--accent);
+}
+
+.btn--glass:active {
+  --btn-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.25);
+}
+
+/* --- Outline: crisp ink border on paper, fills with ink on hover ------- */
+/* Ink rather than accent fill, so a near-white accent (Graphite) still
+   reads on a light section. The arrow picks up the accent. */
 
 .btn--outline {
   color: #101014;
   background: transparent;
-  border-color: rgba(16, 16, 20, 0.18);
+  border-color: rgba(16, 16, 20, 0.26);
 }
 
 .btn--outline:hover {
-  transform: translateY(-2px);
-  border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  --btn-shadow: 0 14px 28px -16px rgba(16, 16, 20, 0.55);
+  color: var(--white);
+  background: #101014;
+  border-color: #101014;
+}
+
+.btn--outline:hover svg {
+  color: var(--accent);
+}
+
+.btn--outline:active {
+  --btn-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.35);
 }
 
 .btn--block {
   width: 100%;
 }
 
+/* Focus: accent ring with an on-accent halo inside it. The two always
+   contrast each other, so one of them shows on any background. */
 .btn:focus-visible {
   outline: 2px solid var(--accent);
-  outline-offset: 3px;
+  outline-offset: 2px;
+  box-shadow: var(--btn-shadow), 0 0 0 2px var(--on-accent);
+}
+
+.btn:disabled,
+.btn[aria-disabled="true"] {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+  transform: none;
+  filter: saturate(0.6);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn,
+  .btn svg {
+    transition: background-color 0.2s ease, border-color 0.2s ease,
+      color 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  .btn:hover,
+  .btn:active,
+  .btn:hover svg {
+    transform: none;
+  }
+
+  .btn--primary::before {
+    display: none;
+  }
 }
 
 /* ===================================
@@ -5305,10 +5405,33 @@ html {
 .btn-accent {
   background-color: var(--accent, #ff6b2c);
   color: var(--on-accent, #0e0e10);
-  transition: background-color 0.2s ease, opacity 0.2s ease;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 1px 2px rgba(0, 0, 0, 0.16);
+  transition: background-color 0.2s ease, opacity 0.2s ease, box-shadow 0.2s ease,
+    transform 0.15s ease;
 }
 .btn-accent:hover {
   background-color: var(--accent-dark, #c74e1b);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2),
+    0 8px 20px -10px color-mix(in srgb, var(--accent, #ff6b2c) 80%, transparent);
+}
+.btn-accent:active {
+  transform: scale(0.98);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.18);
+}
+.btn-accent:focus-visible {
+  outline: 2px solid var(--accent, #ff6b2c);
+  outline-offset: 2px;
+}
+.btn-accent:disabled,
+.btn-accent[aria-disabled="true"] {
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .btn-accent:active {
+    transform: none;
+  }
 }
 
 .text-accent {

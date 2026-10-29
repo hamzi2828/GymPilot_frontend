@@ -4,6 +4,9 @@ import React, { useState } from "react";
 import { newsletterService } from "../../blogs-detail/services/newsletterService";
 import Spinner from "@/components/ui/Spinner";
 import useAsyncAction from "@/components/ui/useAsyncAction";
+import { Mail } from "lucide-react";
+import Reveal from "@/components/site/Reveal";
+import { surfaceClass } from "@/components/site/PageHero";
 
 const Newsletter: React.FC = () => {
   const [email, setEmail] = useState<string>("");
@@ -33,40 +36,50 @@ const Newsletter: React.FC = () => {
   };
 
   return (
-    <section className="py-20 gym-blog-custom-bg-darker text-white">
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-        <div className="gym-blog-glass-effect rounded-2xl p-8 lg:p-12">
-          <h2 className="font-montserrat font-bold text-3xl lg:text-4xl mb-4">
+    <section className={`${surfaceClass} px-4 py-12 sm:px-8 lg:px-20`}>
+      <Reveal className="relative mx-auto max-w-5xl">
+        <div className="relative overflow-hidden rounded-[32px] border border-[color:color-mix(in_srgb,var(--accent)_30%,transparent)] bg-[var(--surface)] px-6 py-12 text-center sm:px-12 lg:py-16">
+          <div
+            className="pointer-events-none absolute -top-40 left-1/2 h-80 w-[120%] -translate-x-1/2 rounded-full"
+            style={{ background: "radial-gradient(ellipse, color-mix(in srgb, var(--accent) 25%, transparent), transparent 65%)" }}
+            aria-hidden="true"
+          />
+          <Mail size={28} className="relative mx-auto text-[var(--accent)]" aria-hidden="true" />
+          <h2 className="relative mt-4 font-['Montserrat'] text-3xl font-extrabold text-white lg:text-4xl">
             Subscribe to our newsletter
           </h2>
-          <p className="text-xl text-gray-300 mb-8 max-w-2xl mx-auto">
+          <p className="relative mx-auto mt-3 max-w-2xl text-lg text-[var(--text-muted)]">
             News and updates from us, by email.
           </p>
-          <form onSubmit={handleSubscribe} className="flex flex-col sm:flex-row gap-4 max-w-md mx-auto">
+          <form onSubmit={handleSubscribe} className="relative mx-auto mt-8 flex max-w-md flex-col gap-3 sm:flex-row">
+            <label htmlFor="blog-newsletter-email" className="sr-only">Email address</label>
             <input
+              id="blog-newsletter-email"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="Enter your email"
               disabled={isLoading}
-              className="flex-1 bg-white/10 border border-white/20 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:border-gym-blog-custom-text-green focus:ring-2 focus:ring-gym-blog-custom-text-green/20"
+              className="min-w-0 flex-1 rounded-full border border-white/15 bg-white/5 px-5 py-3 text-white placeholder-white/40 focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[color:color-mix(in_srgb,var(--accent)_30%,transparent)]"
               required
             />
             <button
               type="submit"
               disabled={isLoading || !email.trim()}
               aria-busy={isLoading || undefined}
-              className="gym-blog-custom-gradient-green inline-flex items-center justify-center gap-2 text-black font-bold px-6 py-3 rounded-lg hover:scale-105 transition-all duration-300 whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+              className="btn btn--primary"
             >
-              {isLoading && <Spinner />}
-              {isLoading ? "Subscribing..." : "Subscribe Now"}
+              <span className="inline-flex items-center gap-2">
+                {isLoading && <Spinner />}
+                {isLoading ? "Subscribing..." : "Subscribe Now"}
+              </span>
             </button>
           </form>
           {notice && (
             <p
               role="status"
               aria-live="polite"
-              className={`max-w-md mx-auto mt-4 text-sm p-3 rounded-lg border ${
+              className={`relative mx-auto mt-4 max-w-md rounded-xl border p-3 text-sm ${
                 notice.tone === "ok"
                   ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30"
                   : "bg-red-500/15 text-red-300 border-red-500/30"
@@ -75,11 +88,9 @@ const Newsletter: React.FC = () => {
               {notice.text}
             </p>
           )}
-          <p className="text-sm text-gray-400 mt-4">
-            No spam. Unsubscribe anytime.
-          </p>
+          <p className="relative mt-4 text-sm text-[var(--text-muted)]">No spam. Unsubscribe anytime.</p>
         </div>
-      </div>
+      </Reveal>
     </section>
   );
 };

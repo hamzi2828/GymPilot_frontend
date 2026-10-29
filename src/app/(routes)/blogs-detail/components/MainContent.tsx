@@ -16,7 +16,7 @@ const MainContent: React.FC<MainContentProps> = ({
   return (
     <div className="max-w-4xl" >
       <div
-        className="prose prose-lg max-w-none mb-12"
+        className="prose prose-lg prose-invert max-w-none mb-12 prose-headings:font-extrabold prose-headings:tracking-tight prose-a:text-[var(--accent)] prose-strong:text-white prose-img:rounded-3xl prose-blockquote:border-l-[var(--accent)]"
         dangerouslySetInnerHTML={{ __html: sanitizeHtml(content) }}
       />
     </div>

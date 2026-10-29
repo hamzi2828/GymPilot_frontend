@@ -13,7 +13,7 @@ import {
 // gym-managed one.
 const Blogs: React.FC = () => {
   return (
-    <main className="pt-14">
+    <main className="bg-[var(--base)]">
       <HeroSection />
       <FeaturedStories />
       <Newsletter />

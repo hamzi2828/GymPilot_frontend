@@ -100,7 +100,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     <aside className="space-y-8">
       {/* Author Info -- only when the post has an author on file */}
       {author && (
-      <div className="gym-blog-custom-bg-darker rounded-2xl p-6">
+      <div className="rounded-3xl border border-[var(--border-subtle)] bg-[var(--surface)] p-6">
         <h3 className="font-montserrat font-bold text-xl mb-4 text-white">
           About the Author
         </h3>
@@ -110,7 +110,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               src={author.avatarUrl || author.avatar || "/images/default-avatar.svg"}
               alt={author.name}
               fill
-              className="rounded-full object-cover border-2 border-green-500"
+              className="rounded-full object-cover border-2 border-[var(--accent)]"
             />
           </div>
           <h4 className="font-bold text-lg text-white mb-2">
@@ -120,14 +120,14 @@ const Sidebar: React.FC<SidebarProps> = ({
           {/* Author Stats */}
           <div className="flex gap-4 mb-3">
             <div className="text-center">
-              <div className="font-bold text-green-500">
+              <div className="font-bold text-[var(--accent)]">
                 {author.blogCount || 0}
               </div>
               <div className="text-xs text-gray-400">Articles</div>
             </div>
             {author.createdAt && (
               <div className="text-center">
-                <div className="font-bold text-green-500">
+                <div className="font-bold text-[var(--accent)]">
                   {new Date(author.createdAt).getFullYear()}
                 </div>
                 <div className="text-xs text-gray-400">Joined</div>
@@ -145,9 +145,9 @@ const Sidebar: React.FC<SidebarProps> = ({
           {author.email && (
             <a
               href={`mailto:${author.email}`}
-              className="w-full mb-4 gym-blog-custom-bg-green text-black py-2 px-4 rounded-lg font-semibold hover:scale-105 transition-all duration-300 text-sm"
+              className="btn btn--primary btn--block mb-4"
             >
-              Contact Author
+              <span>Contact Author</span>
             </a>
           )}
         </div>
@@ -158,12 +158,13 @@ const Sidebar: React.FC<SidebarProps> = ({
           (blog, homepage, sidebar, footer) or the subscribe fails. */}
       <Newsletter
         source="sidebar"
+        stacked
         title="Stay Updated"
         description="Get the latest fitness tips and workout routines delivered to your inbox."
       />
 
       {/* Related Articles */}
-      <div className="gym-blog-custom-bg-darker rounded-2xl p-6">
+      <div className="rounded-3xl border border-[var(--border-subtle)] bg-[var(--surface)] p-6">
         <h3 className="font-montserrat font-bold text-xl mb-4 text-white">
           {categoryName ? `More from ${categoryName}` : 'Related Articles'}
         </h3>
@@ -171,7 +172,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         {/* Loading State */}
         {isLoadingRelated && (
           <div className="flex justify-center py-4">
-            <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-green-500"></div>
+            <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-[var(--accent)]"></div>
           </div>
         )}
 
@@ -180,7 +181,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           <div className="space-y-4">
             {displayRelatedArticles.slice(0, 6).map((article) => (
               <Link href={`/blogs-detail?slug=${article.slug}`} key={article.id} className="block group">
-                <article className="flex gap-4 p-3 rounded-lg hover:gym-blog-custom-bg-dark transition-colors">
+                <article className="flex gap-4 p-3 rounded-lg hover:bg-white/5 transition-colors">
                   <div className="relative w-16 h-16 flex-shrink-0">
                     <Image
                       src={article.thumbnail}
@@ -190,7 +191,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                     />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <h4 className="font-semibold text-sm text-white mb-1 line-clamp-2 group-hover:gym-blog-custom-text-green transition-colors">
+                    <h4 className="font-semibold text-sm text-white mb-1 line-clamp-2 group-hover:text-[var(--accent)] transition-colors">
                       {article.title}
                     </h4>
                     <div className="flex items-center gap-3 text-xs text-gray-400">
@@ -213,18 +214,18 @@ const Sidebar: React.FC<SidebarProps> = ({
       </div>
 
       {/* Quick Actions */}
-      <div className="gym-blog-custom-bg-darker rounded-2xl p-6">
+      <div className="rounded-3xl border border-[var(--border-subtle)] bg-[var(--surface)] p-6">
         <h3 className="font-montserrat font-bold text-xl mb-4 text-white">
           Quick Actions
         </h3>
         <div className="space-y-3">
-          <button type="button" onClick={shareArticle} className="w-full flex items-center justify-center gap-2 py-3 border border-gray-600 text-gray-300 rounded-lg hover:border-gym-green hover:text-gym-green transition-colors">
-            <i className="fas fa-share-alt"></i>
-            {shareNote || "Share Article"}
+          <button type="button" onClick={shareArticle} className="btn btn--glass btn--block">
+            <i className="fas fa-share-alt" aria-hidden="true"></i>
+            <span>{shareNote || "Share Article"}</span>
           </button>
-          <button type="button" onClick={() => window.print()} className="w-full flex items-center justify-center gap-2 py-3 border border-gray-600 text-gray-300 rounded-lg hover:border-gym-green hover:text-gym-green transition-colors">
-            <i className="fas fa-print"></i>
-            Print Article
+          <button type="button" onClick={() => window.print()} className="btn btn--glass btn--block">
+            <i className="fas fa-print" aria-hidden="true"></i>
+            <span>Print Article</span>
           </button>
         </div>
       </div>

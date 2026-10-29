@@ -5,6 +5,7 @@ import { ArrowRight } from "lucide-react";
 import { useSiteSettings } from "@/components/ThemeProvider";
 import { heroService } from "../../main/services/heroService";
 import { resolveMediaUrl } from "../../main/services/homeService";
+import PageHero, { type Crumb } from "@/components/site/PageHero";
 
 /**
  * The banner of the About page, and of the classes and trainers pages. It
@@ -12,7 +13,7 @@ import { resolveMediaUrl } from "../../main/services/homeService";
  * The backdrop is the gym's own first banner photo when it has one, and the
  * plain dark plate when it has not.
  */
-const HeroAbout: React.FC<{ title?: string }> = ({ title = "About us" }) => {
+const HeroAbout: React.FC<{ title?: string; lead?: string; parent?: Crumb; image?: string }> = ({ title = "About us", lead, parent, image }) => {
   const { siteName } = useSiteSettings();
   const [bgImage, setBgImage] = useState("");
 
@@ -36,37 +37,26 @@ const HeroAbout: React.FC<{ title?: string }> = ({ title = "About us" }) => {
   }, []);
 
   return (
-    <section id="hero" className="hero hero--compact" aria-label={`${title} banner`}>
-      <div className="hero__stage">
-        <div className="hero__slide is-active">
-          {bgImage && <div className="hero__media" style={{ backgroundImage: `url('${bgImage}')` }} aria-hidden="true" />}
-        </div>
-        <div className="hero__scrim" aria-hidden="true" />
-        <div className="hero__vignette" aria-hidden="true" />
-      </div>
-
-      <div className="hero__inner">
-        <div className="hero__content">
-          {siteName && (
-            <span className="hero__eyebrow">
-              <span className="hero__eyebrow-dot" aria-hidden="true" />
-              {siteName}
-            </span>
-          )}
-          <h1 className="hero__title">{title}</h1>
-          <div className="hero__actions">
-            <Link href="/contact-us" className="btn btn--primary btn--lg">
-              <span>Contact Us</span>
-              <ArrowRight size={17} strokeWidth={2.4} aria-hidden="true" />
-            </Link>
-            <Link href="/packages" className="btn btn--glass btn--lg">
-              <span>See Memberships</span>
-              <ArrowRight size={17} strokeWidth={2.2} aria-hidden="true" />
-            </Link>
-          </div>
-        </div>
-      </div>
-    </section>
+    <PageHero
+      title={title}
+      eyebrow={siteName || undefined}
+      image={image || bgImage || undefined}
+      lead={lead}
+      crumbs={[{ label: "Home", href: "/" }, ...(parent ? [parent] : []), { label: title }]}
+      tall
+      actions={
+        <>
+          <Link href="/contact-us" className="btn btn--primary btn--lg">
+            <span>Contact Us</span>
+            <ArrowRight size={17} strokeWidth={2.4} aria-hidden="true" />
+          </Link>
+          <Link href="/packages" className="btn btn--glass btn--lg">
+            <span>See Memberships</span>
+            <ArrowRight size={17} strokeWidth={2.2} aria-hidden="true" />
+          </Link>
+        </>
+      }
+    />
   );
 };
 

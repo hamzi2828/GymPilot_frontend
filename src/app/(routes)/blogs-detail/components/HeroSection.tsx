@@ -1,8 +1,9 @@
 "use client";
 
 import React from "react";
-import Link from "next/link";
 import Image from "next/image";
+import { ArrowDown, CalendarDays, Clock, Eye } from "lucide-react";
+import PageHero from "@/components/site/PageHero";
 
 interface HeroSectionProps {
   title: string;
@@ -31,102 +32,49 @@ const HeroSection: React.FC<HeroSectionProps> = ({
   views = 0,
   category
 }) => {
+  const meta = "inline-flex items-center gap-2";
   return (
-    <section className="relative min-h-screen flex items-center justify-center overflow-hidden">
-      <div className="absolute inset-0">
-        {backgroundImage && (
-          <Image
-            src={backgroundImage}
-            alt={title}
-            fill
-            className="object-cover"
-            priority
-          />
-        )}
-        <div className="absolute inset-0 bg-black bg-opacity-60"></div>
-      </div>
-
-      <div className="relative z-10 text-center text-white px-4 sm:px-6 lg:px-8 max-w-4xl mx-auto">
-        <nav className="mb-8">
-          <ol className="flex items-center justify-center space-x-2 text-sm">
-            <li>
-              <Link href="/" className="text-gray-300 hover:text-white transition-colors">
-                Home
-              </Link>
-            </li>
-            <li className="text-gray-400">/</li>
-            <li>
-              <Link href="/blogs" className="text-gray-300 hover:text-white transition-colors">
-                Blogs
-              </Link>
-            </li>
-            <li className="text-gray-400">/</li>
-            <li className="text-white">Article</li>
-          </ol>
-        </nav>
-
-        {category && (
-          <div className="mb-6">
-            <span className="gym-blog-custom-bg-green text-black px-4 py-2 rounded-full text-sm font-bold uppercase">
-              {category.name}
-            </span>
-          </div>
-        )}
-
-        <h1 className="font-montserrat font-bold text-4xl sm:text-5xl lg:text-6xl mb-8 leading-tight">
-          {title}
-        </h1>
-
-        <div className="flex flex-wrap items-center justify-center gap-6 text-gray-300">
+    <PageHero
+      title={title}
+      eyebrow={category?.name}
+      image={backgroundImage}
+      crumbs={[{ label: "Home", href: "/" }, { label: "Blog", href: "/blogs" }, { label: "Article" }]}
+      tall
+      lead={
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-3 text-[15px] text-white/75">
           {author && (
-            <div className="flex items-center gap-3">
+            <span className="inline-flex items-center gap-3">
               {author.avatar && (
-                <Image
-                  src={author.avatar}
-                  alt={author.name}
-                  width={40}
-                  height={40}
-                  className="rounded-full"
-                />
+                <Image src={author.avatar} alt="" width={36} height={36} className="h-9 w-9 rounded-full object-cover ring-2 ring-[var(--accent)]" />
               )}
-              <span className="font-medium">By {author.name}</span>
-            </div>
+              <span className="font-medium text-white">By {author.name}</span>
+            </span>
           )}
-
           {readingTime && (
-            <div className="flex items-center gap-2">
-              <i className="far fa-clock gym-blog-custom-text-green"></i>
-              <span>{readingTime}</span>
-            </div>
+            <span className={meta}>
+              <Clock size={16} className="text-[var(--accent)]" aria-hidden="true" />
+              {readingTime}
+            </span>
           )}
-
           {publishDate && (
-            <div className="flex items-center gap-2">
-              <i className="far fa-calendar gym-blog-custom-text-green"></i>
-              <span>{publishDate}</span>
-            </div>
+            <span className={meta}>
+              <CalendarDays size={16} className="text-[var(--accent)]" aria-hidden="true" />
+              {publishDate}
+            </span>
           )}
-
-          <div className="flex items-center gap-2">
-            <i className="far fa-eye gym-blog-custom-text-green"></i>
-            <span>{views.toLocaleString()} views</span>
-          </div>
+          <span className={meta}>
+            <Eye size={16} className="text-[var(--accent)]" aria-hidden="true" />
+            {views.toLocaleString()} views
+          </span>
         </div>
-
-        <div className="mt-12">
-          <button
-            onClick={() => window.scrollTo({ top: window.innerHeight, behavior: 'smooth' })}
-            className="gym-blog-custom-bg-green text-black px-8 py-4 rounded-full font-bold hover:scale-105 transition-all duration-300 inline-flex items-center gap-2"
-          >
-            Start Reading <i className="fas fa-arrow-down"></i>
-          </button>
-        </div>
-      </div>
-
-      <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 animate-bounce">
-        <i className="fas fa-chevron-down text-white text-2xl opacity-70"></i>
-      </div>
-    </section>
+      }
+      actions={
+        <a href="#article" className="btn btn--primary btn--lg">
+          <span>Start Reading</span>
+          <ArrowDown size={17} strokeWidth={2.4} aria-hidden="true" />
+        </a>
+      }
+    />
   );
 };
 

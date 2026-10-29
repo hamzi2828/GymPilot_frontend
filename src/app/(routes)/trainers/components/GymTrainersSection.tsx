@@ -3,12 +3,23 @@ import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { trainerService, Trainer } from "../../main/services/trainerService";
+import TiltCard from "@/components/site/TiltCard";
+import Reveal from "@/components/site/Reveal";
+import { SectionHeading, surfaceClass } from "@/components/site/PageHero";
+
+const SOCIALS = [
+  ["twitter", "fab fa-x-twitter", "X"],
+  ["instagram", "fab fa-instagram", "Instagram"],
+  ["facebook", "fab fa-facebook", "Facebook"],
+  ["youtube", "fab fa-youtube", "YouTube"],
+] as const;
 
 interface GymTrainersSectionProps {
   onTrainerClick?: (trainer: Trainer) => void;
+  selectedId?: string;
 }
 
-const GymTrainersSection: React.FC<GymTrainersSectionProps> = ({ onTrainerClick }) => {
+const GymTrainersSection: React.FC<GymTrainersSectionProps> = ({ onTrainerClick, selectedId }) => {
   const [trainers, setTrainers] = useState<Trainer[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -37,142 +48,96 @@ const GymTrainersSection: React.FC<GymTrainersSectionProps> = ({ onTrainerClick 
     fetchTrainers();
   }, [fetchTrainers]);
 
-  const handleTrainerClick = (trainer: Trainer, e: React.MouseEvent) => {
+  const handleTrainerClick = (trainer: Trainer, e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
     if (onTrainerClick) {
       onTrainerClick(trainer);
-      // Scroll to TrainerDetail section
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      // Bring the profile above into view
+      document.getElementById("trainer-detail")?.scrollIntoView({ behavior: "smooth", block: "start" });
     }
   };
 
   return (
-    <section className="py-16 lg:py-20 px-4 sm:px-8 lg:px-20">
-      <div className="mx-auto">
-        {/* Header Section */}
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between mb-12 lg:mb-16 gap-6">
-          <header className="flex-1">
-            <div className="flex items-center gap-2 mb-4">
-              <div className="w-2 h-2 rounded-full gymfolio7-green-dot"></div>
-              <span className="gymfolio7-font-sora font-semibold text-sm gymfolio7-gray-text">
-                Our Trainers
-              </span>
-            </div>
+    <section className={`${surfaceClass} py-20 lg:py-28 px-4 sm:px-8 lg:px-20`} aria-labelledby="trainers-grid-title">
+      <div className="relative mx-auto max-w-[1400px]">
+        <SectionHeading id="trainers-grid-title" eyebrow="Our trainers" title="Meet the team" />
 
-            <h2 className="gymfolio7-font-montserrat font-bold text-2xl md:text-3xl lg:text-4xl leading-tight tracking-tight uppercase opacity-92 text-black mb-0">
-              Meet the team
-            </h2>
-          </header>
-        </div>
-
-        {/* Loading State */}
         {loading && (
-          <div className="flex justify-center items-center py-20">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600"></div>
-          </div>
-        )}
-
-        {/* Error State */}
-        {error && !loading && (
-          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded text-center">
-            {error}
-          </div>
-        )}
-
-        {/* Empty State */}
-        {!loading && !error && trainers.length === 0 && (
-          <div className="text-center py-20">
-            <p className="gymfolio7-dark-gray-text text-lg">No trainers available at the moment.</p>
-          </div>
-        )}
-
-        {/* Trainers Cards Grid */}
-        {!loading && !error && trainers.length > 0 && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-10">
-            {trainers.map((trainer) => (
-              <div
-                key={trainer._id}
-                className="block group cursor-pointer"
-                onClick={(e) => handleTrainerClick(trainer, e)}
-              >
-                <article className="gymfolio7-trainer-card rounded-lg overflow-hidden transition-transform duration-300 group-hover:-translate-y-1 group-hover:shadow-lg">
-                  <div className="relative overflow-hidden h-64">
-                    <Image
-                      src={trainer.image || '/images/default-avatar.svg'}
-                      alt={`${trainer.name} - ${trainer.role}`}
-                      width={400}
-                      height={256}
-                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                      priority={false}
-                    />
-                    <div className="gymfolio7-trainer-card-overlay absolute inset-0"></div>
-                  </div>
-
-                  <div className="p-4 text-center">
-                    <div className="mb-4">
-                      <h3 className="gymfolio7-green-text gymfolio7-font-montserrat font-bold text-base leading-6 mb-1">
-                        {trainer.name}
-                      </h3>
-                      <p className="gymfolio7-dark-gray-text gymfolio7-font-inter text-sm leading-5">
-                        {trainer.role}
-                      </p>
-                    </div>
-
-                    <div className="flex justify-center gap-3">
-                      {trainer.social?.twitter && (
-                        <Link
-                          href={trainerService.formatSocialUrl(trainer.social.twitter, 'twitter')}
-                          className="gymfolio7-social-icon hover:scale-110 focus:scale-110 focus:outline-none"
-                          aria-label={`Follow ${trainer.name} on Twitter`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <i className="fab fa-x-twitter text-lg"></i>
-                        </Link>
-                      )}
-                      {trainer.social?.instagram && (
-                        <Link
-                          href={trainerService.formatSocialUrl(trainer.social.instagram, 'instagram')}
-                          className="gymfolio7-social-icon hover:scale-110 focus:scale-110 focus:outline-none"
-                          aria-label={`Follow ${trainer.name} on Instagram`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <i className="fab fa-instagram text-lg"></i>
-                        </Link>
-                      )}
-                      {trainer.social?.facebook && (
-                        <Link
-                          href={trainerService.formatSocialUrl(trainer.social.facebook, 'facebook')}
-                          className="gymfolio7-social-icon hover:scale-110 focus:scale-110 focus:outline-none"
-                          aria-label={`Follow ${trainer.name} on Facebook`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <i className="fab fa-facebook text-lg"></i>
-                        </Link>
-                      )}
-                      {trainer.social?.youtube && (
-                        <Link
-                          href={trainerService.formatSocialUrl(trainer.social.youtube, 'youtube')}
-                          className="gymfolio7-social-icon hover:scale-110 focus:scale-110 focus:outline-none"
-                          aria-label={`Follow ${trainer.name} on YouTube`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <i className="fab fa-youtube text-lg"></i>
-                        </Link>
-                      )}
-                    </div>
-                  </div>
-                </article>
-              </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6" aria-busy="true" aria-label="Loading trainers">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="h-[420px] rounded-3xl bg-[var(--surface)] animate-pulse" />
             ))}
           </div>
+        )}
+
+        {error && !loading && (
+          <div className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-center text-red-200">{error}</div>
+        )}
+
+        {!loading && !error && trainers.length === 0 && (
+          <p className="py-16 text-center text-lg text-[var(--text-muted)]">No trainers available at the moment.</p>
+        )}
+
+        {!loading && !error && trainers.length > 0 && (
+          <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {trainers.map((trainer, idx) => {
+              const active = trainer._id === selectedId;
+              const links = SOCIALS.filter(([key]) => !!trainer.social?.[key]);
+              return (
+                <Reveal as="li" key={trainer._id} delay={(idx % 4) * 0.08}>
+                  <TiltCard
+                    className={`group h-full overflow-hidden rounded-3xl border bg-[var(--surface)] transition-colors duration-300 ${
+                      active ? "border-[var(--accent)]" : "border-[var(--border-subtle)]"
+                    }`}
+                  >
+                    <button
+                      type="button"
+                      onClick={(e) => handleTrainerClick(trainer, e)}
+                      aria-pressed={active}
+                      aria-label={`Show ${trainer.name}'s profile`}
+                      className="block w-full text-left focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--accent)] rounded-3xl"
+                    >
+                      <div className="relative h-80 overflow-hidden">
+                        <Image
+                          src={trainer.image || "/images/default-avatar.svg"}
+                          alt={`${trainer.name}, ${trainer.role}`}
+                          fill
+                          sizes="(min-width:1024px) 25vw, (min-width:640px) 50vw, 100vw"
+                          className="object-cover object-top transition-transform duration-700 group-hover:scale-105"
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-t from-[var(--surface)] via-transparent to-transparent" aria-hidden="true" />
+                        {active && (
+                          <span className="absolute left-4 top-4 rounded-full bg-[var(--accent)] px-3 py-1 text-xs font-bold uppercase tracking-wider text-[var(--on-accent)]">
+                            Viewing
+                          </span>
+                        )}
+                      </div>
+                      <div className="px-5 pt-1 pb-4">
+                        <h3 className="font-['Montserrat'] text-lg font-extrabold text-white">{trainer.name}</h3>
+                        <p className="mt-0.5 text-sm text-[var(--text-muted)]">{trainer.role}</p>
+                      </div>
+                    </button>
+                    {links.length > 0 && (
+                      <div className="flex gap-2 px-5 pb-5">
+                        {links.map(([key, icon, label]) => (
+                          <Link
+                            key={key}
+                            href={trainerService.formatSocialUrl(trainer.social![key] as string, key)}
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[var(--border-subtle)] text-white/70 transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
+                            aria-label={`Follow ${trainer.name} on ${label}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            <i className={`${icon} text-sm`} aria-hidden="true" />
+                          </Link>
+                        ))}
+                      </div>
+                    )}
+                  </TiltCard>
+                </Reveal>
+              );
+            })}
+          </ul>
         )}
       </div>
     </section>

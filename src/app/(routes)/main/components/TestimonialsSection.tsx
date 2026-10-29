@@ -10,6 +10,7 @@ import {
   resolveMediaUrl,
 } from "../services/homeService";
 import { SectionHeading, Reveal } from "./SectionHeading";
+import { Depth, Tilt3D } from "./motion3d";
 
 function Stars({ rating }: { rating: number }) {
   const full = Math.max(0, Math.min(5, Math.round(rating)));
@@ -95,37 +96,39 @@ const TestimonialsSection = ({
             ))}
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+          <div className="flex flex-col md:grid md:grid-cols-2 xl:grid-cols-3 gap-6">
             {testimonials.map((t, idx) => {
               const photo = resolveMediaUrl(t.imageUrl);
               return (
-              <Reveal key={t._id} delay={idx * 90}>
-                <figure className="home-testimonial-card h-full">
-                  <div className="home-testimonial-quote-icon" aria-hidden="true">
-                    <i className="fas fa-quote-left"></i>
-                  </div>
-                  <Stars rating={t.rating} />
-                  <blockquote className="home-testimonial-quote">{t.quote}</blockquote>
-                  <figcaption className="home-testimonial-footer">
-                    {photo ? (
-                      <Image
-                        src={photo}
-                        alt={t.name}
-                        width={48}
-                        height={48}
-                        className="home-testimonial-avatar object-cover"
-                        unoptimized
-                      />
-                    ) : (
-                      <InitialsAvatar name={t.name} />
-                    )}
-                    <div>
-                      <p className="home-testimonial-name">{t.name}</p>
-                      {t.role && <p className="home-testimonial-role">{t.role}</p>}
+              <Depth key={t._id} index={idx % 3}>
+                <Tilt3D max={5} radius={20}>
+                  <figure className="home-testimonial-card h-full">
+                    <div className="home-testimonial-quote-icon" aria-hidden="true">
+                      <i className="fas fa-quote-left"></i>
                     </div>
-                  </figcaption>
-                </figure>
-              </Reveal>
+                    <Stars rating={t.rating} />
+                    <blockquote className="home-testimonial-quote">{t.quote}</blockquote>
+                    <figcaption className="home-testimonial-footer">
+                      {photo ? (
+                        <Image
+                          src={photo}
+                          alt={t.name}
+                          width={48}
+                          height={48}
+                          className="home-testimonial-avatar object-cover"
+                          unoptimized
+                        />
+                      ) : (
+                        <InitialsAvatar name={t.name} />
+                      )}
+                      <div>
+                        <p className="home-testimonial-name">{t.name}</p>
+                        {t.role && <p className="home-testimonial-role">{t.role}</p>}
+                      </div>
+                    </figcaption>
+                  </figure>
+                </Tilt3D>
+              </Depth>
               );
             })}
           </div>

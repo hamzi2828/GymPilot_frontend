@@ -1,32 +1,46 @@
 "use client";
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ArrowRight, ChevronLeft, ChevronRight, Clock } from "lucide-react";
 import { gymClassService, GymClass } from "../services/gymClassService";
 import { DEFAULT_CLASSES, SectionHeaderContent } from "../services/homeService";
 import { SectionHeading, Reveal } from "./SectionHeading";
+import { Tilt3D, prefersReducedMotion } from "./motion3d";
+import s from "./home3d.module.css";
 
-/** Gap between cards, in px. Mirrors `--card-gap` in the stylesheet. */
-const CARD_GAP = 24;
-/** Ideal card width — the number of visible cards is derived from it. */
-const IDEAL_CARD = 320;
 const AUTO_INTERVAL = 5000;
-const SWIPE_THRESHOLD = 50;
+const SWIPE_THRESHOLD = 40;
+/** Cards further than this from the centre are hidden. */
+const VISIBLE_RANGE = 2;
+
+/** Signed distance of card `i` from the active one, wrapping round the loop. */
+function offsetOf(i: number, active: number, n: number): number {
+  let d = i - active;
+  if (n > 2) {
+    const half = Math.floor(n / 2);
+    if (d > half) d -= n;
+    if (d < -half) d += n;
+    // Even counts: keep the opposite card on one side only.
+    if (n % 2 === 0 && d === half) d = -half;
+  }
+  return d;
+}
+
+/** "45 min · Beginner" from whatever the class has filled in. */
+function metaLine(c: GymClass): string {
+  return [c.duration ? `${c.duration} min` : "", c.difficulty || ""].filter(Boolean).join(" · ");
+}
 
 const GymFolioClasses = ({ content = DEFAULT_CLASSES }: { content?: SectionHeaderContent }) => {
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [cardsToShow, setCardsToShow] = useState(3);
+  const [active, setActive] = useState(0);
   const [classesData, setClassesData] = useState<GymClass[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [paused, setPaused] = useState(false);
-  const viewportRef = useRef<HTMLDivElement>(null);
-  const touchStartX = useRef<number | null>(null);
-  const touchLastX = useRef<number | null>(null);
+  const dragStart = useRef<number | null>(null);
+  const dragged = useRef(false);
 
-  const totalCards = classesData.length;
-  const maxIndex = Math.max(0, totalCards - cardsToShow);
-  const canSlide = totalCards > cardsToShow;
+  const total = classesData.length;
 
   // Fetch classes on component mount
   useEffect(() => {
@@ -52,70 +66,47 @@ const GymFolioClasses = ({ content = DEFAULT_CLASSES }: { content?: SectionHeade
     };
   }, []);
 
-  /* How many cards fit is measured from the track itself rather than read off a
-     breakpoint table. The old fixed 302px card left a band of dead space on
-     wide screens once the carousel reached its last index. */
+  const goTo = useCallback(
+    (i: number) => {
+      if (!total) return;
+      setActive(((i % total) + total) % total);
+    },
+    [total]
+  );
+  const next = useCallback(() => goTo(active + 1), [active, goTo]);
+  const prev = useCallback(() => goTo(active - 1), [active, goTo]);
+
+  // Auto-advance, paused on hover/focus and for reduced motion.
   useEffect(() => {
-    const el = viewportRef.current;
-    if (!el) return;
-
-    const measure = () => {
-      const width = el.clientWidth;
-      if (!width) return;
-      const fit = Math.floor((width + CARD_GAP) / (IDEAL_CARD + CARD_GAP));
-      setCardsToShow(Math.max(1, Math.min(4, fit)));
-    };
-
-    measure();
-    if (typeof ResizeObserver === "undefined") {
-      window.addEventListener("resize", measure);
-      return () => window.removeEventListener("resize", measure);
-    }
-    const observer = new ResizeObserver(measure);
-    observer.observe(el);
-    return () => observer.disconnect();
-    // The track only exists once the fetch resolves, so the observer has to be
-    // attached again when it mounts — an empty dep list measured a null ref.
-  }, [loading, classesData.length]);
-
-  // Never leave the track scrolled past its last full page.
-  useEffect(() => {
-    setCurrentIndex((i) => Math.min(i, maxIndex));
-  }, [maxIndex]);
-
-  const next = useCallback(() => {
-    setCurrentIndex((i) => (i >= maxIndex ? 0 : i + 1));
-  }, [maxIndex]);
-
-  const prev = useCallback(() => {
-    setCurrentIndex((i) => (i <= 0 ? maxIndex : i - 1));
-  }, [maxIndex]);
-
-  useEffect(() => {
-    if (paused || !canSlide) return;
-    const timer = setInterval(next, AUTO_INTERVAL);
+    if (paused || total < 2 || prefersReducedMotion()) return;
+    const timer = setInterval(() => setActive((i) => (i + 1) % total), AUTO_INTERVAL);
     return () => clearInterval(timer);
-  }, [paused, canSlide, next, currentIndex]);
+  }, [paused, total, active]);
 
-  // Touch handlers
-  const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
-    touchStartX.current = e.touches[0].clientX;
-    touchLastX.current = e.touches[0].clientX;
+  // Swipe / drag with any pointer.
+  const onPointerDown = (e: React.PointerEvent) => {
+    dragStart.current = e.clientX;
+    dragged.current = false;
   };
-
-  const handleTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
-    touchLastX.current = e.touches[0].clientX;
-  };
-
-  const handleTouchEnd = () => {
-    if (touchStartX.current === null || touchLastX.current === null) return;
-    const diff = touchStartX.current - touchLastX.current;
+  const onPointerUp = (e: React.PointerEvent) => {
+    if (dragStart.current === null) return;
+    const diff = dragStart.current - e.clientX;
+    dragStart.current = null;
     if (Math.abs(diff) > SWIPE_THRESHOLD) {
+      dragged.current = true;
       if (diff > 0) next();
       else prev();
     }
-    touchStartX.current = null;
-    touchLastX.current = null;
+  };
+
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "ArrowLeft") {
+      e.preventDefault();
+      prev();
+    } else if (e.key === "ArrowRight") {
+      e.preventDefault();
+      next();
+    }
   };
 
   // No classes on the gym's books yet: the section is left out rather than
@@ -126,117 +117,134 @@ const GymFolioClasses = ({ content = DEFAULT_CLASSES }: { content?: SectionHeade
     <section className="section surface-dark home-dark-section relative overflow-hidden">
       <span className="section-seam section-seam--top" aria-hidden="true" />
       <div className="mx-auto">
-        {/* Header Section */}
         <Reveal>
           <SectionHeading
             dark
             badge={content.badge}
             heading={content.heading}
             description={content.description}
-            className="mb-16"
+            className="mb-12 lg:mb-16"
           />
         </Reveal>
 
-        {/* Loading State */}
         {loading && (
           <div className="flex justify-center items-center py-20">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[var(--accent)]"></div>
           </div>
         )}
 
-        {/* Error State */}
         {error && !loading && (
           <div className="bg-red-900/20 border border-red-500/50 text-red-300 px-4 py-3 rounded-xl text-center">
             {error}
           </div>
         )}
 
-        {/* Carousel */}
-        {!loading && !error && classesData.length > 0 && (
-          <Reveal>
+        {/* 3D coverflow: the active class faces the visitor, its neighbours
+            turn away into depth. Arrows, dots, swipe and arrow keys move it. */}
+        {!loading && !error && total > 0 && (
+          <div
+            className={s.flow}
+            role="region"
+            aria-roledescription="carousel"
+            aria-label="Classes"
+            tabIndex={0}
+            onKeyDown={onKeyDown}
+            onMouseEnter={() => setPaused(true)}
+            onMouseLeave={() => setPaused(false)}
+            onFocus={() => setPaused(true)}
+            onBlur={() => setPaused(false)}
+          >
             <div
-              className="gymfolio4-carousel"
-              onMouseEnter={() => setPaused(true)}
-              onMouseLeave={() => setPaused(false)}
+              className={s.flowStage}
+              onPointerDown={onPointerDown}
+              onPointerUp={onPointerUp}
+              onPointerCancel={() => (dragStart.current = null)}
             >
-              <div
-                ref={viewportRef}
-                className="gymfolio4-carousel-container"
-                style={
-                  {
-                    "--cards": cardsToShow,
-                    "--index": currentIndex,
-                    "--card-gap": `${CARD_GAP}px`,
-                  } as React.CSSProperties
-                }
-              >
-                <div
-                  className="gymfolio4-carousel-track"
-                  onTouchStart={handleTouchStart}
-                  onTouchMove={handleTouchMove}
-                  onTouchEnd={handleTouchEnd}
-                >
-                  {classesData.map((classItem) => (
-                    <Link
-                      key={classItem._id}
-                      href={`/classdetail?id=${classItem._id}`}
-                      className="gymfolio4-carousel-card group"
-                    >
-                      <div
-                        className="gymfolio4-card-image"
-                        style={{
-                          backgroundImage: `url('${
-                            classItem.thumbnail || "/images/class-placeholder.svg"
-                          }')`,
+              {classesData.map((c, i) => {
+                const d = offsetOf(i, active, total);
+                const ad = Math.abs(d);
+                const isActive = d === 0;
+                const hidden = ad > VISIBLE_RANGE;
+                const meta = metaLine(c);
+                const blurb = c.shortDescription || "";
+                return (
+                  <div
+                    key={c._id}
+                    className={`${s.flowCard} ${isActive ? s.active : ""} ${hidden ? s.hidden : ""}`}
+                    style={{ "--d": d, "--ad": ad, zIndex: 20 - ad } as React.CSSProperties}
+                    aria-hidden={!isActive}
+                  >
+                    <Tilt3D disabled={!isActive} max={7} radius={22}>
+                      <Link
+                        href={`/classdetail?id=${c._id}`}
+                        className={s.flowLink}
+                        tabIndex={isActive ? 0 : -1}
+                        draggable={false}
+                        aria-label={`${c.name}${meta ? `, ${meta}` : ""}`}
+                        onClick={(e) => {
+                          // A drag, or a tap on a side card, only moves the carousel.
+                          if (dragged.current || !isActive) {
+                            e.preventDefault();
+                            dragged.current = false;
+                            if (!isActive) goTo(i);
+                          }
                         }}
-                      ></div>
-                      <div className="gymfolio4-card-overlay">
-                        <h3 className="gymfolio4-card-title">{classItem.name}</h3>
-                        <span className="gymfolio4-plus-icon" aria-hidden="true">
-                          <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-                            <path
-                              d="M6 12H18"
-                              stroke="currentColor"
-                              strokeWidth="1.8"
-                              strokeLinecap="round"
-                            />
-                            <path
-                              d="M12 18V6"
-                              stroke="currentColor"
-                              strokeWidth="1.8"
-                              strokeLinecap="round"
-                            />
-                          </svg>
-                        </span>
-                      </div>
-                    </Link>
+                      >
+                        <span
+                          className={s.flowImg}
+                          style={{ backgroundImage: `url('${c.thumbnail || "/images/class-placeholder.svg"}')` }}
+                          aria-hidden="true"
+                        />
+                        <span className={s.flowScrim} aria-hidden="true" />
+                        <div className={s.flowTop}>
+                          {c.category ? <span className={s.flowChip}>{c.category}</span> : <span />}
+                          {meta && (
+                            <span className={s.flowMeta}>
+                              <Clock size={13} strokeWidth={2.2} aria-hidden="true" />
+                              {meta}
+                            </span>
+                          )}
+                        </div>
+                        <div className={s.flowBody}>
+                          <h3 className={s.flowName}>{c.name}</h3>
+                          {blurb && <p className={s.flowDesc}>{blurb}</p>}
+                          <span className={s.flowCta}>
+                            View class
+                            <ArrowRight size={15} strokeWidth={2.4} aria-hidden="true" />
+                          </span>
+                        </div>
+                      </Link>
+                    </Tilt3D>
+                  </div>
+                );
+              })}
+            </div>
+
+            {total > 1 && (
+              <div className={s.flowControls}>
+                <button type="button" onClick={prev} className={s.flowArrow} aria-label="Previous class">
+                  <ChevronLeft size={20} strokeWidth={2} aria-hidden="true" />
+                </button>
+                <div className={s.flowDots}>
+                  {classesData.map((c, i) => (
+                    <button
+                      key={c._id}
+                      type="button"
+                      className={s.flowDotHit}
+                      onClick={() => goTo(i)}
+                      aria-label={`Show ${c.name}`}
+                      aria-current={i === active ? "true" : undefined}
+                    >
+                      <span className={`${s.flowDot} ${i === active ? s.on : ""}`} />
+                    </button>
                   ))}
                 </div>
+                <button type="button" onClick={next} className={s.flowArrow} aria-label="Next class">
+                  <ChevronRight size={20} strokeWidth={2} aria-hidden="true" />
+                </button>
               </div>
-
-              {/* Arrows only earn their place when there is somewhere to go. */}
-              {canSlide && (
-                <>
-                  <button
-                    type="button"
-                    onClick={prev}
-                    className="gymfolio4-navigation-btn gymfolio4-navigation-btn--prev"
-                    aria-label="Previous classes"
-                  >
-                    <ChevronLeft size={20} strokeWidth={2} aria-hidden="true" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={next}
-                    className="gymfolio4-navigation-btn gymfolio4-navigation-btn--next"
-                    aria-label="Next classes"
-                  >
-                    <ChevronRight size={20} strokeWidth={2} aria-hidden="true" />
-                  </button>
-                </>
-              )}
-            </div>
-          </Reveal>
+            )}
+          </div>
         )}
       </div>
     </section>

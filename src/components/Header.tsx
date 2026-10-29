@@ -4,11 +4,12 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { ArrowRight, LogOut, Menu, ShieldCheck, UserRound, X } from "lucide-react";
+import { ArrowRight, LogOut, ShieldCheck, UserRound } from "lucide-react";
 import { getAuthHeader, getAuthToken, getCurrentUser, getRole, signOut } from "@/helper/helper";
 import { useSiteSettings } from "@/components/ThemeProvider";
 import { useLanguage } from "@/i18n/LanguageProvider";
 import { startNavigationProgress } from "@/components/NavigationProgress";
+import styles from "./Header.module.css";
 
 /** Distance scrolled before the bar leaves its "over the hero" state. */
 const CONDENSE_AT = 28;
@@ -43,7 +44,10 @@ const Header = () => {
   // Routes whose first element is a full-bleed photographic banner. On these
   // the bar carries no surface at all, so the artwork reaches the top edge of
   // the screen; everywhere else it keeps its glass panel.
-  const HERO_ROUTES = ["/", "/about-us", "/packages", "/classes", "/trainers"];
+  const HERO_ROUTES = [
+    "/", "/about-us", "/packages", "/classes", "/classdetail", "/trainers", "/blogs",
+    "/blogs-detail", "/contact-us", "/faqs", "/privacy-policy", "/terms",
+  ];
   const overHero = HERO_ROUTES.includes(pathname);
 
   const toggleMobileMenu = () => setIsMobileMenuOpen((s) => !s);
@@ -255,6 +259,7 @@ const Header = () => {
     <header
       className={[
         "site-header",
+        styles.root,
         scrolled ? "is-scrolled" : "",
         overHero && !scrolled ? "is-over-hero" : "",
         isMobileMenuOpen ? "is-open" : "",
@@ -262,7 +267,7 @@ const Header = () => {
         .filter(Boolean)
         .join(" ")}
     >
-      <div className="site-header__bar">
+      <div className={`site-header__bar ${styles.bar}`}>
         {/* Brand */}
         <Link
           href={routes.home}
@@ -314,11 +319,11 @@ const Header = () => {
             aria-expanded={isMobileMenuOpen}
             aria-controls="site-drawer"
           >
-            {isMobileMenuOpen ? (
-              <X size={20} strokeWidth={2.2} aria-hidden="true" />
-            ) : (
-              <Menu size={20} strokeWidth={2.2} aria-hidden="true" />
-            )}
+            <span className={`${styles.burger} ${isMobileMenuOpen ? styles.burgerOpen : ""}`} aria-hidden="true">
+              <span />
+              <span />
+              <span />
+            </span>
           </button>
         </div>
 
@@ -334,7 +339,7 @@ const Header = () => {
       <div className="site-drawer__scrim" onClick={closeMobileMenu} aria-hidden="true" />
       <div
         id="site-drawer"
-        className="site-drawer"
+        className={`site-drawer ${styles.drawer}`}
         role="dialog"
         aria-modal="true"
         aria-label="Navigation menu"
@@ -358,7 +363,7 @@ const Header = () => {
           </ul>
         </nav>
 
-        <div className="site-drawer__footer">
+        <div className={`site-drawer__footer ${styles.drawerFooter}`}>
           {!mounted ? (
             <Link
               href={routes.auth}

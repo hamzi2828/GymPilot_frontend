@@ -3,8 +3,20 @@
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import { ArrowRight, FolderOpen } from "lucide-react";
 import { heroSectionService, FeaturedCategoryWithBlogs } from "../services/heroSectionService";
 import { excerptOf } from "@/helper/sanitize";
+import BlogCard from "./BlogCard";
+import TiltCard from "@/components/site/TiltCard";
+import Reveal from "@/components/site/Reveal";
+import { SectionHeading, surfaceClass } from "@/components/site/PageHero";
+
+const PLACEHOLDER = "/images/class-placeholder.svg";
+
+function blogImage(thumbnail?: string) {
+  if (thumbnail?.startsWith("/uploads/")) return `${process.env.NEXT_PUBLIC_BACKEND_URL}${thumbnail}`;
+  return thumbnail || PLACEHOLDER;
+}
 
 const FeaturedStories: React.FC = () => {
   const [featuredCategories, setFeaturedCategories] = useState<FeaturedCategoryWithBlogs[]>([]);
@@ -26,193 +38,103 @@ const FeaturedStories: React.FC = () => {
 
     fetchFeaturedData();
   }, []);
-  return (
-    <section
-      id="featured"
-      className="px-4 sm:px-12 lg:px-28 py-12 sm:py-16 lg:py-20 gym-blog-custom-bg-darker text-white"
-    >
-      <div className="mx-auto">
-        <div className="text-center mb-16">
-          <h2 className="font-montserrat font-bold text-3xl sm:text-4xl uppercase tracking-wide mb-4">
-            Featured Stories
-          </h2>
-          <div className="w-24 h-1 gym-blog-custom-bg-green mx-auto"></div>
-        </div>
 
-        {/* Display loading state */}
+  const lead = featuredCategories[0];
+
+  return (
+    <section id="featured" className={`${surfaceClass} px-4 sm:px-8 lg:px-20 py-20 lg:py-28`} aria-labelledby="featured-title">
+      <div className="relative mx-auto max-w-[1400px]">
+        <SectionHeading id="featured-title" eyebrow="Blog" title="Featured stories" center />
+
         {isLoading && (
-          <div className="text-center py-8">
-            <p className="text-gray-300">Loading featured categories...</p>
-          </div>
+          <div className="h-96 rounded-3xl bg-[var(--surface)] animate-pulse" aria-busy="true" aria-label="Loading featured stories" />
         )}
 
-
         {!isLoading && featuredCategories.length === 0 && (
-          <div className="text-center py-12">
-            <p className="text-gray-300 mb-6">
-              No featured stories yet.
-            </p>
-            <Link
-              href="/classes"
-              className="inline-flex items-center gap-2 gym-blog-custom-bg-green text-black font-bold px-6 py-3 rounded-full hover:scale-105 transition-transform"
-            >
-              Browse our classes <i className="fas fa-arrow-right" aria-hidden="true"></i>
+          <div className="py-12 text-center">
+            <p className="mb-6 text-[var(--text-muted)]">No featured stories yet.</p>
+            <Link href="/classes" className="btn btn--primary">
+              <span>Browse our classes</span>
+              <ArrowRight size={16} aria-hidden="true" />
             </Link>
           </div>
         )}
 
-        {/* Large Featured Card - Display category banner image */}
-        {!isLoading && featuredCategories.length > 0 && (
-          <div className="mb-16">
-            <article className="relative overflow-hidden rounded-2xl gym-blog-hover-lift transition-all duration-500 group">
-              <div className="relative h-96 lg:h-[500px]">
-                <Image
-                  src={featuredCategories[0].bannerUrl ||
-                       featuredCategories[0].thumbnailUrl ||
-                       "/images/class-placeholder.svg"}
-                  alt={featuredCategories[0].name}
-                  fill
-                  className="object-cover group-hover:scale-105 transition-transform duration-700"
-                  priority
-                />
-                <div className="gym-blog-image-overlay absolute inset-0"></div>
-                <div className="absolute bottom-0 left-0 right-0 p-4 lg:p-12">
-                  <span className="gym-blog-custom-bg-green text-black px-4 py-2 rounded-full text-sm font-bold uppercase mb-4 inline-block">
-                    {featuredCategories[0].name}
-                  </span>
-                  <h3 className="font-montserrat font-bold text-3xl lg:text-5xl mb-4 text-white">
-                    {featuredCategories[0].description || featuredCategories[0].name}
-                  </h3>
-                  <div className="text-lg lg:text-xl text-gray-200 mb-6 max-w-3xl">
-                    <p>Explore our {featuredCategories[0].name.toLowerCase()} collection with {featuredCategories[0].blogs?.length || 0} featured articles</p>
-                  </div>
-                  <div className="flex items-center gap-2 sm:gap-4 lg:gap-6 text-gray-300">
-                    <div className="flex items-center gap-2">
-                      <i className="far fa-folder gym-blog-custom-text-green"></i>
-                      <span className="text-sm sm:text-base md:text-lg lg:text-xl">
-                        {featuredCategories[0].blogs?.length || 0} Articles
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <i className="far fa-star gym-blog-custom-text-green"></i>
-                      <span className="text-sm sm:text-base md:text-lg lg:text-xl">
-                        Featured Category
-                      </span>
-                    </div>
-                    <span className="gym-blog-custom-text-green font-semibold text-sm sm:text-base md:text-lg lg:text-xl">
-                      Scroll down to explore <i className="fas fa-arrow-down"></i>
-                    </span>
-                  </div>
-                </div>
+        {/* The lead category, as a wide banner */}
+        {!isLoading && lead && (
+          <Reveal className="mb-20">
+            <TiltCard max={3} className="relative h-[420px] overflow-hidden rounded-[32px] border border-[var(--border-subtle)] lg:h-[520px]">
+              <Image
+                src={lead.bannerUrl || lead.thumbnailUrl || PLACEHOLDER}
+                alt=""
+                fill
+                sizes="100vw"
+                className="object-cover"
+                priority
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-black via-black/50 to-black/10" aria-hidden="true" />
+              <div
+                className="absolute -bottom-32 -left-20 h-80 w-80 rounded-full"
+                style={{ background: "radial-gradient(circle, color-mix(in srgb, var(--accent) 35%, transparent), transparent 65%)" }}
+                aria-hidden="true"
+              />
+              <div className="absolute inset-x-0 bottom-0 p-6 sm:p-10 lg:p-14">
+                <span className="inline-block rounded-full bg-[var(--accent)] px-4 py-1.5 text-xs font-bold uppercase tracking-wider text-[var(--on-accent)]">
+                  {lead.name}
+                </span>
+                <h3 className="mt-4 max-w-3xl font-['Montserrat'] text-3xl font-extrabold leading-tight text-white lg:text-5xl">
+                  {lead.description || lead.name}
+                </h3>
+                <p className="mt-4 inline-flex items-center gap-2 text-sm text-white/75 sm:text-base">
+                  <FolderOpen size={16} className="text-[var(--accent)]" aria-hidden="true" />
+                  {lead.blogs?.length || 0} articles
+                </p>
               </div>
-            </article>
-          </div>
+            </TiltCard>
+          </Reveal>
         )}
 
-        {/* Featured Categories Section */}
-        {!isLoading && featuredCategories.length > 0 && (
-          <>
-            {featuredCategories.map((category, categoryIndex) => (
-              <div key={category.id} className="mb-16">
-                {/* Category Banner */}
-                {category.bannerUrl && (
-                  <div className="mb-8">
-                    <div className="relative h-48 sm:h-64 overflow-hidden rounded-xl">
-                      <Image
-                        src={category.bannerUrl}
-                        alt={`${category.name} banner`}
-                        fill
-                        className="object-cover"
-                      />
-                      <div className="absolute inset-0 bg-black bg-opacity-40"></div>
-                      <div className="absolute bottom-4 left-4 sm:bottom-6 sm:left-6">
-                        <span className="gym-blog-custom-bg-green text-black px-4 py-2 rounded-full text-sm font-bold uppercase mb-2 inline-block">
-                          Featured Category
-                        </span>
-                        <h3 className="font-montserrat font-bold text-2xl sm:text-3xl text-white">
-                          {category.name}
-                        </h3>
-                        <p className="text-gray-200 text-sm sm:text-base">{category.description}</p>
-                      </div>
-                    </div>
+        {/* Each featured category and its articles */}
+        {!isLoading &&
+          featuredCategories.map((category) => (
+            <div key={category.id} className="mb-20 last:mb-0">
+              <Reveal>
+                <div className="mb-8 flex items-center gap-4">
+                  {category.thumbnailUrl && (
+                    <Image
+                      src={category.thumbnailUrl}
+                      alt=""
+                      width={56}
+                      height={56}
+                      className="h-14 w-14 flex-none rounded-2xl border border-[var(--border-subtle)] object-cover"
+                    />
+                  )}
+                  <div className="min-w-0">
+                    <h3 className="font-['Montserrat'] text-2xl font-extrabold uppercase tracking-tight text-white sm:text-3xl">
+                      {category.name}
+                    </h3>
+                    {category.description && <p className="mt-1 text-[var(--text-muted)]">{category.description}</p>}
                   </div>
-                )}
-
-                {/* Category Header (when no banner) */}
-                {!category.bannerUrl && (
-                  <div className="mb-8 flex items-center gap-4">
-                    {/* Category Thumbnail */}
-                    {category.thumbnailUrl && (
-                      <div className="flex-shrink-0">
-                        <Image
-                          src={category.thumbnailUrl}
-                          alt={category.name}
-                          width={64}
-                          height={64}
-                          className="rounded-full object-cover border-2 border-gray-600"
-                        />
-                      </div>
-                    )}
-                    <div>
-                      <h3 className="font-montserrat font-bold text-2xl sm:text-3xl uppercase text-white mb-2">
-                        {category.name}
-                      </h3>
-                      <p className="text-gray-300 mb-4">{category.description}</p>
-                      <div className="w-16 h-1 gym-blog-custom-bg-green"></div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Category Blogs Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                  {category.blogs?.slice(0, 6).map((blog) => (
-                    <Link href={`/blogs-detail?slug=${blog.slug}`} key={blog._id} className="block">
-                      <article className="gym-blog-card-gradient rounded-xl overflow-hidden gym-blog-hover-lift transition-all duration-500 group">
-                        <div className="relative h-48 overflow-hidden">
-                          <Image
-                            src={blog.thumbnail?.startsWith('/uploads/')
-                              ? `${process.env.NEXT_PUBLIC_BACKEND_URL}${blog.thumbnail}`
-                              : blog.thumbnail || "/images/class-placeholder.svg"}
-                            alt={blog.title}
-                            fill
-                            className="object-cover group-hover:scale-110 transition-transform duration-500"
-                          />
-                          <div className="absolute top-4 left-4">
-                            <span className={`${
-                              categoryIndex === 0 ? 'bg-red-500' :
-                              categoryIndex === 1 ? 'bg-blue-500' :
-                              'bg-brand-500'
-                            } text-white px-3 py-1 rounded-full text-xs font-bold uppercase`}>
-                              {category.name.split(' ')[0]}
-                            </span>
-                          </div>
-                        </div>
-                        <div className="p-6">
-                          <h3 className="font-semibold text-xl mb-3 group-hover:gym-blog-custom-text-green transition-colors line-clamp-2">
-                            {blog.title}
-                          </h3>
-                          <p className="text-gray-400 text-sm mb-4 line-clamp-3">
-                            {excerptOf(blog.content, 150)}
-                          </p>
-                          <div className="flex items-center justify-between">
-                            <span className="text-xs text-gray-500">
-                              {blog.views || 0} views
-                            </span>
-                            <span className="text-xs text-gray-500">
-                              By {blog.author?.name || 'Unknown'}
-                            </span>
-                            <i className="fas fa-arrow-up-right gym-blog-custom-text-green group-hover:transform group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform"></i>
-                          </div>
-                        </div>
-                      </article>
-                    </Link>
-                  ))}
                 </div>
-              </div>
-            ))}
-          </>
-        )}
+              </Reveal>
 
+              <ul className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+                {category.blogs?.slice(0, 6).map((blog, i) => (
+                  <Reveal as="li" key={blog._id} delay={(i % 3) * 0.08}>
+                    <BlogCard
+                      href={`/blogs-detail?slug=${blog.slug}`}
+                      image={blogImage(blog.thumbnail)}
+                      title={blog.title}
+                      excerpt={excerptOf(blog.content, 150)}
+                      category={category.name}
+                      metaLeft={blog.author?.name ? `By ${blog.author.name}` : undefined}
+                      metaRight={`${blog.views || 0} views`}
+                    />
+                  </Reveal>
+                ))}
+              </ul>
+            </div>
+          ))}
       </div>
     </section>
   );

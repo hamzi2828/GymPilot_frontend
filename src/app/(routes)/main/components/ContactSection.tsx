@@ -4,7 +4,8 @@ import Link from 'next/link';
 import axios from 'axios';
 import { ArrowRight } from 'lucide-react';
 import { ContactContent, DEFAULT_CONTACT } from '../services/homeService';
-import { AccentText, Reveal } from './SectionHeading';
+import { Eyebrow, Reveal, SectionTitle } from './SectionHeading';
+import s from './home3d.module.css';
 import Spinner from "@/components/ui/Spinner";
 import useAsyncAction from "@/components/ui/useAsyncAction";
 
@@ -97,15 +98,9 @@ const ContactSection = ({ content = DEFAULT_CONTACT }: { content?: ContactConten
           <Reveal className="lg:pr-8">
             <div className="space-y-8 lg:space-y-16">
               <header className="space-y-8">
-                <div className="space-y-4">
-                  <div className="flex items-center gap-2">
-                    <span className="home-eyebrow-dot" aria-hidden="true"></span>
-                    <span className="home-eyebrow-label">{content.badge}</span>
-                  </div>
-
-                  <h2 className="home-section-title text-2xl sm:text-3xl lg:text-4xl text-black">
-                    <AccentText text={content.heading} />
-                  </h2>
+                <div>
+                  <Eyebrow label={content.badge} />
+                  <SectionTitle text={content.heading} />
                 </div>
 
                 <p className="home-section-description">{content.description}</p>
@@ -120,138 +115,141 @@ const ContactSection = ({ content = DEFAULT_CONTACT }: { content?: ContactConten
 
           {/* Right Side - Form */}
           <Reveal delay={120} className="lg:min-w-[520px] lg:ml-auto">
-            <div className="gymfolio8-form-container rounded-3xl p-8 lg:p-12">
-              <form className="space-y-6" onSubmit={handleSubmit}>
-                <header className="mb-6">
-                  <h2 className="gymfolio8-form-text gymfolio8-font-montserrat font-bold text-2xl lg:text-3xl leading-tight tracking-tight">
-                    {content.formTitle}
-                  </h2>
-                </header>
+            {/* A tilted accent plate sits behind the form for depth. */}
+            <div className={s.formWrap}>
+              <div className="gymfolio8-form-container rounded-3xl p-6 sm:p-8 lg:p-12">
+                <form className="space-y-6" onSubmit={handleSubmit}>
+                  <header className="mb-6">
+                    <h2 className="gymfolio8-form-text gymfolio8-font-montserrat font-bold text-2xl lg:text-3xl leading-tight tracking-tight">
+                      {content.formTitle}
+                    </h2>
+                  </header>
 
-                <div className="space-y-4">
-                  {/* Name Field */}
-                  <div className="gymfolio8-form-field">
-                    <label
-                      htmlFor="name"
-                      className="block gymfolio8-form-text gymfolio8-font-poppins font-medium text-sm leading-6 mb-1.5"
-                    >
-                      Your name
-                    </label>
-                    <input
-                      type="text"
-                      id="name"
-                      name="name"
-                      autoComplete="name"
-                      placeholder="Full name"
-                      value={formData.name}
-                      onChange={handleInputChange}
-                      onFocus={handleInputFocus}
-                      onBlur={handleInputBlur}
-                      className="gymfolio8-form-input w-full px-3.5 py-2.5 rounded-lg gymfolio8-gray-text gymfolio8-font-poppins text-sm leading-6 placeholder:gymfolio8-gray-text"
-                      required
-                    />
-                  </div>
-
-                  {/* Phone Number Field */}
-                  <div className="gymfolio8-form-field">
-                    <label
-                      htmlFor="phone"
-                      className="block gymfolio8-form-text gymfolio8-font-poppins font-medium text-sm leading-6 mb-1.5"
-                    >
-                      Phone number
-                    </label>
-                    <input
-                      type="tel"
-                      id="phone"
-                      name="phone"
-                      autoComplete="tel"
-                      placeholder="Phone number"
-                      value={formData.phone}
-                      onChange={handleInputChange}
-                      onFocus={handleInputFocus}
-                      onBlur={handleInputBlur}
-                      className="gymfolio8-form-input w-full px-3.5 py-2.5 rounded-lg gymfolio8-gray-text gymfolio8-font-poppins text-sm leading-6 placeholder:gymfolio8-gray-text"
-                      required
-                    />
-                  </div>
-
-                  {/* Email Field */}
-                  <div className="gymfolio8-form-field">
-                    <label
-                      htmlFor="email"
-                      className="block gymfolio8-form-text gymfolio8-font-poppins font-medium text-sm leading-6 mb-1.5"
-                    >
-                      Email Address
-                    </label>
-                    <input
-                      type="email"
-                      id="email"
-                      name="email"
-                      autoComplete="email"
-                      placeholder="you@example.com"
-                      value={formData.email}
-                      onChange={handleInputChange}
-                      onFocus={handleInputFocus}
-                      onBlur={handleInputBlur}
-                      className="gymfolio8-form-input w-full px-3.5 py-2.5 rounded-lg gymfolio8-gray-text gymfolio8-font-poppins text-sm leading-6 placeholder:gymfolio8-gray-text"
-                      required
-                    />
-                  </div>
-
-                  {/* Honeypot: real people never see or fill this. */}
-                  <input tabIndex={-1} autoComplete="off" value={formData.website} onChange={handleInputChange} className="hidden" aria-hidden="true" name="website" />
-                </div>
-
-                {/* Success Message */}
-                {successMessage && (
-                  <div className="rounded-lg bg-green-50 p-4 border border-green-200">
-                    <p className="text-green-800 text-sm">{successMessage}</p>
-                  </div>
-                )}
-
-                {/* Error Message */}
-                {errorMessage && (
-                  <div className="rounded-lg bg-red-50 p-4 border border-red-200">
-                    <p className="text-red-800 text-sm">{errorMessage}</p>
-                  </div>
-                )}
-
-                {/* Submit Button */}
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  aria-busy={isSubmitting || undefined}
-                  className="gymfolio8-contact-button w-full px-6 py-3 rounded-lg flex items-center justify-center gap-2 gymfolio8-font-manrope font-semibold text-sm leading-5 text-black"
-                >
-                  {isSubmitting && <Spinner />}
-                  <span>{isSubmitting ? 'Submitting...' : content.buttonText}</span>
-                  {!isSubmitting && (
-                    <svg
-                      className="gymfolio8-arrow-icon w-6 h-6"
-                      viewBox="0 0 34 34"
-                      fill="none"
-                      xmlns="http://www.w3.org/2000/svg"
-                    >
-                      <path
-                        d="M14.4263 10.9897L23.0105 10.9897L23.0105 19.574"
-                        stroke="black"
-                        strokeWidth="1.5"
-                        strokeMiterlimit="10"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
+                  <div className="space-y-4">
+                    {/* Name Field */}
+                    <div className="gymfolio8-form-field">
+                      <label
+                        htmlFor="name"
+                        className="block gymfolio8-form-text gymfolio8-font-poppins font-medium text-sm leading-6 mb-1.5"
+                      >
+                        Your name
+                      </label>
+                      <input
+                        type="text"
+                        id="name"
+                        name="name"
+                        autoComplete="name"
+                        placeholder="Full name"
+                        value={formData.name}
+                        onChange={handleInputChange}
+                        onFocus={handleInputFocus}
+                        onBlur={handleInputBlur}
+                        className="gymfolio8-form-input w-full px-3.5 py-2.5 rounded-lg gymfolio8-gray-text gymfolio8-font-poppins text-sm leading-6 placeholder:gymfolio8-gray-text"
+                        required
                       />
-                      <path
-                        d="M10.9897 23.0103L22.8904 11.1096"
-                        stroke="black"
-                        strokeWidth="1.5"
-                        strokeMiterlimit="10"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
+                    </div>
+
+                    {/* Phone Number Field */}
+                    <div className="gymfolio8-form-field">
+                      <label
+                        htmlFor="phone"
+                        className="block gymfolio8-form-text gymfolio8-font-poppins font-medium text-sm leading-6 mb-1.5"
+                      >
+                        Phone number
+                      </label>
+                      <input
+                        type="tel"
+                        id="phone"
+                        name="phone"
+                        autoComplete="tel"
+                        placeholder="Phone number"
+                        value={formData.phone}
+                        onChange={handleInputChange}
+                        onFocus={handleInputFocus}
+                        onBlur={handleInputBlur}
+                        className="gymfolio8-form-input w-full px-3.5 py-2.5 rounded-lg gymfolio8-gray-text gymfolio8-font-poppins text-sm leading-6 placeholder:gymfolio8-gray-text"
+                        required
                       />
-                    </svg>
+                    </div>
+
+                    {/* Email Field */}
+                    <div className="gymfolio8-form-field">
+                      <label
+                        htmlFor="email"
+                        className="block gymfolio8-form-text gymfolio8-font-poppins font-medium text-sm leading-6 mb-1.5"
+                      >
+                        Email Address
+                      </label>
+                      <input
+                        type="email"
+                        id="email"
+                        name="email"
+                        autoComplete="email"
+                        placeholder="you@example.com"
+                        value={formData.email}
+                        onChange={handleInputChange}
+                        onFocus={handleInputFocus}
+                        onBlur={handleInputBlur}
+                        className="gymfolio8-form-input w-full px-3.5 py-2.5 rounded-lg gymfolio8-gray-text gymfolio8-font-poppins text-sm leading-6 placeholder:gymfolio8-gray-text"
+                        required
+                      />
+                    </div>
+
+                    {/* Honeypot: real people never see or fill this. */}
+                    <input tabIndex={-1} autoComplete="off" value={formData.website} onChange={handleInputChange} className="hidden" aria-hidden="true" name="website" />
+                  </div>
+
+                  {/* Success Message */}
+                  {successMessage && (
+                    <div className="rounded-lg bg-green-50 p-4 border border-green-200">
+                      <p className="text-green-800 text-sm">{successMessage}</p>
+                    </div>
                   )}
-                </button>
-              </form>
+
+                  {/* Error Message */}
+                  {errorMessage && (
+                    <div className="rounded-lg bg-red-50 p-4 border border-red-200">
+                      <p className="text-red-800 text-sm">{errorMessage}</p>
+                    </div>
+                  )}
+
+                  {/* Submit Button */}
+                  <button
+                    type="submit"
+                    disabled={isSubmitting}
+                    aria-busy={isSubmitting || undefined}
+                    className="gymfolio8-contact-button w-full px-6 py-3 rounded-lg flex items-center justify-center gap-2 gymfolio8-font-manrope font-semibold text-sm leading-5 text-black"
+                  >
+                    {isSubmitting && <Spinner />}
+                    <span>{isSubmitting ? 'Submitting...' : content.buttonText}</span>
+                    {!isSubmitting && (
+                      <svg
+                        className="gymfolio8-arrow-icon w-6 h-6"
+                        viewBox="0 0 34 34"
+                        fill="none"
+                        xmlns="http://www.w3.org/2000/svg"
+                      >
+                        <path
+                          d="M14.4263 10.9897L23.0105 10.9897L23.0105 19.574"
+                          stroke="black"
+                          strokeWidth="1.5"
+                          strokeMiterlimit="10"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                        <path
+                          d="M10.9897 23.0103L22.8904 11.1096"
+                          stroke="black"
+                          strokeWidth="1.5"
+                          strokeMiterlimit="10"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    )}
+                  </button>
+                </form>
+              </div>
             </div>
           </Reveal>
         </div>

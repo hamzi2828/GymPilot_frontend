@@ -30,14 +30,15 @@ export default function HomeReveal({ children }: { children: React.ReactNode }) 
           observer.disconnect();
         }
       },
-      { rootMargin: "0px 0px -12% 0px", threshold: 0.04 }
+      // Start a little before the section reaches the screen.
+      { rootMargin: "0px 0px 20% 0px", threshold: 0 }
     );
     observer.observe(el);
     return () => observer.disconnect();
   }, []);
 
   return (
-    <div ref={ref} className="home-rise">
+    <div ref={ref} className="home-rise" style={{ transitionDuration: "0.5s" }}>
       {children}
     </div>
   );

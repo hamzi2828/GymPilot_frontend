@@ -1,8 +1,9 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import Image from "next/image";
+import { ArrowRight } from "lucide-react";
 import { heroSectionService, HeroSectionData } from "../services/heroSectionService";
+import PageHero from "@/components/site/PageHero";
 
 const HeroSection: React.FC = () => {
   const [heroData, setHeroData] = useState<HeroSectionData | null>(null);
@@ -27,11 +28,8 @@ const HeroSection: React.FC = () => {
 
   if (isLoading) {
     return (
-      <section className="relative min-h-screen flex items-center justify-center overflow-hidden text-white">
-        <div className="absolute inset-0 bg-gray-900"></div>
-        <div className="relative z-10 text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto"></div>
-        </div>
+      <section className="relative flex min-h-[60vh] items-center justify-center bg-[var(--base)]" aria-busy="true">
+        <div className="h-12 w-12 animate-spin rounded-full border-2 border-white/10 border-b-[var(--accent)]" />
       </section>
     );
   }
@@ -39,66 +37,35 @@ const HeroSection: React.FC = () => {
   // No banner set up for the blog, or it could not be loaded: the page gets a
   // plain heading. A visitor is never shown a note meant for the gym's admin.
   if (!heroData) {
-    return (
-      <section className="relative flex items-center justify-center overflow-hidden text-white py-20 sm:py-28">
-        <div className="absolute inset-0 bg-gray-900"></div>
-        <div className="relative z-10 text-center max-w-2xl mx-auto px-4">
-          <h1 className="font-montserrat font-black text-4xl sm:text-5xl lg:text-6xl uppercase tracking-wider">
-            Blog
-          </h1>
-        </div>
-      </section>
-    );
+    return <PageHero title="Blog" crumbs={[{ label: "Home", href: "/" }, { label: "Blog" }]} />;
   }
 
   return (
-    <section className="relative min-h-screen flex items-center justify-center overflow-hidden text-white">
-      <div className="absolute inset-0">
-        {heroData.backgroundImage && (
-          <Image
-            src={heroData.backgroundImage}
-            alt=""
-            fill
-            className="object-cover"
-            priority
-          />
-        )}
-        <div className="gym-blog-hero-overlay absolute inset-0"></div>
-      </div>
-
-      <div className="relative z-10 text-center max-w-4xl mx-auto px-4">
-        <h1 className="font-montserrat font-black text-4xl sm:text-5xl lg:text-7xl uppercase tracking-wider mb-6 gym-blog-text-shadow">
-          {heroData.title}
-        </h1>
-        <p className="text-xl sm:text-2xl lg:text-3xl font-light mb-8 text-gray-200 max-w-2xl mx-auto">
-          {heroData.subtitle}
-        </p>
-        <div className="flex flex-col sm:flex-row gap-4 justify-center">
-          {/* A button with no text or no link set is left out. */}
-          {heroData.primaryButtonText && heroData.primaryButtonLink && (
-            <a
-              href={heroData.primaryButtonLink}
-              className="gym-blog-custom-gradient-green text-black font-bold px-8 py-4 rounded-full text-lg hover:scale-105 transition-all duration-300"
-            >
-              {heroData.primaryButtonText}
-            </a>
-          )}
-          {heroData.secondaryButtonText && heroData.secondaryButtonLink && (
-            <a
-              href={heroData.secondaryButtonLink}
-              className="gym-blog-glass-effect text-white font-semibold px-8 py-4 rounded-full text-lg hover:scale-105 transition-all duration-300"
-            >
-              {heroData.secondaryButtonText}
-            </a>
-          )}
-        </div>
-      </div>
-
-      {/* Scroll Indicator */}
-      <div className="absolute bottom-12 left-1/2 transform -translate-x-1/2 animate-bounce">
-        <i className="fas fa-chevron-down text-2xl gym-blog-custom-text-green"></i>
-      </div>
-    </section>
+    <PageHero
+      title={heroData.title || "Blog"}
+      lead={heroData.subtitle || undefined}
+      image={heroData.backgroundImage || undefined}
+      crumbs={[{ label: "Home", href: "/" }, { label: "Blog" }]}
+      tall
+      actions={
+        (heroData.primaryButtonText && heroData.primaryButtonLink) || (heroData.secondaryButtonText && heroData.secondaryButtonLink) ? (
+          <>
+            {/* A button with no text or no link set is left out. */}
+            {heroData.primaryButtonText && heroData.primaryButtonLink && (
+              <a href={heroData.primaryButtonLink} className="btn btn--primary btn--lg">
+                <span>{heroData.primaryButtonText}</span>
+                <ArrowRight size={17} strokeWidth={2.4} aria-hidden="true" />
+              </a>
+            )}
+            {heroData.secondaryButtonText && heroData.secondaryButtonLink && (
+              <a href={heroData.secondaryButtonLink} className="btn btn--glass btn--lg">
+                <span>{heroData.secondaryButtonText}</span>
+              </a>
+            )}
+          </>
+        ) : undefined
+      }
+    />
   );
 };
 

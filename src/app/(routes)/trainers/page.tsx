@@ -21,7 +21,7 @@ const Trainers = () => {
 
         <HeroAbout title="Our trainers" />
         <TrainerDetail trainer={selectedTrainer} />
-           <GymTrainersSection onTrainerClick={handleTrainerClick} />
+           <GymTrainersSection onTrainerClick={handleTrainerClick} selectedId={selectedTrainer?._id} />
             <ContactSection/>
 
         {/* Client reviews are intentionally not rendered: the component still

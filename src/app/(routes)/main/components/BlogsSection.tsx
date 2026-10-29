@@ -8,6 +8,7 @@ import { blogService, type BlogData } from "../../blogs/services/blogService";
 import { excerptOf } from "@/helper/sanitize";
 import { BlogsContent, DEFAULT_BLOGS } from "../services/homeService";
 import { SectionHeading, Reveal } from "./SectionHeading";
+import { Depth, Tilt3D } from "./motion3d";
 
 /** Shown while the request is in flight, so the section doesn't pop in. */
 const CARD_SKELETONS = [0, 1, 2];
@@ -64,37 +65,39 @@ const BlogsSection = ({ content = DEFAULT_BLOGS }: { content?: BlogsContent }) =
               </div>
             ))
           : blogs.map((blog, i) => (
-              <Reveal key={blog._id} delay={i * 100} className="h-full">
-                <Link
-                  href={`/blogs-detail?slug=${encodeURIComponent(blog.slug)}`}
-                  className="u-card home-post"
-                >
-                  <div className="home-post__media">
-                    <Image
-                      src={blog.thumbnail || blog.image || "/images/class-placeholder.svg"}
-                      alt={blog.title}
-                      fill
-                      sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-                      // Only the lead card is above the fold on most viewports.
-                      priority={i === 0}
-                    />
-                    {blog.categoryId?.name && (
-                      <span className="home-post__chip">{blog.categoryId.name}</span>
-                    )}
-                  </div>
+              <Depth key={blog._id} index={i} className="h-full">
+                <Tilt3D max={5} radius={20}>
+                  <Link
+                    href={`/blogs-detail?slug=${encodeURIComponent(blog.slug)}`}
+                    className="u-card home-post h-full"
+                  >
+                    <div className="home-post__media">
+                      <Image
+                        src={blog.thumbnail || blog.image || "/images/class-placeholder.svg"}
+                        alt={blog.title}
+                        fill
+                        sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                        // Only the lead card is above the fold on most viewports.
+                        priority={i === 0}
+                      />
+                      {blog.categoryId?.name && (
+                        <span className="home-post__chip">{blog.categoryId.name}</span>
+                      )}
+                    </div>
 
-                  <div className="home-post__body">
-                    <h3 className="home-post__title">{blog.title}</h3>
-                    <p className="home-post__excerpt">
-                      {blog.excerpt || excerptOf(blog.content, 160)}
-                    </p>
-                    <span className="home-post__more">
-                      {blog.readingTime ? `${blog.readingTime} min read` : "Read article"}
-                      <i className="fas fa-arrow-right text-xs" aria-hidden="true"></i>
-                    </span>
-                  </div>
-                </Link>
-              </Reveal>
+                    <div className="home-post__body">
+                      <h3 className="home-post__title">{blog.title}</h3>
+                      <p className="home-post__excerpt">
+                        {blog.excerpt || excerptOf(blog.content, 160)}
+                      </p>
+                      <span className="home-post__more">
+                        {blog.readingTime ? `${blog.readingTime} min read` : "Read article"}
+                        <i className="fas fa-arrow-right text-xs" aria-hidden="true"></i>
+                      </span>
+                    </div>
+                  </Link>
+                </Tilt3D>
+              </Depth>
             ))}
       </div>
     </section>

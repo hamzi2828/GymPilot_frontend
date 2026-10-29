@@ -2,169 +2,140 @@
 import React from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { Award, Dumbbell, Medal } from "lucide-react";
 import { Trainer, trainerService } from "../../main/services/trainerService";
+import TiltCard from "@/components/site/TiltCard";
+import { surfaceClass } from "@/components/site/PageHero";
 
 interface TrainerDetailProps {
   trainer: Trainer | null;
 }
 
-const TrainerDetail: React.FC<TrainerDetailProps> = ({ trainer }) => {
-  const badgeText = "Meet Our Trainers";
-  const heading = "Meet the team";
+const SOCIALS = [
+  ["twitter", "fab fa-x-twitter", "X"],
+  ["instagram", "fab fa-instagram", "Instagram"],
+  ["facebook", "fab fa-facebook", "Facebook"],
+  ["youtube", "fab fa-youtube", "YouTube"],
+] as const;
 
-  // If no trainer is selected, show a placeholder message
-  if (!trainer) {
-    return (
-      <div className="trainer-detail-about-us p-6 sm:p-10 lg:p-20 flex flex-col items-center justify-center">
-        <div className="text-center py-20">
-          <div className="inline-flex items-center gap-2 mb-4">
-            <div className="w-2 h-2 rounded-full bg-lime-600"></div>
-            <span className="text-gray-400 text-sm font-semibold">Meet Our Trainers</span>
-          </div>
-          <h2 className="text-2xl font-bold text-black/90 mb-4">Select a Trainer</h2>
-          <p className="text-gray-600">Click on any trainer below to view their details</p>
-        </div>
-      </div>
-    );
-  }
+const TrainerDetail: React.FC<TrainerDetailProps> = ({ trainer }) => {
+  const reduce = useReducedMotion();
 
   return (
-    <div className="trainer-detail-about-us p-6 sm:p-10 lg:p-20 flex flex-col lg:flex-row gap-8 lg:gap-16 items-center justify-start">
-      <div className="trainer-detail-frame-left flex flex-col gap-8 lg:gap-16 items-start justify-center flex-1 w-full">
-        {/* Header Section */}
-        <div className="trainer-detail-header flex flex-col gap-4 items-center justify-center w-full">
-          {/* Badge */}
-          <div className="trainer-detail-badge rounded-full border border-transparent px-2 py-1 flex flex-row gap-2 items-center justify-center">
-            <div className="trainer-detail-icon w-2 h-2 bg-lime-600 rounded-full flex-shrink-0"></div>
-            <div className="trainer-detail-badge-text text-gray-400 text-center font-semibold text-sm leading-5">
-              {badgeText}
-            </div>
+    <section
+      id="trainer-detail"
+      className={`${surfaceClass} scroll-mt-20 px-4 sm:px-8 lg:px-20 pt-16 pb-4 lg:pt-24`}
+      aria-live="polite"
+    >
+      <div className="relative mx-auto max-w-[1400px]">
+        {!trainer ? (
+          <div className="py-16 text-center">
+            <h2 className="font-['Montserrat'] text-2xl font-extrabold text-white">Select a trainer</h2>
+            <p className="mt-2 text-[var(--text-muted)]">Choose anyone below to see their profile.</p>
           </div>
+        ) : (
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={trainer._id}
+              className="grid grid-cols-1 items-center gap-10 lg:grid-cols-12 lg:gap-16"
+              initial={reduce ? false : { opacity: 0, rotateY: -8, x: -20, transformPerspective: 1200 }}
+              animate={{ opacity: 1, rotateY: 0, x: 0 }}
+              exit={reduce ? undefined : { opacity: 0, rotateY: 8, x: 20 }}
+              transition={{ duration: 0.5, ease: [0.22, 0.61, 0.36, 1] }}
+            >
+              {/* Portrait */}
+              <div className="lg:col-span-5">
+                <TiltCard max={6} className="relative mx-auto aspect-[4/5] w-full max-w-[520px] overflow-hidden rounded-[28px] border border-[var(--border-subtle)] bg-[var(--surface)] shadow-[0_40px_80px_-40px_rgba(0,0,0,0.9)]">
+                  <Image
+                    src={trainer.image || "/images/default-avatar.svg"}
+                    alt={`${trainer.name}, ${trainer.role}`}
+                    fill
+                    sizes="(min-width:1024px) 40vw, 100vw"
+                    className="object-cover object-top"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" aria-hidden="true" />
+                  <div
+                    className="absolute -bottom-20 -right-20 h-64 w-64 rounded-full"
+                    style={{ background: "radial-gradient(circle, color-mix(in srgb, var(--accent) 45%, transparent), transparent 65%)" }}
+                    aria-hidden="true"
+                  />
+                </TiltCard>
+              </div>
 
-          {/* Main Heading */}
-          <h1 className="trainer-detail-heading text-black text-center font-bold text-xl sm:text-2xl lg:text-3xl leading-snug tracking-tight uppercase opacity-92 w-full flex items-center justify-center">
-            {heading}
-          </h1>
-        </div>
-
-        {/* Main Content Row */}
-        <div className="trainer-detail-frame-content flex flex-col lg:flex-row gap-8 lg:gap-16 items-center justify-start w-full">
-          {/* Team Card */}
-          <div className="trainer-detail-team-card bg-gray-50 rounded-lg border border-gray-200 flex flex-col w-full sm:w-[400px] lg:w-[600px] h-[400px] sm:h-[500px] lg:h-[600px] overflow-hidden flex-shrink-0">
-            <div className="trainer-detail-card-bg flex-1 relative">
-              <Image
-                src={trainer.image || '/images/default-avatar.svg'}
-                alt={trainer.name}
-                fill
-                className="object-cover"
-              />
-            </div>
-
-            <div className="trainer-detail-context p-4 flex flex-col gap-4 items-center justify-center">
-              <div className="trainer-detail-names flex flex-col items-center justify-center">
-                <div className="trainer-detail-user-name text-lime-700 text-center font-bold text-base leading-6">
-                  {trainer.name}
-                </div>
-                <div className="trainer-detail-role text-gray-700 text-center font-normal text-sm leading-6">
+              {/* Profile */}
+              <div className="lg:col-span-7">
+                <p className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-[var(--text-muted)]">
+                  <span className="h-2 w-2 rounded-full bg-[var(--accent)]" aria-hidden="true" />
                   {trainer.role}
+                </p>
+                <h2 className="mt-3 font-['Montserrat'] text-4xl font-extrabold leading-[1.02] tracking-tight text-white sm:text-5xl lg:text-6xl">
+                  {trainer.name}
+                </h2>
+
+                {trainer.bio && (
+                  <p className="mt-6 max-w-[62ch] text-base leading-relaxed text-white/75 sm:text-lg">{trainer.bio}</p>
+                )}
+
+                <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  {trainer.experience ? (
+                    <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface)] p-5">
+                      <Medal size={20} className="text-[var(--accent)]" aria-hidden="true" />
+                      <p className="mt-3 font-['Montserrat'] text-3xl font-extrabold text-white">{trainer.experience}</p>
+                      <p className="text-sm text-[var(--text-muted)]">years of professional training</p>
+                    </div>
+                  ) : null}
+
+                  {trainer.specialties && trainer.specialties.length > 0 && (
+                    <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface)] p-5">
+                      <Dumbbell size={20} className="text-[var(--accent)]" aria-hidden="true" />
+                      <h3 className="mt-3 text-sm font-bold uppercase tracking-wider text-white">Specialties</h3>
+                      <ul className="mt-3 flex flex-wrap gap-2">
+                        {trainer.specialties.map((item, index) => (
+                          <li key={index} className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-sm text-white/80">
+                            {item}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {trainer.certifications && trainer.certifications.length > 0 && (
+                    <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface)] p-5 sm:col-span-2">
+                      <Award size={20} className="text-[var(--accent)]" aria-hidden="true" />
+                      <h3 className="mt-3 text-sm font-bold uppercase tracking-wider text-white">Certifications</h3>
+                      <ul className="mt-3 space-y-1.5 text-sm text-white/75">
+                        {trainer.certifications.map((item, index) => (
+                          <li key={index} className="flex gap-2">
+                            <span className="mt-2 h-1.5 w-1.5 flex-none rounded-full bg-[var(--accent)]" aria-hidden="true" />
+                            {item}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+
+                <div className="mt-8 flex flex-wrap items-center gap-3">
+                  {SOCIALS.filter(([key]) => !!trainer.social?.[key]).map(([key, icon, label]) => (
+                    <Link
+                      key={key}
+                      href={trainerService.formatSocialUrl(trainer.social![key] as string, key)}
+                      className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-[var(--border-subtle)] text-white/75 transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
+                      aria-label={`Follow ${trainer.name} on ${label}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <i className={icon} aria-hidden="true" />
+                    </Link>
+                  ))}
                 </div>
               </div>
-
-              {/* Social Media */}
-              <div className="trainer-detail-social-media flex justify-center gap-3">
-                {trainer.social?.twitter && (
-                  <Link
-                    href={trainerService.formatSocialUrl(trainer.social.twitter, 'twitter')}
-                    className="gymfolio7-social-icon hover:scale-110 focus:scale-110 focus:outline-none"
-                    aria-label={`Follow ${trainer.name} on Twitter`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    <i className="fab fa-x-twitter text-lg"></i>
-                  </Link>
-                )}
-                {trainer.social?.instagram && (
-                  <Link
-                    href={trainerService.formatSocialUrl(trainer.social.instagram, 'instagram')}
-                    className="gymfolio7-social-icon hover:scale-110 focus:scale-110 focus:outline-none"
-                    aria-label={`Follow ${trainer.name} on Instagram`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    <i className="fab fa-instagram text-lg"></i>
-                  </Link>
-                )}
-                {trainer.social?.facebook && (
-                  <Link
-                    href={trainerService.formatSocialUrl(trainer.social.facebook, 'facebook')}
-                    className="gymfolio7-social-icon hover:scale-110 focus:scale-110 focus:outline-none"
-                    aria-label={`Follow ${trainer.name} on Facebook`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    <i className="fab fa-facebook text-lg"></i>
-                  </Link>
-                )}
-                {trainer.social?.youtube && (
-                  <Link
-                    href={trainerService.formatSocialUrl(trainer.social.youtube, 'youtube')}
-                    className="gymfolio7-social-icon hover:scale-110 focus:scale-110 focus:outline-none"
-                    aria-label={`Follow ${trainer.name} on YouTube`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    <i className="fab fa-youtube text-lg"></i>
-                  </Link>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Right Content */}
-          <div className="trainer-detail-context2 flex flex-col gap-6 lg:gap-8 items-start justify-start flex-1 w-full">
-            {/* Biography */}
-            {trainer.bio && (
-              <div>
-                <h2 className="text-lg font-semibold mb-2">Biography</h2>
-                <p className="text-gray-600">{trainer.bio}</p>
-              </div>
-            )}
-
-            {/* Specialties */}
-            {trainer.specialties && trainer.specialties.length > 0 && (
-              <div>
-                <h2 className="text-lg font-semibold mb-2">Specialties</h2>
-                <ul className="list-disc pl-5 text-gray-600">
-                  {trainer.specialties.map((item, index) => (
-                    <li key={index}>{item}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {/* Certifications */}
-            {trainer.certifications && trainer.certifications.length > 0 && (
-              <div>
-                <h2 className="text-lg font-semibold mb-2">Certifications</h2>
-                <ul className="list-disc pl-5 text-gray-600">
-                  {trainer.certifications.map((item, index) => (
-                    <li key={index}>{item}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {/* Experience */}
-            {trainer.experience && (
-              <div>
-                <h2 className="text-lg font-semibold mb-2">Experience</h2>
-                <p className="text-gray-600">{trainer.experience} years of professional training</p>
-              </div>
-            )}
-          </div>
-        </div>
+            </motion.div>
+          </AnimatePresence>
+        )}
       </div>
-    </div>
+    </section>
   );
 };
 

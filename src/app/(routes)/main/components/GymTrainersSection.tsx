@@ -4,7 +4,9 @@ import Link from "next/link";
 import Image from "next/image";
 import { trainerService, Trainer } from "../services/trainerService";
 import { DEFAULT_TRAINERS, TrainersContent } from "../services/homeService";
-import { AccentText, Reveal } from "./SectionHeading";
+import { Eyebrow, Reveal, SectionTitle } from "./SectionHeading";
+import { Depth, Tilt3D } from "./motion3d";
+import s from "./home3d.module.css";
 
 type SocialKey = "twitter" | "instagram" | "facebook" | "youtube";
 
@@ -50,14 +52,8 @@ const GymTrainersSection = ({ content = DEFAULT_TRAINERS }: { content?: Trainers
       <Reveal>
         <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between mb-12 lg:mb-16 gap-8">
           <header className="flex-1">
-            <div className="flex items-center gap-2 mb-4">
-              <span className="home-eyebrow-dot" aria-hidden="true"></span>
-              <span className="home-eyebrow-label">{content.badge}</span>
-            </div>
-
-            <h2 className="home-section-title text-2xl md:text-3xl lg:text-[42px] text-black mb-0">
-              <AccentText text={content.heading} />
-            </h2>
+            <Eyebrow label={content.badge} />
+            <SectionTitle text={content.heading} className="mb-0" />
           </header>
 
           <div className="lg:max-w-xl lg:flex-shrink-0">
@@ -92,47 +88,54 @@ const GymTrainersSection = ({ content = DEFAULT_TRAINERS }: { content?: Trainers
           fill the row instead of leaving an empty fourth slot. */}
       {!loading && !error && trainers.length > 0 && (
         <div
-          className="home-coach-grid"
+          className={s.coachRow}
           style={{ "--cols": Math.min(trainers.length, 4) } as React.CSSProperties}
         >
+          {/* Cards rise in with depth, then tilt toward the pointer. On
+              phones they form a swipeable row. */}
           {trainers.map((trainer, idx) => (
-            <Reveal key={trainer._id} delay={idx * 90} className="h-full">
-              <article className="home-coach">
-                <Image
-                  src={trainer.image || "/images/default-avatar.svg"}
-                  alt={`${trainer.name} — ${trainer.role}`}
-                  width={400}
-                  height={533}
-                  className="w-full h-full object-cover"
-                  priority={false}
-                />
-                <span className="home-coach__scrim" aria-hidden="true" />
+            <Depth key={trainer._id} index={idx} className="h-full">
+              <Tilt3D max={9} radius={20}>
+                <article className={`home-coach ${s.coachCard}`}>
+                  <span className={s.coachIndex} aria-hidden="true">
+                    {String(idx + 1).padStart(2, "0")}
+                  </span>
+                  <Image
+                    src={trainer.image || "/images/default-avatar.svg"}
+                    alt={`${trainer.name} — ${trainer.role}`}
+                    width={400}
+                    height={533}
+                    className="w-full h-full object-cover"
+                    priority={false}
+                  />
+                  <span className="home-coach__scrim" aria-hidden="true" />
 
-                <div className="home-coach__body">
-                  <p className="home-coach__role">{trainer.role}</p>
-                  <h3 className="home-coach__name">{trainer.name}</h3>
+                  <div className="home-coach__body">
+                    <p className="home-coach__role">{trainer.role}</p>
+                    <h3 className={`home-coach__name ${s.coachName}`}>{trainer.name}</h3>
 
-                  <div className="home-coach__socials">
-                    {SOCIALS.map(({ key, icon, label }) => {
-                      const handle = trainer.social?.[key];
-                      if (!handle) return null;
-                      return (
-                        <Link
-                          key={key}
-                          href={trainerService.formatSocialUrl(handle, key)}
-                          className="home-coach__social"
-                          aria-label={`${trainer.name} on ${label}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                        >
-                          <i className={icon} aria-hidden="true"></i>
-                        </Link>
-                      );
-                    })}
+                    <div className="home-coach__socials">
+                      {SOCIALS.map(({ key, icon, label }) => {
+                        const handle = trainer.social?.[key];
+                        if (!handle) return null;
+                        return (
+                          <Link
+                            key={key}
+                            href={trainerService.formatSocialUrl(handle, key)}
+                            className="home-coach__social"
+                            aria-label={`${trainer.name} on ${label}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            <i className={icon} aria-hidden="true"></i>
+                          </Link>
+                        );
+                      })}
+                    </div>
                   </div>
-                </div>
-              </article>
-            </Reveal>
+                </article>
+              </Tilt3D>
+            </Depth>
           ))}
         </div>
       )}

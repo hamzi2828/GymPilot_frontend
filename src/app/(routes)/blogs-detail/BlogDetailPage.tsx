@@ -42,9 +42,9 @@ const BlogDetailContent = () => {
   // Loading state
   if (isLoading) {
     return (
-      <div className="min-h-screen gym-blog-custom-bg-dark text-white flex items-center justify-center">
+      <div className="min-h-screen bg-[var(--base)] text-white flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-green-500 mx-auto mb-4"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[var(--accent)] mx-auto mb-4"></div>
           <p className="text-gray-300">Loading blog...</p>
         </div>
       </div>
@@ -54,12 +54,12 @@ const BlogDetailContent = () => {
   // Error state
   if (error || !blogData) {
     return (
-      <div className="min-h-screen gym-blog-custom-bg-dark text-white flex items-center justify-center">
+      <div className="min-h-screen bg-[var(--base)] text-white flex items-center justify-center">
         <div className="text-center">
           <h1 className="text-2xl font-bold mb-4">Blog Not Found</h1>
           <p className="text-gray-300 mb-4">{error || 'The requested blog could not be found.'}</p>
-          <a href="/blogs" className="gym-blog-custom-gradient-green text-black font-bold px-6 py-3 rounded-full hover:scale-105 transition-all duration-300">
-            Back to Blogs
+          <a href="/blogs" className="btn btn--primary">
+            <span>Back to Blogs</span>
           </a>
         </div>
       </div>
@@ -67,7 +67,7 @@ const BlogDetailContent = () => {
   }
 
   return (
-    <main className="min-h-screen gym-blog-custom-bg-dark text-white">
+    <main className="min-h-screen bg-[var(--base)] text-white">
       {/* Hero Section */}
       <HeroSection
         title={blogData.title}
@@ -86,11 +86,11 @@ const BlogDetailContent = () => {
       />
 
       {/* Main Content Section */}
-      <section className="px-4 sm:px-6 lg:px-20 py-12 sm:py-16 lg:py-20">
+      <section id="article" className="scroll-mt-20 px-4 sm:px-6 lg:px-20 py-12 sm:py-16 lg:py-20">
         <div className="mx-auto">
-          <div className="grid grid-cols-1 lg:grid-cols-4 gap-12">
+          <div className="mx-auto grid max-w-[1400px] grid-cols-1 lg:grid-cols-4 gap-12">
             {/* Article Content */}
-            <div className="lg:col-span-3">
+            <div className="min-w-0 lg:col-span-3">
               <MainContent content={blogData.content} />
             </div>
 
@@ -123,9 +123,9 @@ const BlogDetailPage = () => {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen gym-blog-custom-bg-dark text-white flex items-center justify-center">
+        <div className="min-h-screen bg-[var(--base)] text-white flex items-center justify-center">
           <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-green-500 mx-auto mb-4"></div>
+            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[var(--accent)] mx-auto mb-4"></div>
             <p className="text-gray-300">Loading blog...</p>
           </div>
         </div>

@@ -1,7 +1,12 @@
 "use client";
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
+import { ArrowUpRight } from "lucide-react";
 import { trainerService, type Trainer } from "../../main/services/trainerService";
+import TiltCard from "@/components/site/TiltCard";
+import Reveal from "@/components/site/Reveal";
+import { SectionHeading, surfaceClass } from "@/components/site/PageHero";
 
 /**
  * The coaches shown on a class page.
@@ -40,81 +45,43 @@ const GymTrainersSection = () => {
   if (!loading && trainers.length === 0) return null;
 
   return (
-    <section className="py-16 lg:py-20 px-4 sm:px-8 lg:px-20">
-      <div className="mx-auto">
-        {/* Header Section */}
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between mb-12 lg:mb-16 gap-6">
-          <header className="flex-1">
-            <div className="flex items-center gap-2 mb-4">
-              <div className="w-2 h-2 rounded-full gymfolio7-green-dot"></div>
-              <span className="gymfolio7-font-sora font-semibold text-sm gymfolio7-gray-text">
-                Our Trainers
-              </span>
-            </div>
+    <section className={`${surfaceClass} py-16 lg:py-24 px-4 sm:px-8 lg:px-20`} aria-labelledby="class-trainers-title">
+      <div className="relative mx-auto max-w-[1400px]">
+        <SectionHeading id="class-trainers-title" eyebrow="Our trainers" title="Meet the team" />
 
-            <h2 className="gymfolio7-font-montserrat font-bold text-2xl md:text-3xl lg:text-4xl leading-tight tracking-tight uppercase opacity-92 text-black mb-0">
-              Meet the team
-            </h2>
-          </header>
-        </div>
-
-        {/* Trainers Cards Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-10">
-          {trainers.map((trainer) => (
-            <Link key={trainer._id} href="/trainers" className="block group">
-              <article className="gymfolio7-trainer-card rounded-lg overflow-hidden cursor-pointer transition-transform duration-300 group-hover:-translate-y-1 group-hover:shadow-lg">
-                <div className="relative overflow-hidden">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={trainer.image || "/images/default-avatar.svg"}
-                    alt={`${trainer.name} - ${trainer.role}`}
-                    className="w-full h-64 object-cover transition-transform duration-500 group-hover:scale-105"
-                  />
-                  <div className="gymfolio7-trainer-card-overlay absolute inset-0"></div>
-                </div>
-
-                <div className="p-4 text-center">
-                  <div className="mb-4">
-                    <h3 className="gymfolio7-green-text gymfolio7-font-montserrat font-bold text-base leading-6 mb-1">
-                      {trainer.name}
-                    </h3>
-                    <p className="gymfolio7-dark-gray-text gymfolio7-font-inter text-sm leading-5">
-                      {trainer.role}
-                    </p>
+        <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          {trainers.map((trainer, idx) => (
+            <Reveal as="li" key={trainer._id} delay={(idx % 4) * 0.08}>
+              <TiltCard className="group h-full overflow-hidden rounded-3xl border border-[var(--border-subtle)] bg-[var(--surface)]">
+                <Link
+                  href="/trainers"
+                  className="block rounded-3xl focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--accent)]"
+                  aria-label={`${trainer.name}, ${trainer.role}: see the team`}
+                >
+                  <div className="relative h-72 overflow-hidden">
+                    <Image
+                      src={trainer.image || "/images/default-avatar.svg"}
+                      alt=""
+                      fill
+                      sizes="(min-width:1024px) 25vw, (min-width:640px) 50vw, 100vw"
+                      className="object-cover object-top transition-transform duration-700 group-hover:scale-105"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-[var(--surface)] via-transparent to-transparent" aria-hidden="true" />
                   </div>
-
-                  {/* Only the accounts a trainer actually has. The old
-                      hardcoded version linked to invented handles for
-                      everybody, so every icon led to a 404. */}
-                  <div className="flex justify-center gap-3">
-                    {(
-                      [
-                        ["twitter", trainer.social?.twitter, "fab fa-twitter", "Twitter"],
-                        ["instagram", trainer.social?.instagram, "fab fa-instagram", "Instagram"],
-                        ["facebook", trainer.social?.facebook, "fab fa-facebook", "Facebook"],
-                        ["youtube", trainer.social?.youtube, "fab fa-youtube", "YouTube"],
-                      ] as const
-                    )
-                      .filter(([, href]) => !!href)
-                      .map(([key, href, icon, label]) => (
-                        <a
-                          key={key}
-                          href={href as string}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          onClick={(e) => e.stopPropagation()}
-                          className="gymfolio7-social-icon hover:scale-110 focus:scale-110 focus:outline-none"
-                          aria-label={`Follow ${trainer.name} on ${label}`}
-                        >
-                          <i className={`${icon} text-lg`} aria-hidden="true"></i>
-                        </a>
-                      ))}
+                  <div className="flex items-end justify-between gap-3 px-5 pb-5 pt-1">
+                    <div>
+                      <h3 className="font-['Montserrat'] text-lg font-extrabold text-white">{trainer.name}</h3>
+                      <p className="mt-0.5 text-sm text-[var(--text-muted)]">{trainer.role}</p>
+                    </div>
+                    <span className="inline-flex h-9 w-9 flex-none items-center justify-center rounded-full border border-[var(--border-subtle)] text-white/70 transition-colors group-hover:border-[var(--accent)] group-hover:bg-[var(--accent)] group-hover:text-[var(--on-accent)]" aria-hidden="true">
+                      <ArrowUpRight size={16} />
+                    </span>
                   </div>
-                </div>
-              </article>
-            </Link>
+                </Link>
+              </TiltCard>
+            </Reveal>
           ))}
-        </div>
+        </ul>
       </div>
     </section>
   );
