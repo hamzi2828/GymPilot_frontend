@@ -11,6 +11,7 @@ import {
   FooterToggle,
   DemoAccounts,
 } from './leftsSideComponents';
+import s from '../auth.module.css';
 
 type FormData = {
   firstName: string;
@@ -71,20 +72,9 @@ export const LeftSide: React.FC<LeftSideProps> = ({
   termsError,
   errors,
 }) => {
+  // Only the form's content: AuthPage supplies the card and the column.
   return (
-    <div className="flex-1 flex items-center justify-center px-8 py-6 relative">
-    {/* Subtle background pattern */}
-    <div className="absolute inset-0 opacity-5">
-      <div
-        className="h-full w-full"
-        style={{
-          backgroundImage: `url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="10" cy="10" r="1" fill="%23ff6b2c"/><circle cx="90" cy="90" r="1" fill="%23ff6b2c"/><circle cx="10" cy="90" r="1" fill="%23ff6b2c"/><circle cx="90" cy="10" r="1" fill="%23ff6b2c"/></svg>')`,
-          backgroundSize: "50px 50px",
-        }}
-      ></div>
-    </div>
-
-    <div className="w-full max-w-md space-y-8 relative z-10">
+    <div>
       {/* Header */}
       <Header isSignUp={isSignUp} isForgot={isForgot} isReset={isReset} />
 
@@ -95,11 +85,7 @@ export const LeftSide: React.FC<LeftSideProps> = ({
         <div
           role="status"
           aria-live="polite"
-          className={`rounded-2xl px-5 py-4 text-sm font-medium border ${
-            notice.tone === "ok"
-              ? "bg-emerald-50 border-emerald-200 text-emerald-800"
-              : "bg-rose-50 border-rose-200 text-rose-800"
-          }`}
+          className={`${s.notice} ${notice.tone === "ok" ? s.noticeOk : s.noticeError}`}
         >
           {notice.text}
         </div>
@@ -109,7 +95,7 @@ export const LeftSide: React.FC<LeftSideProps> = ({
           recognise it). noValidate: the messages under each box are ours, not
           the browser's bubbles. */}
       <form
-        className="space-y-5"
+        className={s.form}
         noValidate
         onSubmit={(e) => {
           e.preventDefault();
@@ -129,9 +115,8 @@ export const LeftSide: React.FC<LeftSideProps> = ({
             about to be set. */}
         {isReset ? (
           formData.email ? (
-            <p className="text-sm text-gray-600 font-medium text-center">
-              Setting a new password for{" "}
-              <span className="font-black text-gray-900">{formData.email}</span>
+            <p className={s.resetFor}>
+              Setting a new password for <strong>{formData.email}</strong>
             </p>
           ) : null
         ) : (
@@ -150,6 +135,7 @@ export const LeftSide: React.FC<LeftSideProps> = ({
             label="Password"
             name="password"
             placeholder={isSignUp ? 'At least 8 characters' : 'Enter password'}
+            autoComplete={isSignUp ? 'new-password' : 'current-password'}
             value={formData.password}
             showPassword={showPassword}
             setShowPassword={setShowPassword}
@@ -161,9 +147,10 @@ export const LeftSide: React.FC<LeftSideProps> = ({
         {isReset && (
           <>
             <PasswordField
-              label="New Password"
+              label="New password"
               name="password"
               placeholder="At least 8 characters"
+              autoComplete="new-password"
               value={formData.password}
               showPassword={showPassword}
               setShowPassword={setShowPassword}
@@ -171,7 +158,7 @@ export const LeftSide: React.FC<LeftSideProps> = ({
               handleInputChange={handleInputChange}
             />
             <ConfirmPasswordField
-              label="Confirm New Password"
+              label="Confirm new password"
               placeholder="Confirm new password"
               value={formData.confirmPassword}
               showConfirmPassword={showConfirmPassword}
@@ -184,7 +171,7 @@ export const LeftSide: React.FC<LeftSideProps> = ({
 
         {isSignUp && (
           <ConfirmPasswordField
-            label="Confirm Password"
+            label="Confirm password"
             placeholder="Confirm password"
             value={formData.confirmPassword}
             showConfirmPassword={showConfirmPassword}
@@ -231,8 +218,8 @@ export const LeftSide: React.FC<LeftSideProps> = ({
         />
       </form>
     </div>
-  </div>
-)}
+  );
+};
 
 
 export default LeftSide;

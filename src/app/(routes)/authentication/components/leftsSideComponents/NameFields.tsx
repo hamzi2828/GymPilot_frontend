@@ -1,5 +1,7 @@
-import React from 'react';
+import React, { useId } from 'react';
 import type { FormData, Errors } from './types';
+import { FieldError, errorProps } from './FieldError';
+import s from '../../auth.module.css';
 
 interface NameFieldsProps {
   isSignUp: boolean;
@@ -9,38 +11,43 @@ interface NameFieldsProps {
 }
 
 export const NameFields: React.FC<NameFieldsProps> = ({ isSignUp, formData, errors, handleInputChange }) => {
+  const id = useId();
   if (!isSignUp) return null;
+  const first = `${id}-first`;
+  const last = `${id}-last`;
   return (
-    <div className="grid grid-cols-2 gap-4">
-      <div>
-        <label className="block text-sm font-bold text-gray-900 mb-2">First Name</label>
+    <div className={s.row2}>
+      <div className={s.field}>
+        <label htmlFor={first} className={s.label}>First name</label>
         <input
+          id={first}
           name="firstName"
           type="text"
+          autoComplete="given-name"
           required
           value={formData.firstName}
           onChange={handleInputChange}
-          className="w-full px-4 py-4 auth-field border-2 border-gray-200 rounded-2xl outline-none text-gray-900 font-medium placeholder-gray-400 bg-white/80 backdrop-blur-sm"
+          className={s.input}
           placeholder="John"
+          {...errorProps(`${first}-err`, errors?.firstName)}
         />
-        {errors?.firstName && (
-          <p className="text-sm text-red-600 mt-1">{errors.firstName}</p>
-        )}
+        <FieldError id={`${first}-err`}>{errors?.firstName}</FieldError>
       </div>
-      <div>
-        <label className="block text-sm font-bold text-gray-900 mb-2">Last Name</label>
+      <div className={s.field}>
+        <label htmlFor={last} className={s.label}>Last name</label>
         <input
+          id={last}
           name="lastName"
           type="text"
+          autoComplete="family-name"
           required
           value={formData.lastName}
           onChange={handleInputChange}
-          className="w-full px-4 py-4 auth-field border-2 border-gray-200 rounded-2xl outline-none text-gray-900 font-medium placeholder-gray-400 bg-white/80 backdrop-blur-sm"
+          className={s.input}
           placeholder="Doe"
+          {...errorProps(`${last}-err`, errors?.lastName)}
         />
-        {errors?.lastName && (
-          <p className="text-sm text-red-600 mt-1">{errors.lastName}</p>
-        )}
+        <FieldError id={`${last}-err`}>{errors?.lastName}</FieldError>
       </div>
     </div>
   );

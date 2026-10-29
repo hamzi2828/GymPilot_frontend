@@ -1,5 +1,6 @@
 import React from 'react';
 import type { Mode } from './types';
+import s from '../../auth.module.css';
 
 interface SignInUtilitiesProps {
   isSignUp: boolean;
@@ -20,22 +21,18 @@ export const SignInUtilities: React.FC<SignInUtilitiesProps> = ({
 }) => {
   if (isSignUp || isForgot || isReset) return null;
   return (
-    <div className="flex items-center justify-between">
-      <label className="flex items-center space-x-3">
+    <div className={s.utilRow}>
+      <label className={s.check}>
         <input
           name="rememberMe"
           type="checkbox"
           checked={rememberMe}
           onChange={handleInputChange}
-          className="auth-check h-5 w-5 border-2 border-gray-300 rounded-lg bg-white"
+          className={s.checkbox}
         />
-        <span className="text-sm text-gray-600 font-medium">Remember me</span>
+        <span>Remember me</span>
       </label>
-      <button
-        type="button"
-        onClick={() => updateMode('forgot')}
-        className="auth-accent-text text-sm font-bold underline underline-offset-2"
-      >
+      <button type="button" onClick={() => updateMode('forgot')} className={s.link}>
         Forgot password?
       </button>
     </div>

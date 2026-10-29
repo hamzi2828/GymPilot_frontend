@@ -1,5 +1,6 @@
 import React from 'react';
 import type { Mode } from './types';
+import s from '../../auth.module.css';
 
 interface FooterToggleProps {
   isSignUp: boolean;
@@ -17,43 +18,29 @@ export const FooterToggle: React.FC<FooterToggleProps> = ({
   updateMode,
 }) => {
   return (
-    <div className="text-center pt-4">
-      <p className="text-sm text-gray-600 font-medium">
-        {isForgot || isReset ? (
-          <>
-            Remembered your password?{' '}
-            <button
-              type="button"
-              onClick={() => updateMode('signin')}
-              className="auth-accent-text font-black transition-colors underline underline-offset-2"
-            >
-              Sign In
-            </button>
-          </>
-        ) : isSignUp ? (
-          <>
-            Already have an account?{' '}
-            <button
-              type="button"
-              onClick={toggleAuthMode}
-              className="auth-accent-text font-black transition-colors underline underline-offset-2"
-            >
-              Sign In
-            </button>
-          </>
-        ) : (
-          <>
-            Don&apos;t have an account?{' '}
-            <button
-              type="button"
-              onClick={toggleAuthMode}
-              className="auth-accent-text font-black transition-colors underline underline-offset-2"
-            >
-              Sign Up
-            </button>
-          </>
-        )}
-      </p>
-    </div>
+    <p className={s.footer}>
+      {isForgot || isReset ? (
+        <>
+          Remembered your password?{' '}
+          <button type="button" onClick={() => updateMode('signin')} className={s.link}>
+            Sign In
+          </button>
+        </>
+      ) : isSignUp ? (
+        <>
+          Already have an account?{' '}
+          <button type="button" onClick={toggleAuthMode} className={s.link}>
+            Sign In
+          </button>
+        </>
+      ) : (
+        <>
+          Don&apos;t have an account?{' '}
+          <button type="button" onClick={toggleAuthMode} className={s.link}>
+            Sign Up
+          </button>
+        </>
+      )}
+    </p>
   );
 };

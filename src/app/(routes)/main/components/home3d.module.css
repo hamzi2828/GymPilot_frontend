@@ -158,7 +158,13 @@
 }
 .heroStage {
   transform: translate3d(calc(var(--px) * -18px), calc(var(--py) * -12px + var(--sy)), 0) scale(1.07);
+  /* Zoom from the top edge so faces near the top of the photo stay in view. */
+  transform-origin: 50% 0;
   will-change: transform;
+}
+.heroStage :global(.hero__media) {
+  background-position: center 18%;
+  transform-origin: 50% 0;
 }
 .heroInner {
   transform: translate3d(calc(var(--px) * 10px), calc(var(--py) * 6px + var(--sy) * -0.35), 0);

@@ -1,5 +1,7 @@
-import React from 'react';
+import React, { useId } from 'react';
 import type { FormData, Errors } from './types';
+import { FieldError, errorProps } from './FieldError';
+import s from '../../auth.module.css';
 
 interface EmailFieldProps {
   formData: FormData;
@@ -13,10 +15,13 @@ interface EmailFieldProps {
 }
 
 export const EmailField: React.FC<EmailFieldProps> = ({ formData, errors, handleInputChange, allowUsername = false }) => {
+  const id = useId();
+  const errId = `${id}-err`;
   return (
-    <div>
-      <label className="block text-sm font-bold text-gray-900 mb-2">{allowUsername ? 'Email or username' : 'Email Address'}</label>
+    <div className={s.field}>
+      <label htmlFor={id} className={s.label}>{allowUsername ? 'Email or username' : 'Email address'}</label>
       <input
+        id={id}
         name="email"
         type={allowUsername ? 'text' : 'email'}
         autoComplete={allowUsername ? 'username' : 'email'}
@@ -25,12 +30,11 @@ export const EmailField: React.FC<EmailFieldProps> = ({ formData, errors, handle
         required
         value={formData.email}
         onChange={handleInputChange}
-        className="w-full px-4 py-4 auth-field border-2 border-gray-200 rounded-2xl outline-none text-gray-900 font-medium placeholder-gray-400 bg-white/80 backdrop-blur-sm"
+        className={s.input}
         placeholder={allowUsername ? 'john@example.com or your username' : 'john@example.com'}
+        {...errorProps(errId, errors?.email)}
       />
-      {errors?.email && (
-        <p className="text-sm text-red-600 mt-1">{errors.email}</p>
-      )}
+      <FieldError id={errId}>{errors?.email}</FieldError>
     </div>
   );
 };

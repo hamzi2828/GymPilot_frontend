@@ -4,9 +4,10 @@
 // place of the sign-in form once a password has been accepted for an account
 // that requires it.
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useId, useState } from "react";
 import Spinner from "@/components/ui/Spinner";
 import useAsyncAction from "@/components/ui/useAsyncAction";
+import s from "../auth.module.css";
 
 // How long "Send a new code" rests after each send, so a slow email is not
 // answered with a burst of them (only the newest code works).
@@ -29,6 +30,7 @@ export default function TwoFactorStep({
   notice: { tone: "ok" | "error"; text: string } | null;
 }) {
   const [code, setCode] = useState("");
+  const codeId = useId();
   const { busy: resending, run } = useAsyncAction();
   // Counts down from the moment this step opens: a code has only just gone.
   const [wait, setWait] = useState(RESEND_WAIT_SECONDS);
@@ -48,62 +50,81 @@ export default function TwoFactorStep({
       }
     });
 
+  const errId = `${codeId}-notice`;
+  // Only the step's content: AuthPage supplies the card and the column.
   return (
-    <div className="w-full lg:w-1/2 flex items-center justify-center px-6 py-12">
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (isLoading || resending) return;
-          if (code.replace(/\D/g, "").length === 6) onVerify(code.replace(/\D/g, ""));
-        }}
-        className="w-full max-w-md"
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (isLoading || resending) return;
+        if (code.replace(/\D/g, "").length === 6) onVerify(code.replace(/\D/g, ""));
+      }}
+      className={s.form}
+    >
+      <div className={s.head} style={{ marginBottom: 8 }}>
+        <span className={s.eyebrow}>
+          <span className={s.dot} aria-hidden="true" />
+          One more step
+        </span>
+        <h1 className={s.title}>
+          Enter your <span className={s.titleAccent}>sign-in code</span>
+        </h1>
+        <p className={s.sub}>{message}</p>
+      </div>
+
+      <div className={s.field}>
+        <label htmlFor={codeId} className={s.label}>6-digit code</label>
+        <input
+          id={codeId}
+          autoFocus
+          inputMode="numeric"
+          autoComplete="one-time-code"
+          maxLength={7}
+          value={code}
+          onChange={(e) => setCode(e.target.value)}
+          className={`${s.input} ${s.code}`}
+          placeholder="••••••"
+          aria-describedby={notice ? errId : undefined}
+          aria-invalid={notice?.tone === "error" || undefined}
+        />
+      </div>
+
+      {notice && (
+        <p
+          id={errId}
+          role="status"
+          aria-live="polite"
+          className={`${s.notice} ${notice.tone === "ok" ? s.noticeOk : s.noticeError}`}
+          style={{ marginBottom: 0 }}
+        >
+          {notice.text}
+        </p>
+      )}
+
+      <button
+        type="submit"
+        disabled={isLoading || resending || code.replace(/\D/g, "").length !== 6}
+        aria-busy={isLoading || undefined}
+        className="btn btn--primary btn--lg btn--block"
       >
-        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500">One more step</p>
-        <h1 className="mt-2 text-3xl font-bold text-black">Enter your sign-in code</h1>
-        <p className="mt-2 text-sm text-gray-600">{message}</p>
-
-        <label className="mt-8 block">
-          <span className="text-sm font-medium text-gray-700">6-digit code</span>
-          <input
-            autoFocus
-            inputMode="numeric"
-            autoComplete="one-time-code"
-            maxLength={7}
-            value={code}
-            onChange={(e) => setCode(e.target.value)}
-            className="mt-2 w-full rounded-lg border border-gray-300 px-4 py-3 text-center text-2xl font-semibold tracking-[0.4em] focus:border-black focus:outline-none"
-            placeholder="••••••"
-          />
-        </label>
-
-        {notice && (
-          <p className={`mt-4 rounded-lg px-4 py-2 text-sm ${notice.tone === "ok" ? "bg-green-50 text-green-800" : "bg-red-50 text-red-700"}`}>{notice.text}</p>
-        )}
-
-        <button
-          type="submit"
-          disabled={isLoading || resending || code.replace(/\D/g, "").length !== 6}
-          aria-busy={isLoading || undefined}
-          className="mt-6 flex w-full items-center justify-center gap-2 rounded-lg bg-black px-4 py-3 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
-        >
-          {isLoading && <Spinner />}
-          {isLoading ? "Checking…" : "Sign in"}
-        </button>
-        <button
-          type="button"
-          onClick={resend}
-          disabled={isLoading || resending || wait > 0}
-          aria-busy={resending || undefined}
-          className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border border-gray-300 px-4 py-3 text-sm font-semibold text-gray-800 hover:bg-gray-50 disabled:opacity-50"
-        >
-          {resending && <Spinner />}
-          {resending ? "Sending…" : wait > 0 ? `Send a new code (in ${wait}s)` : "Send a new code"}
-        </button>
-        <button type="button" onClick={onBack} className="mt-3 w-full text-sm text-gray-600 underline underline-offset-2">
-          Back to sign in
-        </button>
-        <p className="mt-6 text-xs text-gray-500">The code expires in 10 minutes. Didn&apos;t get it? Check your spam folder, then send a new one — only the newest code works.</p>
-      </form>
-    </div>
+        {isLoading && <Spinner />}
+        <span>{isLoading ? "Checking…" : "Sign in"}</span>
+      </button>
+      <button
+        type="button"
+        onClick={resend}
+        disabled={isLoading || resending || wait > 0}
+        aria-busy={resending || undefined}
+        className="btn btn--glass btn--lg btn--block"
+        style={{ marginTop: -6 }}
+      >
+        {resending && <Spinner />}
+        <span>{resending ? "Sending…" : wait > 0 ? `Send a new code (in ${wait}s)` : "Send a new code"}</span>
+      </button>
+      <button type="button" onClick={onBack} className={s.textBtn}>
+        Back to sign in
+      </button>
+      <p className={s.fine}>The code expires in 10 minutes. Didn&apos;t get it? Check your spam folder, then send a new one — only the newest code works.</p>
+    </form>
   );
 }

@@ -6,6 +6,7 @@ import Footer from "@/components/Footer";
 import AnnouncementsBar from "@/components/AnnouncementsBar";
 import WhatsAppButton from "@/components/WhatsAppButton";
 import PwaRegister from "@/components/PwaRegister";
+import ScrollProgress from "@/components/site/ScrollProgress";
 
 export default function ClientLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -28,6 +29,7 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
       {children}
       {!hideLayout && <Footer />}
       {!hideLayout && <WhatsAppButton />}
+      {!hideLayout && <ScrollProgress />}
     </>
   );
 }

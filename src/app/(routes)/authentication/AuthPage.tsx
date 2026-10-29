@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useRouter, useSearchParams } from "next/navigation";
 import { LeftSide } from "./components/LeftSide";
 import { RightSide } from "./components/RightSide";
@@ -10,6 +11,9 @@ import { setToken, setRole, getRole, decodeJwt, hasSessionCookie, restoreSession
 import type { Mode } from "./components/leftsSideComponents/types";
 import useAsyncAction from "@/components/ui/useAsyncAction";
 import { startNavigationProgress } from "@/components/NavigationProgress";
+import styles from "./auth.module.css";
+
+const EASE = [0.22, 0.61, 0.36, 1] as const;
 
 // Where someone lands when nothing asked for a particular page: the panel for
 // anyone who works here, the homepage for a member.
@@ -29,6 +33,8 @@ const passwordProblem = (password: string): string | null => {
 const AuthPage: React.FC = () => {
   const router = useRouter();
   const searchParams = useSearchParams();
+  // Reduced motion: everything renders in place.
+  const reduce = useReducedMotion();
 
   // Where to land after a successful sign-in. Checkout sends buyers here when
   // they aren't logged in, so dropping this param strands them on the homepage
@@ -380,49 +386,100 @@ const AuthPage: React.FC = () => {
     updateMode(isSignUp ? "signin" : "signup");
   };
 
+  // Which screen is up; the card animates between them.
+  const step = twoFactor ? "2fa" : isReset ? "reset" : isForgot ? "forgot" : isSignUp ? "signup" : "signin";
+
   // <main>: the site layout hides its chrome on this page, so the page's own
   // root is the landmark a screen reader jumps to.
   return (
-    <main className="min-h-screen flex overflow-hidden bg-gradient-to-br from-gray-50 via-white to-gray-100">
-      {/* Left Side - Auth Form, or the second step once a password is accepted */}
-      {twoFactor ? (
-        <TwoFactorStep
-          message={twoFactor.message}
-          onVerify={verifyCode}
-          onBack={() => {
-            setTwoFactor(null);
-            setNotice(null);
-          }}
-          onResend={resendCode}
-          isLoading={isLoading}
-          notice={notice}
-        />
-      ) : (
-      <LeftSide
-        isSignUp={isSignUp}
-        isForgot={isForgot}
-        isReset={isReset}
-        notice={notice}
-        formData={formData}
-        handleInputChange={handleInputChange}
-        fillCredentials={fillCredentials}
-        handleSubmit={handleSubmit}
-        updateMode={updateMode}
-        toggleAuthMode={toggleAuthMode}
-        isLoading={isLoading}
-        showPassword={showPassword}
-        setShowPassword={setShowPassword}
-        showConfirmPassword={showConfirmPassword}
-        setShowConfirmPassword={setShowConfirmPassword}
-        termsError={termsError}
-        errors={errors}
-      />
-      )}
+    <main className={styles.page}>
+      <section className={styles.formCol} aria-label="Account">
+        <motion.div
+          className={styles.cardWrap}
+          initial={reduce ? false : { opacity: 0, y: 28, rotateX: 8 }}
+          animate={{ opacity: 1, y: 0, rotateX: 0 }}
+          transition={{ duration: 0.8, ease: EASE }}
+          style={{ transformOrigin: "50% 100%" }}
+        >
+          <div className={styles.card}>
+            <AutoHeight reduce={!!reduce}>
+              <AnimatePresence mode="wait" initial={false}>
+                <motion.div
+                  key={step}
+                  initial={reduce ? false : { opacity: 0, x: 18, filter: "blur(4px)" }}
+                  animate={{ opacity: 1, x: 0, filter: "blur(0px)" }}
+                  exit={reduce ? { opacity: 1 } : { opacity: 0, x: -18, filter: "blur(4px)" }}
+                  transition={{ duration: reduce ? 0 : 0.24, ease: EASE }}
+                >
+                  {/* The auth form, or the second step once a password is accepted */}
+                  {twoFactor ? (
+                    <TwoFactorStep
+                      message={twoFactor.message}
+                      onVerify={verifyCode}
+                      onBack={() => {
+                        setTwoFactor(null);
+                        setNotice(null);
+                      }}
+                      onResend={resendCode}
+                      isLoading={isLoading}
+                      notice={notice}
+                    />
+                  ) : (
+                    <LeftSide
+                      isSignUp={isSignUp}
+                      isForgot={isForgot}
+                      isReset={isReset}
+                      notice={notice}
+                      formData={formData}
+                      handleInputChange={handleInputChange}
+                      fillCredentials={fillCredentials}
+                      handleSubmit={handleSubmit}
+                      updateMode={updateMode}
+                      toggleAuthMode={toggleAuthMode}
+                      isLoading={isLoading}
+                      showPassword={showPassword}
+                      setShowPassword={setShowPassword}
+                      showConfirmPassword={showConfirmPassword}
+                      setShowConfirmPassword={setShowConfirmPassword}
+                      termsError={termsError}
+                      errors={errors}
+                    />
+                  )}
+                </motion.div>
+              </AnimatePresence>
+            </AutoHeight>
+          </div>
+        </motion.div>
+      </section>
 
       <RightSide />
-
     </main>
   );
 };
+
+/** Animates the card's height as the step inside it changes size. */
+function AutoHeight({ children, reduce }: { children: React.ReactNode; reduce: boolean }) {
+  const inner = useRef<HTMLDivElement>(null);
+  const [height, setHeight] = useState<number | "auto">("auto");
+  useEffect(() => {
+    const el = inner.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => setHeight(el.offsetHeight));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  return (
+    <motion.div
+      className={styles.autoHeight}
+      initial={false}
+      animate={{ height }}
+      transition={{ duration: reduce ? 0 : 0.35, ease: EASE }}
+    >
+      <div ref={inner} className={styles.autoHeightInner}>
+        {children}
+      </div>
+    </motion.div>
+  );
+}
 
 export default AuthPage;

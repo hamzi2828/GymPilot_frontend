@@ -1,5 +1,7 @@
-import React from 'react';
+import React, { useId } from 'react';
 import Link from 'next/link';
+import { FieldError, errorProps } from './FieldError';
+import s from '../../auth.module.css';
 
 interface TermsCheckboxProps {
   isSignUp: boolean;
@@ -9,37 +11,33 @@ interface TermsCheckboxProps {
 }
 
 export const TermsCheckbox: React.FC<TermsCheckboxProps> = ({ isSignUp, acceptTerms, handleInputChange, termsError }) => {
+  const id = useId();
   if (!isSignUp) return null;
+  const errId = `${id}-err`;
   return (
-    <div className="p-4 bg-gray-50 rounded-2xl border border-gray-200">
-      <div className="flex items-start space-x-3">
+    <div className={s.terms}>
+      <div className={s.termsRow}>
         <input
+          id={id}
           name="acceptTerms"
           type="checkbox"
           checked={acceptTerms}
           onChange={handleInputChange}
-          className="auth-check h-5 w-5 border-2 border-gray-300 rounded-lg mt-0.5 bg-white"
+          className={s.checkbox}
+          {...errorProps(errId, termsError)}
         />
-        <label className="text-sm text-gray-600 font-medium leading-relaxed">
+        <label htmlFor={id}>
           I agree to the{' '}
-          <Link
-            href="/terms"
-            className="auth-accent-text font-bold underline underline-offset-2"
-          >
+          <Link href="/terms" className={s.link}>
             Terms and Conditions
           </Link>{' '}
           and{' '}
-          <Link
-            href="/privacy-policy"
-            className="auth-accent-text font-bold underline underline-offset-2"
-          >
+          <Link href="/privacy-policy" className={s.link}>
             Privacy Policy
           </Link>
         </label>
       </div>
-      {termsError && (
-        <p className="text-sm text-red-600 mt-2">{termsError}</p>
-      )}
+      <FieldError id={errId}>{termsError}</FieldError>
     </div>
   );
 };

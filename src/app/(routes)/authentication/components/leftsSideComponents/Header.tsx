@@ -1,4 +1,5 @@
 import React from 'react';
+import s from '../../auth.module.css';
 
 interface HeaderProps {
   isSignUp: boolean;
@@ -7,25 +8,25 @@ interface HeaderProps {
 }
 
 export const Header: React.FC<HeaderProps> = ({ isSignUp, isForgot, isReset = false }) => {
+  const eyebrow = isReset || isForgot ? 'Account recovery' : isSignUp ? 'New member' : 'Members area';
+  // Last word of the title takes the accent.
+  const [lead, accent] = isReset
+    ? ['New', 'password']
+    : isForgot
+    ? ['Forgot', 'password?']
+    : isSignUp
+    ? ['Join', 'us']
+    : ['Welcome', 'back'];
   return (
-    <div className="text-center">
-      <div className="mb-8">
-        <div className="auth-accent-gradient w-20 h-20 rounded-3xl flex items-center justify-center mx-auto shadow-2xl transform rotate-3 hover:rotate-0 transition-transform duration-300">
-          <svg className="w-10 h-10 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
-          </svg>
-        </div>
-      </div>
-      <h1 className="text-5xl font-black text-gray-900 leading-tight tracking-tight mb-3 font-sans">
-        {isReset
-          ? 'New Password'
-          : isForgot
-          ? 'Forgot Password'
-          : isSignUp
-          ? 'Join Us'
-          : 'Welcome'}
+    <div className={s.head}>
+      <span className={s.eyebrow}>
+        <span className={s.dot} aria-hidden="true" />
+        {eyebrow}
+      </span>
+      <h1 className={s.title}>
+        {lead} <span className={s.titleAccent}>{accent}</span>
       </h1>
-      <p className="text-gray-600 text-base font-medium leading-relaxed">
+      <p className={s.sub}>
         {isReset
           ? 'Choose the password you will sign in with from now on'
           : isForgot
